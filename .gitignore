@@ -1,0 +1,71 @@
+# Git ignore file for WindInput IME
+
+# Build outputs (project-level)
+/build/
+/wind_tsf/build/
+
+# CMake/CLion generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+CMakeConfigureLog.yaml
+CMakeUserPresets.json
+cmake-build-*/
+
+# MSVC/Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+*.pdb
+*.ipdb
+*.iobj
+*.idb
+*.ilk
+*.obj
+*.tlog
+*.log
+*.exp
+*.lib
+*.dll.recipe
+*.exe.recipe
+*.lastbuildstate
+*.recipe
+Debug/
+Release/
+x64/
+Win32/
+
+# Go build artifacts
+/wind_input/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.*
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.tmp
+*~
+
+# OS generated
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Backup files
+*.bak
+*.old_*
+
+# Logs
+*.log
+
