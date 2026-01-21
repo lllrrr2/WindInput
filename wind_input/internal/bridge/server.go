@@ -234,7 +234,14 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 
 	switch request.Type {
 	case RequestTypeKeyEvent:
-		result := s.handler.HandleKeyEvent(request.Data)
+		// Parse key event data
+		var keyData KeyEventData
+		if err := json.Unmarshal(request.Data, &keyData); err != nil {
+			s.logger.Error("Failed to parse key event data", "clientID", clientID, "error", err)
+			return &Response{Type: ResponseTypeAck, Error: "invalid key event data"}
+		}
+
+		result := s.handler.HandleKeyEvent(keyData)
 		if result == nil {
 			return &Response{Type: ResponseTypeAck}
 		}
@@ -263,8 +270,19 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 		return &Response{Type: ResponseTypeAck}
 
 	case RequestTypeCaretUpdate:
-		// Parse caret data from request.Data (need type assertion)
-		// For now, just acknowledge
+		// Parse caret data
+		var caretData CaretData
+		if err := json.Unmarshal(request.Data, &caretData); err != nil {
+			s.logger.Error("Failed to parse caret data", "clientID", clientID, "error", err)
+			return &Response{Type: ResponseTypeAck, Error: "invalid caret data"}
+		}
+
+		s.logger.Info("Received caret update", "clientID", clientID, "x", caretData.X, "y", caretData.Y, "height", caretData.Height)
+
+		// Call handler to update caret position
+		if err := s.handler.HandleCaretUpdate(caretData); err != nil {
+			s.logger.Error("Failed to handle caret update", "clientID", clientID, "error", err)
+		}
 		return &Response{Type: ResponseTypeAck}
 
 	default:

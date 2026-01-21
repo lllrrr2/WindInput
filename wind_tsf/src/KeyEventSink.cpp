@@ -170,12 +170,45 @@ void CKeyEventSink::Uninitialize()
     }
 }
 
+int CKeyEventSink::_GetModifierState()
+{
+    int modifiers = 0;
+
+    // Use GetAsyncKeyState to detect modifier key states
+    if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
+        modifiers |= KEY_MOD_SHIFT;
+    if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+        modifiers |= KEY_MOD_CTRL;
+    if (GetAsyncKeyState(VK_MENU) & 0x8000)  // VK_MENU = Alt
+        modifiers |= KEY_MOD_ALT;
+
+    return modifiers;
+}
+
 BOOL CKeyEventSink::_IsKeyWeShouldHandle(WPARAM wParam)
 {
-    // Shift key for Chinese/English toggle - always handle
+    // Get current modifier state
+    int modifiers = _GetModifierState();
+
+    // Shift key for Chinese/English toggle
+    // Only handle if no other modifier keys are pressed
     if (wParam == VK_SHIFT)
     {
+        // If Ctrl or Alt is also pressed, this is a system shortcut (e.g., Shift+Alt)
+        // Let the system handle it
+        if (modifiers & (KEY_MOD_CTRL | KEY_MOD_ALT))
+        {
+            OutputDebugStringW(L"[WindInput] Shift with Ctrl/Alt, passing to system\n");
+            return FALSE;
+        }
         return TRUE;
+    }
+
+    // If Ctrl or Alt is pressed with any key, don't intercept
+    // This allows Ctrl+C, Ctrl+V, Alt+Tab, etc. to work
+    if (modifiers & (KEY_MOD_CTRL | KEY_MOD_ALT))
+    {
+        return FALSE;
     }
 
     // Always handle when composing
@@ -221,6 +254,12 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
     {
         // Letter key - convert to lowercase
         key = (wchar_t)towlower((wint_t)wParam);
+
+        // If starting composition, update caret position first
+        if (!_isComposing)
+        {
+            _pTextService->SendCaretPositionUpdate();
+        }
         _isComposing = TRUE;
     }
     else if (wParam >= '1' && wParam <= '9')
@@ -254,8 +293,9 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
         return FALSE;
     }
 
-    // Send key event to Go Service
-    return pIPCClient->SendKeyEvent(key, keyCode, 0);
+    // Send key event to Go Service with actual modifier state
+    int modifiers = _GetModifierState();
+    return pIPCClient->SendKeyEvent(key, keyCode, modifiers);
 }
 
 void CKeyEventSink::_HandleServiceResponse()

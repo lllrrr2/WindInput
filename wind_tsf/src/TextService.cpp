@@ -309,3 +309,77 @@ BOOL CTextService::InsertText(const std::wstring& text)
 
     return TRUE;
 }
+
+BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
+{
+    // Method 1: Try to get caret position from the GUI thread info
+    // This is more reliable than trying to use TSF's GetSelection which requires an edit cookie
+    GUITHREADINFO guiInfo = { sizeof(GUITHREADINFO) };
+
+    if (GetGUIThreadInfo(0, &guiInfo))
+    {
+        // Check if there's an active caret
+        if (guiInfo.hwndCaret != nullptr)
+        {
+            POINT caretPos;
+            caretPos.x = guiInfo.rcCaret.left;
+            caretPos.y = guiInfo.rcCaret.bottom;
+
+            // Convert from client coordinates to screen coordinates
+            ClientToScreen(guiInfo.hwndCaret, &caretPos);
+
+            *px = caretPos.x;
+            *py = caretPos.y;
+            *pHeight = guiInfo.rcCaret.bottom - guiInfo.rcCaret.top;
+
+            if (*pHeight <= 0)
+                *pHeight = 20;  // Default caret height
+
+            WCHAR debug[256];
+            wsprintfW(debug, L"[WindInput] Caret position (GUI): x=%d, y=%d, height=%d\n", *px, *py, *pHeight);
+            OutputDebugStringW(debug);
+
+            return TRUE;
+        }
+    }
+
+    // Method 2: Fallback to GetCaretPos
+    POINT pt;
+    if (GetCaretPos(&pt))
+    {
+        // Get the foreground window to convert coordinates
+        HWND hwnd = GetForegroundWindow();
+        if (hwnd != nullptr)
+        {
+            ClientToScreen(hwnd, &pt);
+            *px = pt.x;
+            *py = pt.y + 20;  // Estimate caret height
+            *pHeight = 20;
+
+            WCHAR debug[256];
+            wsprintfW(debug, L"[WindInput] Caret position (fallback): x=%d, y=%d, height=%d\n", *px, *py, *pHeight);
+            OutputDebugStringW(debug);
+
+            return TRUE;
+        }
+    }
+
+    OutputDebugStringW(L"[WindInput] GetCaretPosition: Failed to get caret position\n");
+    return FALSE;
+}
+
+void CTextService::SendCaretPositionUpdate()
+{
+    LONG x, y, height;
+    if (GetCaretPosition(&x, &y, &height))
+    {
+        if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
+        {
+            _pIPCClient->SendCaretUpdate((int)x, (int)y, (int)height);
+
+            // Receive response to keep protocol in sync
+            ServiceResponse response;
+            _pIPCClient->ReceiveResponse(response);
+        }
+    }
+}

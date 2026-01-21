@@ -6,6 +6,17 @@ import (
 	"time"
 )
 
+// UICommand represents a command to the UI thread
+type UICommand struct {
+	Type       string // "show", "hide", "mode"
+	Candidates []Candidate
+	Input      string
+	X, Y       int
+	Page       int
+	TotalPages int
+	ModeText   string
+}
+
 // Manager manages the candidate window UI
 type Manager struct {
 	window   *CandidateWindow
@@ -22,6 +33,9 @@ type Manager struct {
 
 	ready    bool
 	readyCh  chan struct{}
+
+	// Command channel for async UI updates
+	cmdCh chan UICommand
 }
 
 // NewManager creates a new UI manager
@@ -31,6 +45,7 @@ func NewManager(logger *slog.Logger) *Manager {
 		renderer: NewRenderer(DefaultRenderConfig()),
 		logger:   logger,
 		readyCh:  make(chan struct{}),
+		cmdCh:    make(chan UICommand, 100), // Buffered channel to avoid blocking IPC
 	}
 }
 
@@ -51,10 +66,42 @@ func (m *Manager) Start() error {
 
 	m.logger.Info("UI Manager ready")
 
+	// Start command processor in a separate goroutine
+	go m.processCommands()
+
 	// Run message loop (blocking)
 	m.window.Run()
 
 	return nil
+}
+
+// processCommands processes UI commands from the channel
+func (m *Manager) processCommands() {
+	m.logger.Info("UI command processor started")
+
+	for cmd := range m.cmdCh {
+		m.logger.Info("Processing UI command", "type", cmd.Type)
+
+		// Recover from any panics to keep the goroutine alive
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.Error("Panic in UI command processing", "panic", r, "type", cmd.Type)
+				}
+			}()
+
+			switch cmd.Type {
+			case "show":
+				m.doShowCandidates(cmd.Candidates, cmd.Input, cmd.X, cmd.Y, cmd.Page, cmd.TotalPages)
+			case "hide":
+				m.doHide()
+			case "mode":
+				m.doShowModeIndicator(cmd.ModeText, cmd.X, cmd.Y)
+			}
+		}()
+	}
+
+	m.logger.Info("UI command processor stopped")
 }
 
 // WaitReady waits until the UI manager is ready
@@ -69,7 +116,7 @@ func (m *Manager) IsReady() bool {
 	return m.ready
 }
 
-// ShowCandidates shows candidates at the given position
+// ShowCandidates shows candidates at the given position (async, non-blocking)
 func (m *Manager) ShowCandidates(candidates []Candidate, input string, x, y, page, totalPages int) error {
 	m.mu.Lock()
 	if !m.ready {
@@ -84,25 +131,63 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, x, y, pag
 	m.caretY = y
 	m.mu.Unlock()
 
-	m.logger.Info("ShowCandidates", "input", input, "count", len(candidates), "x", x, "y", y)
+	m.logger.Debug("Queuing ShowCandidates", "input", input, "count", len(candidates), "x", x, "y", y)
 
-	// Render
-	img := m.renderer.RenderCandidates(candidates, input, page, totalPages)
-
-	// Update window
-	if err := m.window.UpdateContent(img, x, y); err != nil {
-		m.logger.Error("UpdateContent failed", "error", err)
-		return err
+	// Send command to UI thread (non-blocking due to buffered channel)
+	select {
+	case m.cmdCh <- UICommand{
+		Type:       "show",
+		Candidates: candidates,
+		Input:      input,
+		X:          x,
+		Y:          y,
+		Page:       page,
+		TotalPages: totalPages,
+	}:
+	default:
+		m.logger.Warn("UI command channel full, dropping show command")
 	}
-
-	// Show window
-	m.window.Show()
 
 	return nil
 }
 
-// Hide hides the candidate window
+// doShowCandidates actually shows candidates (called from UI thread)
+func (m *Manager) doShowCandidates(candidates []Candidate, input string, x, y, page, totalPages int) {
+	m.logger.Info("doShowCandidates start", "input", input, "count", len(candidates), "x", x, "y", y)
+
+	// Render
+	m.logger.Debug("Rendering candidates...")
+	img := m.renderer.RenderCandidates(candidates, input, page, totalPages)
+	m.logger.Debug("Render complete", "width", img.Bounds().Dx(), "height", img.Bounds().Dy())
+
+	// Update window
+	m.logger.Debug("Updating window content...")
+	if err := m.window.UpdateContent(img, x, y); err != nil {
+		m.logger.Error("UpdateContent failed", "error", err)
+		return
+	}
+	m.logger.Debug("Window content updated")
+
+	// Show window
+	m.logger.Debug("Showing window...")
+	m.window.Show()
+	m.logger.Info("doShowCandidates complete")
+}
+
+// Hide hides the candidate window (async, non-blocking)
 func (m *Manager) Hide() {
+	m.logger.Debug("Queuing Hide")
+
+	// Send command to UI thread (non-blocking)
+	select {
+	case m.cmdCh <- UICommand{Type: "hide"}:
+	default:
+		m.logger.Warn("UI command channel full, dropping hide command")
+	}
+}
+
+// doHide actually hides the window (called from UI thread)
+func (m *Manager) doHide() {
 	m.logger.Info("Hide called")
 	m.window.Hide()
 }
@@ -127,7 +212,7 @@ func (m *Manager) IsVisible() bool {
 	return m.window.IsVisible()
 }
 
-// ShowModeIndicator shows a brief mode indicator (中/En)
+// ShowModeIndicator shows a brief mode indicator (中/En) (async, non-blocking)
 func (m *Manager) ShowModeIndicator(mode string, x, y int) {
 	m.mu.Lock()
 	if !m.ready {
@@ -136,6 +221,23 @@ func (m *Manager) ShowModeIndicator(mode string, x, y int) {
 	}
 	m.mu.Unlock()
 
+	m.logger.Debug("Queuing ShowModeIndicator", "mode", mode)
+
+	// Send command to UI thread (non-blocking)
+	select {
+	case m.cmdCh <- UICommand{
+		Type:     "mode",
+		ModeText: mode,
+		X:        x,
+		Y:        y,
+	}:
+	default:
+		m.logger.Warn("UI command channel full, dropping mode command")
+	}
+}
+
+// doShowModeIndicator actually shows the mode indicator (called from UI thread)
+func (m *Manager) doShowModeIndicator(mode string, x, y int) {
 	m.logger.Info("ShowModeIndicator", "mode", mode)
 
 	// Render mode indicator
@@ -153,6 +255,6 @@ func (m *Manager) ShowModeIndicator(mode string, x, y int) {
 	// Hide after a short delay (in a goroutine)
 	go func() {
 		time.Sleep(800 * time.Millisecond)
-		m.window.Hide()
+		m.doHide()
 	}()
 }

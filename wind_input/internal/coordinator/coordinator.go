@@ -13,6 +13,11 @@ import (
 
 const (
 	MaxCandidatesPerPage = 9
+
+	// Modifier key flags (must match C++ side)
+	ModShift = 0x01
+	ModCtrl  = 0x02
+	ModAlt   = 0x04
 )
 
 // Coordinator orchestrates between C++ Bridge, Engine, and native UI
@@ -61,7 +66,17 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.logger.Info("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "chineseMode", c.chineseMode)
+	c.logger.Info("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode)
+
+	// Check for Ctrl or Alt modifiers - these should be passed to the system
+	// Note: C++ side already filters most of these, but we double-check here
+	hasCtrl := data.Modifiers&ModCtrl != 0
+	hasAlt := data.Modifiers&ModAlt != 0
+
+	if hasCtrl || hasAlt {
+		c.logger.Debug("Key has Ctrl/Alt modifier, passing to system")
+		return nil
+	}
 
 	key := strings.ToLower(data.Key)
 

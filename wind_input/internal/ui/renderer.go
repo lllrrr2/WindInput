@@ -25,15 +25,18 @@ type RenderConfig struct {
 	BorderColor     color.Color
 }
 
-// DefaultRenderConfig returns default rendering configuration
+// DefaultRenderConfig returns default rendering configuration with DPI scaling
 func DefaultRenderConfig() RenderConfig {
+	// Get DPI scale factor
+	scale := GetDPIScale()
+
 	return RenderConfig{
 		FontPath:        "",  // Will use system font
-		FontSize:        18,
-		IndexFontSize:   14,
-		Padding:         10,
-		ItemHeight:      32,
-		CornerRadius:    8,
+		FontSize:        18 * scale,
+		IndexFontSize:   14 * scale,
+		Padding:         10 * scale,
+		ItemHeight:      32 * scale,
+		CornerRadius:    8 * scale,
 		BackgroundColor: color.RGBA{255, 255, 255, 245}, // Slightly transparent white
 		TextColor:       color.RGBA{30, 30, 30, 255},
 		IndexColor:      color.RGBA{255, 255, 255, 255},
@@ -65,21 +68,22 @@ func (r *Renderer) SetFontPath(path string) {
 // RenderCandidates renders candidates to an image
 func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, totalPages int) *image.RGBA {
 	cfg := r.config
+	scale := GetDPIScale()
 
-	// Calculate dimensions
+	// Calculate dimensions with DPI scaling
 	candidateCount := len(candidates)
 	if candidateCount == 0 {
 		candidateCount = 1 // Show at least input area
 	}
 
-	width := 280.0
-	inputHeight := 30.0
+	width := 280.0 * scale
+	inputHeight := 30.0 * scale
 	contentHeight := float64(candidateCount) * cfg.ItemHeight
 	pageInfoHeight := 0.0
 	if totalPages > 1 {
-		pageInfoHeight = 24.0
+		pageInfoHeight = 24.0 * scale
 	}
-	height := cfg.Padding*2 + inputHeight + contentHeight + pageInfoHeight + 4 // 4 for gaps
+	height := cfg.Padding*2 + inputHeight + contentHeight + pageInfoHeight + 4*scale // gaps scaled
 
 	// Create context
 	dc := gg.NewContext(int(width), int(height))
@@ -98,7 +102,7 @@ func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, 
 	r.drawRoundedRect(dc, 1, 1, width-2, height-2, cfg.CornerRadius)
 	dc.Stroke()
 
-	// Load font
+	// Load font - avoid .ttc files as they can cause issues with gg library
 	fontLoaded := false
 	if r.fontPath != "" {
 		if err := dc.LoadFontFace(r.fontPath, cfg.FontSize); err == nil {
@@ -106,12 +110,13 @@ func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, 
 		}
 	}
 	if !fontLoaded {
-		// Try common Windows fonts
+		// Try common Windows fonts (prefer .ttf over .ttc)
 		fonts := []string{
-			"C:/Windows/Fonts/msyh.ttc",    // Microsoft YaHei
 			"C:/Windows/Fonts/simhei.ttf",  // SimHei
-			"C:/Windows/Fonts/simsun.ttc",  // SimSun
+			"C:/Windows/Fonts/simsun.ttf",  // SimSun (ttf version)
+			"C:/Windows/Fonts/msyh.ttf",    // Microsoft YaHei (ttf version)
 			"C:/Windows/Fonts/arial.ttf",   // Arial fallback
+			"C:/Windows/Fonts/segoeui.ttf", // Segoe UI
 		}
 		for _, f := range fonts {
 			if err := dc.LoadFontFace(f, cfg.FontSize); err == nil {
@@ -126,24 +131,24 @@ func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, 
 
 	// Draw input area
 	dc.SetColor(cfg.InputBgColor)
-	r.drawRoundedRect(dc, cfg.Padding, y, width-cfg.Padding*2, inputHeight, 4)
+	r.drawRoundedRect(dc, cfg.Padding, y, width-cfg.Padding*2, inputHeight, 4*scale)
 	dc.Fill()
 
 	dc.SetColor(cfg.InputTextColor)
 	if fontLoaded {
-		dc.DrawString(input, cfg.Padding+8, y+inputHeight/2+cfg.FontSize/3)
+		dc.DrawString(input, cfg.Padding+8*scale, y+inputHeight/2+cfg.FontSize/3)
 	}
-	y += inputHeight + 4
+	y += inputHeight + 4*scale
 
 	// Draw candidates
 	for i, cand := range candidates {
 		itemY := y + float64(i)*cfg.ItemHeight
 
 		// Draw index circle
-		indexX := cfg.Padding + 14
+		indexX := cfg.Padding + 14*scale
 		indexY := itemY + cfg.ItemHeight/2
 		dc.SetColor(cfg.IndexBgColor)
-		dc.DrawCircle(indexX, indexY, 11)
+		dc.DrawCircle(indexX, indexY, 11*scale)
 		dc.Fill()
 
 		// Draw index number
@@ -160,19 +165,19 @@ func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, 
 		if fontLoaded {
 			dc.LoadFontFace(r.fontPath, cfg.FontSize)
 		}
-		dc.DrawString(cand.Text, cfg.Padding+32, itemY+cfg.ItemHeight/2+cfg.FontSize/3)
+		dc.DrawString(cand.Text, cfg.Padding+32*scale, itemY+cfg.ItemHeight/2+cfg.FontSize/3)
 	}
 
 	// Draw page info
 	if totalPages > 1 {
-		pageY := y + float64(len(candidates))*cfg.ItemHeight + 4
+		pageY := y + float64(len(candidates))*cfg.ItemHeight + 4*scale
 		dc.SetColor(cfg.InputTextColor)
 		if fontLoaded {
-			dc.LoadFontFace(r.fontPath, 12)
+			dc.LoadFontFace(r.fontPath, 12*scale)
 		}
 		pageText := fmt.Sprintf("%d / %d  (← →)", page, totalPages)
 		tw, _ := dc.MeasureString(pageText)
-		dc.DrawString(pageText, width/2-tw/2, pageY+16)
+		dc.DrawString(pageText, width/2-tw/2, pageY+16*scale)
 	}
 
 	return dc.Image().(*image.RGBA)
@@ -205,31 +210,35 @@ func (r *Renderer) drawRoundedRectWithShadow(dc *gg.Context, x, y, w, h, radius 
 
 // RenderModeIndicator renders a mode indicator (中/En)
 func (r *Renderer) RenderModeIndicator(mode string) *image.RGBA {
-	width := 50.0
-	height := 36.0
+	scale := GetDPIScale()
+
+	width := 50.0 * scale
+	height := 36.0 * scale
+	fontSize := 20.0 * scale
 
 	dc := gg.NewContext(int(width), int(height))
 
 	// Draw background
 	dc.SetColor(color.RGBA{50, 50, 50, 230})
-	r.drawRoundedRect(dc, 2, 2, width-4, height-4, 6)
+	r.drawRoundedRect(dc, 2*scale, 2*scale, width-4*scale, height-4*scale, 6*scale)
 	dc.Fill()
 
-	// Load font
+	// Load font - avoid .ttc files as they can cause issues with gg library
 	fontLoaded := false
 	if r.fontPath != "" {
-		if err := dc.LoadFontFace(r.fontPath, 20); err == nil {
+		if err := dc.LoadFontFace(r.fontPath, fontSize); err == nil {
 			fontLoaded = true
 		}
 	}
 	if !fontLoaded {
 		fonts := []string{
-			"C:/Windows/Fonts/msyh.ttc",
-			"C:/Windows/Fonts/simhei.ttf",
-			"C:/Windows/Fonts/arial.ttf",
+			"C:/Windows/Fonts/simhei.ttf",  // SimHei
+			"C:/Windows/Fonts/msyh.ttf",    // Microsoft YaHei (ttf version)
+			"C:/Windows/Fonts/arial.ttf",   // Arial fallback
+			"C:/Windows/Fonts/segoeui.ttf", // Segoe UI
 		}
 		for _, f := range fonts {
-			if err := dc.LoadFontFace(f, 20); err == nil {
+			if err := dc.LoadFontFace(f, fontSize); err == nil {
 				r.fontPath = f
 				break
 			}
@@ -239,7 +248,7 @@ func (r *Renderer) RenderModeIndicator(mode string) *image.RGBA {
 	// Draw mode text
 	dc.SetColor(color.RGBA{255, 255, 255, 255})
 	tw, _ := dc.MeasureString(mode)
-	dc.DrawString(mode, width/2-tw/2, height/2+7)
+	dc.DrawString(mode, width/2-tw/2, height/2+7*scale)
 
 	return dc.Image().(*image.RGBA)
 }

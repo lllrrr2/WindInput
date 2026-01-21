@@ -1,6 +1,8 @@
 // Package bridge handles IPC communication with C++ TSF Bridge
 package bridge
 
+import "encoding/json"
+
 // RequestType defines the type of request from C++
 type RequestType string
 
@@ -12,8 +14,8 @@ const (
 
 // Request from C++ TSF Bridge
 type Request struct {
-	Type RequestType `json:"type"`
-	Data KeyEventData `json:"data"`
+	Type RequestType     `json:"type"`
+	Data json.RawMessage `json:"data"`
 }
 
 // KeyEventData contains key event information

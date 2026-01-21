@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -17,6 +18,31 @@ import (
 )
 
 const mutexName = "Global\\WindInputIMEService"
+
+// DPI awareness constants
+const (
+	PROCESS_DPI_UNAWARE           = 0
+	PROCESS_SYSTEM_DPI_AWARE      = 1
+	PROCESS_PER_MONITOR_DPI_AWARE = 2
+)
+
+// setDPIAwareness sets the process DPI awareness to prevent UI blur
+func setDPIAwareness() {
+	// Try Windows 8.1+ API first (shcore.dll)
+	shcore := syscall.NewLazyDLL("shcore.dll")
+	setProcessDpiAwareness := shcore.NewProc("SetProcessDpiAwareness")
+	if setProcessDpiAwareness.Find() == nil {
+		setProcessDpiAwareness.Call(uintptr(PROCESS_PER_MONITOR_DPI_AWARE))
+		return
+	}
+
+	// Fallback to Windows Vista+ API (user32.dll)
+	user32 := syscall.NewLazyDLL("user32.dll")
+	setProcessDPIAware := user32.NewProc("SetProcessDPIAware")
+	if setProcessDPIAware.Find() == nil {
+		setProcessDPIAware.Call()
+	}
+}
 
 func checkSingleton() (windows.Handle, bool) {
 	name, _ := windows.UTF16PtrFromString(mutexName)
@@ -78,6 +104,9 @@ func isPipeAlreadyExists() bool {
 }
 
 func main() {
+	// Set DPI awareness BEFORE any UI operations
+	setDPIAwareness()
+
 	// Parse command line arguments
 	dictPath := flag.String("dict", "dict/pinyin/base.txt", "Dictionary file path")
 	logLevel := flag.String("log", "info", "Log level (debug, info, warn, error)")

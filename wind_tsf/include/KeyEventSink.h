@@ -39,7 +39,13 @@ private:
     // State
     BOOL _isComposing;
 
+    // Modifier key flags (using KEY_ prefix to avoid Windows macro conflicts)
+    static const int KEY_MOD_SHIFT = 0x01;
+    static const int KEY_MOD_CTRL  = 0x02;
+    static const int KEY_MOD_ALT   = 0x04;
+
     // Helper methods
+    int _GetModifierState();
     BOOL _IsKeyWeShouldHandle(WPARAM wParam);
     BOOL _SendKeyToService(WPARAM wParam);
     void _HandleServiceResponse();

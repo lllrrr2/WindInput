@@ -42,6 +42,10 @@ public:
     // Insert text into current context
     BOOL InsertText(const std::wstring& text);
 
+    // Get and send caret position to Go Service
+    BOOL GetCaretPosition(LONG* px, LONG* py, LONG* pHeight);
+    void SendCaretPositionUpdate();
+
 private:
     LONG _refCount;
     ITfThreadMgr* _pThreadMgr;
