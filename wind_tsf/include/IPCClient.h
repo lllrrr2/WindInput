@@ -3,6 +3,33 @@
 #include "Globals.h"
 #include <string>
 #include <functional>
+#include <atomic>
+
+// IPC Configuration
+namespace IPCConfig
+{
+    // Timeout settings (milliseconds)
+    constexpr DWORD CONNECT_TIMEOUT_MS = 100;      // Connection timeout
+    constexpr DWORD WRITE_TIMEOUT_MS = 50;         // Write operation timeout
+    constexpr DWORD READ_TIMEOUT_MS = 100;         // Read operation timeout
+
+    // Circuit breaker settings
+    constexpr int MAX_CONSECUTIVE_FAILURES = 3;    // Failures before circuit opens
+    constexpr DWORD CIRCUIT_RESET_INTERVAL_MS = 3000; // Time before retry after circuit opens
+
+    // Buffer sizes
+    constexpr DWORD PIPE_BUFFER_SIZE = 4096;
+    constexpr DWORD MAX_MESSAGE_SIZE = 1024 * 1024; // 1MB max message
+}
+
+// Log levels for debug output
+enum class IPCLogLevel
+{
+    None = 0,      // No logging
+    Error = 1,     // Only errors
+    Info = 2,      // Errors + important info
+    Debug = 3      // Everything including verbose debug
+};
 
 // Response types from Go Service
 enum class ResponseType
@@ -26,6 +53,14 @@ struct ServiceResponse
     std::wstring error;
 };
 
+// Circuit breaker state
+enum class CircuitState
+{
+    Closed,     // Normal operation
+    Open,       // Failing, skip IPC calls
+    HalfOpen    // Testing if service recovered
+};
+
 // Callback for receiving responses
 using ResponseCallback = std::function<void(const ServiceResponse&)>;
 
@@ -35,11 +70,14 @@ public:
     CIPCClient();
     ~CIPCClient();
 
-    // Connect to named pipe server
+    // Connect to named pipe server (with timeout)
     BOOL Connect();
 
     // Disconnect
     void Disconnect();
+
+    // Check if service is available (considers circuit breaker)
+    BOOL IsServiceAvailable();
 
     // Send key event to Go Service
     BOOL SendKeyEvent(const std::wstring& key, int keyCode, int modifiers = 0);
@@ -59,19 +97,58 @@ public:
     // Receive response from service (call this after sending)
     BOOL ReceiveResponse(ServiceResponse& response);
 
+    // Log level control
+    static void SetLogLevel(IPCLogLevel level) { s_logLevel = level; }
+    static IPCLogLevel GetLogLevel() { return s_logLevel; }
+
+    // Get circuit breaker state (for debugging/UI)
+    CircuitState GetCircuitState() const { return _circuitState; }
+
+    // Force circuit breaker reset (e.g., user manually triggered)
+    void ResetCircuitBreaker();
+
 private:
+    // Pipe handle
     HANDLE _hPipe;
+
+    // Overlapped I/O event
+    HANDLE _hEvent;
+
+    // Service start flag
     BOOL _serviceStartAttempted;
+
+    // Circuit breaker state
+    CircuitState _circuitState;
+    int _consecutiveFailures;
+    DWORD _lastFailureTime;
+
+    // Static log level
+    static IPCLogLevel s_logLevel;
 
     // Start the Go service if not running
     BOOL _StartService();
 
-    // Send message (length-prefixed JSON)
+    // Send message with timeout (length-prefixed JSON)
     BOOL _SendMessage(const std::wstring& message);
 
-    // Receive message (length-prefixed JSON)
+    // Receive message with timeout (length-prefixed JSON)
     BOOL _ReceiveMessage(std::wstring& message);
 
     // Parse response JSON
     BOOL _ParseResponse(const std::wstring& json, ServiceResponse& response);
+
+    // Overlapped I/O helpers
+    BOOL _WriteWithTimeout(const void* data, DWORD size, DWORD timeoutMs);
+    BOOL _ReadWithTimeout(void* buffer, DWORD size, DWORD* bytesRead, DWORD timeoutMs);
+
+    // Circuit breaker helpers
+    void _RecordSuccess();
+    void _RecordFailure();
+    BOOL _ShouldAttemptOperation();
+
+    // Logging helpers
+    static void _Log(IPCLogLevel level, const wchar_t* format, ...);
+    static void _LogError(const wchar_t* format, ...);
+    static void _LogInfo(const wchar_t* format, ...);
+    static void _LogDebug(const wchar_t* format, ...);
 };

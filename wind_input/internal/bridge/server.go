@@ -2,11 +2,13 @@
 package bridge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -14,6 +16,9 @@ import (
 
 const (
 	BridgePipeName = `\\.\pipe\wind_input`
+
+	// Timeout for processing a single request
+	RequestProcessTimeout = 200 * time.Millisecond
 )
 
 // KeyEventResult represents the result of handling a key event
@@ -92,7 +97,7 @@ func (s *Server) Start() error {
 			return fmt.Errorf("failed to create named pipe: %w", err)
 		}
 
-		s.logger.Info("Waiting for C++ Bridge connection...")
+		s.logger.Debug("Waiting for C++ Bridge connection...")
 
 		err = windows.ConnectNamedPipe(handle, nil)
 		if err != nil && err != windows.ERROR_PIPE_CONNECTED {
@@ -122,7 +127,7 @@ func (s *Server) Start() error {
 func (s *Server) handleClient(handle windows.Handle, clientID int) {
 	defer windows.CloseHandle(handle)
 
-	s.logger.Info("Handling client", "clientID", clientID)
+	s.logger.Debug("Handling client", "clientID", clientID)
 
 	for {
 		request, err := s.readMessage(handle, clientID)
@@ -133,7 +138,8 @@ func (s *Server) handleClient(handle windows.Handle, clientID int) {
 			break
 		}
 
-		response := s.processRequest(request, clientID)
+		// Process request with timeout to prevent blocking
+		response := s.processRequestWithTimeout(request, clientID)
 
 		if err := s.writeMessage(handle, response, clientID); err != nil {
 			s.logger.Error("Failed to write response to Bridge", "clientID", clientID, "error", err)
@@ -183,7 +189,8 @@ func (s *Server) readMessage(handle windows.Handle, clientID int) (*Request, err
 		totalRead += bytesRead
 	}
 
-	s.logger.Info("Received from Bridge", "clientID", clientID, "json", string(buffer))
+	// Only log in debug mode to reduce noise
+	s.logger.Debug("Received from Bridge", "clientID", clientID, "json", string(buffer))
 
 	// Parse JSON
 	var request Request
@@ -201,7 +208,8 @@ func (s *Server) writeMessage(handle windows.Handle, response *Response, clientI
 		return fmt.Errorf("failed to serialize response: %w", err)
 	}
 
-	s.logger.Info("Sending to Bridge", "clientID", clientID, "json", string(data))
+	// Only log in debug mode
+	s.logger.Debug("Sending to Bridge", "clientID", clientID, "json", string(data))
 
 	// Write length prefix
 	length := uint32(len(data))
@@ -231,8 +239,30 @@ func (s *Server) writeMessage(handle windows.Handle, response *Response, clientI
 	return nil
 }
 
+// processRequestWithTimeout wraps processRequest with a timeout
+func (s *Server) processRequestWithTimeout(request *Request, clientID int) *Response {
+	ctx, cancel := context.WithTimeout(context.Background(), RequestProcessTimeout)
+	defer cancel()
+
+	// Channel to receive the response
+	resultCh := make(chan *Response, 1)
+
+	go func() {
+		resultCh <- s.processRequest(request, clientID)
+	}()
+
+	select {
+	case response := <-resultCh:
+		return response
+	case <-ctx.Done():
+		s.logger.Error("Request processing timed out", "clientID", clientID, "type", request.Type)
+		return &Response{Type: ResponseTypeAck, Error: "processing timeout"}
+	}
+}
+
 func (s *Server) processRequest(request *Request, clientID int) *Response {
-	s.logger.Info("Processing Bridge request", "clientID", clientID, "type", request.Type)
+	// Use Debug level for frequent requests
+	s.logger.Debug("Processing Bridge request", "clientID", clientID, "type", request.Type)
 
 	switch request.Type {
 	case RequestTypeKeyEvent:
@@ -251,7 +281,7 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 		// Build response based on result
 		switch result.Type {
 		case ResponseTypeInsertText:
-			s.logger.Info("Returning InsertText response", "clientID", clientID, "text", result.Text)
+			s.logger.Debug("Returning InsertText response", "clientID", clientID, "text", result.Text)
 			return &Response{
 				Type: ResponseTypeInsertText,
 				Data: InsertTextData{Text: result.Text},
@@ -264,7 +294,7 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 		case ResponseTypeClearComposition:
 			return &Response{Type: ResponseTypeClearComposition}
 		case ResponseTypeModeChanged:
-			s.logger.Info("Returning ModeChanged response", "clientID", clientID, "chineseMode", result.ChineseMode)
+			s.logger.Debug("Returning ModeChanged response", "clientID", clientID, "chineseMode", result.ChineseMode)
 			return &Response{
 				Type: ResponseTypeModeChanged,
 				Data: ModeChangedData{ChineseMode: result.ChineseMode},
@@ -285,7 +315,7 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 			return &Response{Type: ResponseTypeAck, Error: "invalid caret data"}
 		}
 
-		s.logger.Info("Received caret update", "clientID", clientID, "x", caretData.X, "y", caretData.Y, "height", caretData.Height)
+		s.logger.Debug("Received caret update", "clientID", clientID, "x", caretData.X, "y", caretData.Y, "height", caretData.Height)
 
 		// Call handler to update caret position
 		if err := s.handler.HandleCaretUpdate(caretData); err != nil {
@@ -296,7 +326,7 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 	case RequestTypeToggleMode:
 		// Toggle input mode and return new state
 		chineseMode := s.handler.HandleToggleMode()
-		s.logger.Info("Mode toggled", "clientID", clientID, "chineseMode", chineseMode)
+		s.logger.Debug("Mode toggled", "clientID", clientID, "chineseMode", chineseMode)
 		return &Response{
 			Type: ResponseTypeModeChanged,
 			Data: ModeChangedData{ChineseMode: chineseMode},

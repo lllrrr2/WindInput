@@ -79,7 +79,8 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.logger.Info("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode)
+	// Use Debug for high-frequency key events to reduce log noise
+	c.logger.Debug("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode)
 
 	// Check for Ctrl or Alt modifiers - these should be passed to the system
 	// Note: C++ side already filters most of these, but we double-check here
@@ -154,7 +155,7 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 
 func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	c.inputBuffer += key
-	c.logger.Info("Input buffer updated", "buffer", c.inputBuffer)
+	c.logger.Debug("Input buffer updated", "buffer", c.inputBuffer)
 
 	c.updateCandidates()
 	c.showUI()
@@ -164,7 +165,7 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 func (c *Coordinator) handleBackspace() *bridge.KeyEventResult {
 	if len(c.inputBuffer) > 0 {
 		c.inputBuffer = c.inputBuffer[:len(c.inputBuffer)-1]
-		c.logger.Info("Input buffer after backspace", "buffer", c.inputBuffer)
+		c.logger.Debug("Input buffer after backspace", "buffer", c.inputBuffer)
 
 		if len(c.inputBuffer) == 0 {
 			c.clearState()
@@ -234,7 +235,7 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 	}
 
 	candidate := c.candidates[index]
-	c.logger.Info("Candidate selected", "index", index, "text", candidate.Text)
+	c.logger.Debug("Candidate selected", "index", index, "text", candidate.Text)
 
 	text := candidate.Text
 	c.clearState()
@@ -269,7 +270,7 @@ func (c *Coordinator) updateCandidates() {
 		}
 	}
 
-	c.logger.Info("Got candidates", "count", len(c.candidates))
+	c.logger.Debug("Got candidates", "count", len(c.candidates))
 
 	// Calculate pagination
 	c.totalPages = (len(c.candidates) + c.candidatesPerPage - 1) / c.candidatesPerPage

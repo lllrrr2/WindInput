@@ -77,10 +77,10 @@ func (m *Manager) Start() error {
 
 // processCommands processes UI commands from the channel
 func (m *Manager) processCommands() {
-	m.logger.Info("UI command processor started")
+	m.logger.Debug("UI command processor started")
 
 	for cmd := range m.cmdCh {
-		m.logger.Info("Processing UI command", "type", cmd.Type)
+		m.logger.Debug("Processing UI command", "type", cmd.Type)
 
 		// Recover from any panics to keep the goroutine alive
 		func() {
@@ -153,7 +153,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, x, y, pag
 
 // doShowCandidates actually shows candidates (called from UI thread)
 func (m *Manager) doShowCandidates(candidates []Candidate, input string, x, y, page, totalPages int) {
-	m.logger.Info("doShowCandidates start", "input", input, "count", len(candidates), "x", x, "y", y)
+	m.logger.Debug("doShowCandidates start", "input", input, "count", len(candidates), "x", x, "y", y)
 
 	// Render
 	m.logger.Debug("Rendering candidates...")
@@ -171,7 +171,7 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, x, y, p
 	// Show window
 	m.logger.Debug("Showing window...")
 	m.window.Show()
-	m.logger.Info("doShowCandidates complete")
+	m.logger.Debug("doShowCandidates complete")
 }
 
 // Hide hides the candidate window (async, non-blocking)
@@ -188,7 +188,7 @@ func (m *Manager) Hide() {
 
 // doHide actually hides the window (called from UI thread)
 func (m *Manager) doHide() {
-	m.logger.Info("Hide called")
+	m.logger.Debug("Hide called")
 	m.window.Hide()
 }
 
@@ -238,7 +238,7 @@ func (m *Manager) ShowModeIndicator(mode string, x, y int) {
 
 // doShowModeIndicator actually shows the mode indicator (called from UI thread)
 func (m *Manager) doShowModeIndicator(mode string, x, y int) {
-	m.logger.Info("ShowModeIndicator", "mode", mode)
+	m.logger.Debug("ShowModeIndicator", "mode", mode)
 
 	// Render mode indicator
 	img := m.renderer.RenderModeIndicator(mode)

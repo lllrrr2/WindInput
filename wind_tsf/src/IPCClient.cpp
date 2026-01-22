@@ -1,31 +1,293 @@
 #include "IPCClient.h"
 #include <sstream>
 #include <vector>
+#include <cstdarg>
 
 #pragma comment(lib, "advapi32.lib")
 
+// Static member initialization
+// Default to Info level; can be changed via SetLogLevel()
+IPCLogLevel CIPCClient::s_logLevel = IPCLogLevel::Info;
+
 CIPCClient::CIPCClient()
     : _hPipe(INVALID_HANDLE_VALUE)
+    , _hEvent(NULL)
     , _serviceStartAttempted(FALSE)
+    , _circuitState(CircuitState::Closed)
+    , _consecutiveFailures(0)
+    , _lastFailureTime(0)
 {
+    // Create event for overlapped I/O
+    _hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (_hEvent == NULL)
+    {
+        _LogError(L"Failed to create overlapped event: %d", GetLastError());
+    }
 }
 
 CIPCClient::~CIPCClient()
 {
     Disconnect();
+    if (_hEvent != NULL)
+    {
+        CloseHandle(_hEvent);
+        _hEvent = NULL;
+    }
 }
+
+// ============================================================================
+// Logging helpers
+// ============================================================================
+
+void CIPCClient::_Log(IPCLogLevel level, const wchar_t* format, ...)
+{
+    if (static_cast<int>(level) > static_cast<int>(s_logLevel))
+        return;
+
+    wchar_t buffer[1024];
+    va_list args;
+    va_start(args, format);
+    _vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, args);
+    va_end(args);
+
+    OutputDebugStringW(buffer);
+}
+
+void CIPCClient::_LogError(const wchar_t* format, ...)
+{
+    if (s_logLevel < IPCLogLevel::Error)
+        return;
+
+    wchar_t msgBuffer[1024];
+    va_list args;
+    va_start(args, format);
+    _vsnwprintf_s(msgBuffer, _countof(msgBuffer), _TRUNCATE, format, args);
+    va_end(args);
+
+    wchar_t buffer[1100];
+    _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"[WindInput][ERROR] %s\n", msgBuffer);
+    OutputDebugStringW(buffer);
+}
+
+void CIPCClient::_LogInfo(const wchar_t* format, ...)
+{
+    if (s_logLevel < IPCLogLevel::Info)
+        return;
+
+    wchar_t msgBuffer[1024];
+    va_list args;
+    va_start(args, format);
+    _vsnwprintf_s(msgBuffer, _countof(msgBuffer), _TRUNCATE, format, args);
+    va_end(args);
+
+    wchar_t buffer[1100];
+    _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"[WindInput] %s\n", msgBuffer);
+    OutputDebugStringW(buffer);
+}
+
+void CIPCClient::_LogDebug(const wchar_t* format, ...)
+{
+    if (s_logLevel < IPCLogLevel::Debug)
+        return;
+
+    wchar_t msgBuffer[1024];
+    va_list args;
+    va_start(args, format);
+    _vsnwprintf_s(msgBuffer, _countof(msgBuffer), _TRUNCATE, format, args);
+    va_end(args);
+
+    wchar_t buffer[1100];
+    _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"[WindInput][DBG] %s\n", msgBuffer);
+    OutputDebugStringW(buffer);
+}
+
+// ============================================================================
+// Circuit Breaker
+// ============================================================================
+
+void CIPCClient::_RecordSuccess()
+{
+    _consecutiveFailures = 0;
+    if (_circuitState != CircuitState::Closed)
+    {
+        _LogInfo(L"Circuit breaker closed (service recovered)");
+        _circuitState = CircuitState::Closed;
+    }
+}
+
+void CIPCClient::_RecordFailure()
+{
+    _consecutiveFailures++;
+    _lastFailureTime = GetTickCount();
+
+    if (_consecutiveFailures >= IPCConfig::MAX_CONSECUTIVE_FAILURES)
+    {
+        if (_circuitState != CircuitState::Open)
+        {
+            _LogError(L"Circuit breaker OPEN after %d consecutive failures", _consecutiveFailures);
+            _circuitState = CircuitState::Open;
+        }
+    }
+}
+
+BOOL CIPCClient::_ShouldAttemptOperation()
+{
+    if (_circuitState == CircuitState::Closed)
+    {
+        return TRUE;
+    }
+
+    if (_circuitState == CircuitState::Open)
+    {
+        // Check if enough time has passed to try again
+        DWORD elapsed = GetTickCount() - _lastFailureTime;
+        if (elapsed >= IPCConfig::CIRCUIT_RESET_INTERVAL_MS)
+        {
+            _LogInfo(L"Circuit breaker half-open, attempting reconnection...");
+            _circuitState = CircuitState::HalfOpen;
+            return TRUE;
+        }
+        return FALSE;
+    }
+
+    // HalfOpen state - allow one attempt
+    return TRUE;
+}
+
+void CIPCClient::ResetCircuitBreaker()
+{
+    _consecutiveFailures = 0;
+    _circuitState = CircuitState::Closed;
+    _LogInfo(L"Circuit breaker manually reset");
+}
+
+BOOL CIPCClient::IsServiceAvailable()
+{
+    return _ShouldAttemptOperation() && (IsConnected() || Connect());
+}
+
+// ============================================================================
+// Overlapped I/O helpers
+// ============================================================================
+
+BOOL CIPCClient::_WriteWithTimeout(const void* data, DWORD size, DWORD timeoutMs)
+{
+    if (_hPipe == INVALID_HANDLE_VALUE || _hEvent == NULL)
+        return FALSE;
+
+    OVERLAPPED overlapped = {};
+    overlapped.hEvent = _hEvent;
+    ResetEvent(_hEvent);
+
+    DWORD bytesWritten = 0;
+    BOOL result = WriteFile(_hPipe, data, size, &bytesWritten, &overlapped);
+
+    if (result)
+    {
+        // Completed synchronously
+        return bytesWritten == size;
+    }
+
+    DWORD error = GetLastError();
+    if (error != ERROR_IO_PENDING)
+    {
+        _LogError(L"WriteFile failed immediately: %d", error);
+        return FALSE;
+    }
+
+    // Wait for completion with timeout
+    DWORD waitResult = WaitForSingleObject(_hEvent, timeoutMs);
+
+    if (waitResult == WAIT_TIMEOUT)
+    {
+        _LogError(L"Write operation timed out after %dms", timeoutMs);
+        CancelIo(_hPipe);
+        return FALSE;
+    }
+
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        _LogError(L"WaitForSingleObject failed: %d", GetLastError());
+        CancelIo(_hPipe);
+        return FALSE;
+    }
+
+    // Get the result
+    if (!GetOverlappedResult(_hPipe, &overlapped, &bytesWritten, FALSE))
+    {
+        _LogError(L"GetOverlappedResult failed: %d", GetLastError());
+        return FALSE;
+    }
+
+    return bytesWritten == size;
+}
+
+BOOL CIPCClient::_ReadWithTimeout(void* buffer, DWORD size, DWORD* bytesRead, DWORD timeoutMs)
+{
+    if (_hPipe == INVALID_HANDLE_VALUE || _hEvent == NULL)
+        return FALSE;
+
+    OVERLAPPED overlapped = {};
+    overlapped.hEvent = _hEvent;
+    ResetEvent(_hEvent);
+
+    *bytesRead = 0;
+    BOOL result = ReadFile(_hPipe, buffer, size, bytesRead, &overlapped);
+
+    if (result)
+    {
+        // Completed synchronously
+        return TRUE;
+    }
+
+    DWORD error = GetLastError();
+    if (error != ERROR_IO_PENDING)
+    {
+        _LogDebug(L"ReadFile failed immediately: %d", error);
+        return FALSE;
+    }
+
+    // Wait for completion with timeout
+    DWORD waitResult = WaitForSingleObject(_hEvent, timeoutMs);
+
+    if (waitResult == WAIT_TIMEOUT)
+    {
+        _LogError(L"Read operation timed out after %dms", timeoutMs);
+        CancelIo(_hPipe);
+        return FALSE;
+    }
+
+    if (waitResult != WAIT_OBJECT_0)
+    {
+        _LogError(L"WaitForSingleObject failed: %d", GetLastError());
+        CancelIo(_hPipe);
+        return FALSE;
+    }
+
+    // Get the result
+    if (!GetOverlappedResult(_hPipe, &overlapped, bytesRead, FALSE))
+    {
+        _LogError(L"GetOverlappedResult failed: %d", GetLastError());
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+// ============================================================================
+// Service management
+// ============================================================================
 
 BOOL CIPCClient::_StartService()
 {
-    OutputDebugStringW(L"[WindInput] Attempting to start service...\n");
+    _LogInfo(L"Attempting to start Go service...");
 
     // Get service executable path (same directory as DLL)
     WCHAR dllPath[MAX_PATH];
 
-    // Use global hInstance from DllMain
     if (GetModuleFileNameW(g_hInstance, dllPath, MAX_PATH) == 0)
     {
-        OutputDebugStringW(L"[WindInput] Failed to get module path\n");
+        _LogError(L"Failed to get module path");
         return FALSE;
     }
 
@@ -36,16 +298,12 @@ BOOL CIPCClient::_StartService()
         wcscpy_s(lastSlash + 1, MAX_PATH - (lastSlash - dllPath + 1), L"wind_input.exe");
     }
 
-    WCHAR debug[512];
-    wsprintfW(debug, L"[WindInput] Starting service: %s\n", dllPath);
-    OutputDebugStringW(debug);
+    _LogDebug(L"Starting service: %s", dllPath);
 
     // Start the service process
-    // Note: During development, show console window for debugging
-    // Change to CREATE_NO_WINDOW and SW_HIDE for release
     STARTUPINFOW si = { sizeof(STARTUPINFOW) };
     si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_SHOW;  // Show console window for debugging
+    si.wShowWindow = SW_SHOW;  // Show console for debugging; change to SW_HIDE for release
 
     PROCESS_INFORMATION pi = {};
 
@@ -55,15 +313,13 @@ BOOL CIPCClient::_StartService()
         nullptr,
         nullptr,
         FALSE,
-        CREATE_NEW_CONSOLE,  // Create new console window for debugging
+        CREATE_NEW_CONSOLE,
         nullptr,
         nullptr,
         &si,
         &pi))
     {
-        DWORD error = GetLastError();
-        wsprintfW(debug, L"[WindInput] Failed to start service: error=%d\n", error);
-        OutputDebugStringW(debug);
+        _LogError(L"Failed to start service: error=%d", GetLastError());
         return FALSE;
     }
 
@@ -71,101 +327,127 @@ BOOL CIPCClient::_StartService()
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    OutputDebugStringW(L"[WindInput] Service started successfully\n");
+    _LogInfo(L"Service started successfully");
     return TRUE;
 }
+
+// ============================================================================
+// Connection management
+// ============================================================================
 
 BOOL CIPCClient::Connect()
 {
     if (_hPipe != INVALID_HANDLE_VALUE)
     {
-        OutputDebugStringW(L"[WindInput] Already connected to pipe\n");
+        _LogDebug(L"Already connected to pipe");
         return TRUE;
     }
 
-    OutputDebugStringW(L"[WindInput] Connecting to Go Service...\n");
+    if (!_ShouldAttemptOperation())
+    {
+        _LogDebug(L"Circuit breaker open, skipping connection attempt");
+        return FALSE;
+    }
 
-    // Try to connect multiple times, starting service if needed
+    _LogDebug(L"Connecting to Go Service...");
+
+    // Try to connect with retries
     for (int attempt = 0; attempt < 3; attempt++)
     {
+        // First check if pipe exists and wait if busy
+        if (!WaitNamedPipeW(PIPE_NAME, IPCConfig::CONNECT_TIMEOUT_MS))
+        {
+            DWORD error = GetLastError();
+            if (error == ERROR_FILE_NOT_FOUND)
+            {
+                // Pipe doesn't exist, try to start service
+                if (!_serviceStartAttempted)
+                {
+                    _serviceStartAttempted = TRUE;
+                    if (_StartService())
+                    {
+                        Sleep(500);  // Wait for service to initialize
+                        continue;
+                    }
+                }
+                _LogDebug(L"Pipe not found, service not available");
+                break;
+            }
+            else if (error == ERROR_SEM_TIMEOUT)
+            {
+                _LogDebug(L"WaitNamedPipe timed out, attempt %d", attempt + 1);
+                continue;
+            }
+            // Other error, proceed to try CreateFile anyway
+        }
+
+        // Open the pipe with FILE_FLAG_OVERLAPPED for async I/O
         _hPipe = CreateFileW(
             PIPE_NAME,
             GENERIC_READ | GENERIC_WRITE,
             0,
             nullptr,
             OPEN_EXISTING,
-            0,
+            FILE_FLAG_OVERLAPPED,  // Enable overlapped I/O
             nullptr);
 
         if (_hPipe != INVALID_HANDLE_VALUE)
         {
-            break;  // Connected successfully
+            // Set pipe mode
+            DWORD mode = PIPE_READMODE_BYTE;
+            SetNamedPipeHandleState(_hPipe, &mode, nullptr, nullptr);
+
+            _LogInfo(L"Connected to Go Service");
+            _RecordSuccess();
+            return TRUE;
         }
 
         DWORD error = GetLastError();
-        WCHAR debug[256];
-        wsprintfW(debug, L"[WindInput] Connection attempt %d failed: error=%d\n", attempt + 1, error);
-        OutputDebugStringW(debug);
+        _LogDebug(L"Connection attempt %d failed: error=%d", attempt + 1, error);
 
-        // If pipe doesn't exist, try to start the service
-        if (error == ERROR_FILE_NOT_FOUND && !_serviceStartAttempted)
+        if (error == ERROR_PIPE_BUSY)
         {
-            _serviceStartAttempted = TRUE;
-            if (_StartService())
-            {
-                // Wait a bit for service to initialize
-                Sleep(500);
-                continue;
-            }
+            // Pipe busy, wait and retry
+            Sleep(50);
+            continue;
         }
-        else if (error == ERROR_PIPE_BUSY)
-        {
-            // Pipe is busy, wait and retry
-            if (!WaitNamedPipeW(PIPE_NAME, 1000))
-            {
-                continue;
-            }
-        }
-        else
-        {
-            // Other error, don't retry
-            break;
-        }
+
+        // Other errors
+        break;
     }
 
-    if (_hPipe == INVALID_HANDLE_VALUE)
-    {
-        OutputDebugStringW(L"[WindInput] Failed to connect to Go Service after retries\n");
-        return FALSE;
-    }
-
-    // Set pipe mode to byte
-    DWORD mode = PIPE_READMODE_BYTE;
-    if (!SetNamedPipeHandleState(_hPipe, &mode, nullptr, nullptr))
-    {
-        OutputDebugStringW(L"[WindInput] Failed to set pipe mode\n");
-    }
-
-    OutputDebugStringW(L"[WindInput] Connected to Go Service successfully\n");
-    return TRUE;
+    _LogError(L"Failed to connect to Go Service");
+    _RecordFailure();
+    return FALSE;
 }
 
 void CIPCClient::Disconnect()
 {
     if (_hPipe != INVALID_HANDLE_VALUE)
     {
+        // Cancel any pending I/O before closing
+        CancelIo(_hPipe);
         CloseHandle(_hPipe);
         _hPipe = INVALID_HANDLE_VALUE;
-        OutputDebugStringW(L"[WindInput] Disconnected from Go Service\n");
+        _LogDebug(L"Disconnected from Go Service");
     }
 }
 
+// ============================================================================
+// Message sending
+// ============================================================================
+
 BOOL CIPCClient::SendKeyEvent(const std::wstring& key, int keyCode, int modifiers)
 {
-    if (!IsConnected())
+    if (!_ShouldAttemptOperation())
     {
-        if (!Connect())
-            return FALSE;
+        _LogDebug(L"Circuit open, skipping key event");
+        return FALSE;
+    }
+
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
     }
 
     // Build JSON message
@@ -179,24 +461,23 @@ BOOL CIPCClient::SendKeyEvent(const std::wstring& key, int keyCode, int modifier
     oss << L"\"event\":\"down\"";
     oss << L"}}";
 
-    std::wstring json = oss.str();
+    _LogDebug(L"Sending key event: key=%s, keycode=%d", key.c_str(), keyCode);
 
-    WCHAR debug[512];
-    wsprintfW(debug, L"[WindInput] Sending key event: key=%s, keycode=%d\n", key.c_str(), keyCode);
-    OutputDebugStringW(debug);
-
-    return _SendMessage(json);
+    return _SendMessage(oss.str());
 }
 
 BOOL CIPCClient::SendCaretUpdate(int x, int y, int height)
 {
-    if (!IsConnected())
+    if (!_ShouldAttemptOperation())
     {
-        if (!Connect())
-            return FALSE;
+        return FALSE;
     }
 
-    // Build JSON message
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
     std::wostringstream oss;
     oss << L"{";
     oss << L"\"type\":\"caret_update\",";
@@ -216,7 +497,7 @@ BOOL CIPCClient::SendFocusLost()
         return FALSE;
     }
 
-    OutputDebugStringW(L"[WindInput] Sending focus_lost\n");
+    _LogDebug(L"Sending focus_lost");
 
     std::wstring json = L"{\"type\":\"focus_lost\",\"data\":{}}";
     return _SendMessage(json);
@@ -224,17 +505,63 @@ BOOL CIPCClient::SendFocusLost()
 
 BOOL CIPCClient::SendToggleMode()
 {
-    if (!IsConnected())
+    if (!_ShouldAttemptOperation())
     {
-        if (!Connect())
-            return FALSE;
+        return FALSE;
     }
 
-    OutputDebugStringW(L"[WindInput] Sending toggle_mode\n");
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
+    _LogDebug(L"Sending toggle_mode");
 
     std::wstring json = L"{\"type\":\"toggle_mode\",\"data\":{}}";
     return _SendMessage(json);
 }
+
+BOOL CIPCClient::_SendMessage(const std::wstring& message)
+{
+    // Convert to UTF-8
+    int utf8Size = WideCharToMultiByte(CP_UTF8, 0, message.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (utf8Size <= 0)
+    {
+        _LogError(L"Failed to calculate UTF-8 size");
+        return FALSE;
+    }
+
+    std::vector<char> utf8Buffer(utf8Size);
+    WideCharToMultiByte(CP_UTF8, 0, message.c_str(), -1, utf8Buffer.data(), utf8Size, nullptr, nullptr);
+
+    // Message length (excluding null terminator)
+    DWORD messageLength = static_cast<DWORD>(utf8Size - 1);
+
+    // Write length prefix with timeout
+    if (!_WriteWithTimeout(&messageLength, sizeof(DWORD), IPCConfig::WRITE_TIMEOUT_MS))
+    {
+        _LogError(L"Failed to write message length");
+        _RecordFailure();
+        Disconnect();
+        return FALSE;
+    }
+
+    // Write message content with timeout
+    if (!_WriteWithTimeout(utf8Buffer.data(), messageLength, IPCConfig::WRITE_TIMEOUT_MS))
+    {
+        _LogError(L"Failed to write message content");
+        _RecordFailure();
+        Disconnect();
+        return FALSE;
+    }
+
+    _RecordSuccess();
+    return TRUE;
+}
+
+// ============================================================================
+// Message receiving
+// ============================================================================
 
 BOOL CIPCClient::ReceiveResponse(ServiceResponse& response)
 {
@@ -247,78 +574,69 @@ BOOL CIPCClient::ReceiveResponse(ServiceResponse& response)
     return _ParseResponse(json, response);
 }
 
-BOOL CIPCClient::_SendMessage(const std::wstring& message)
-{
-    // Convert to UTF-8
-    int utf8Size = WideCharToMultiByte(CP_UTF8, 0, message.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (utf8Size <= 0)
-    {
-        OutputDebugStringW(L"[WindInput] Failed to calculate UTF-8 size\n");
-        return FALSE;
-    }
-
-    std::vector<char> utf8Buffer(utf8Size);
-    WideCharToMultiByte(CP_UTF8, 0, message.c_str(), -1, utf8Buffer.data(), utf8Size, nullptr, nullptr);
-
-    // Message length (excluding null terminator)
-    DWORD messageLength = static_cast<DWORD>(utf8Size - 1);
-
-    // Write length prefix (4 bytes, little-endian)
-    DWORD bytesWritten;
-    if (!WriteFile(_hPipe, &messageLength, sizeof(DWORD), &bytesWritten, nullptr))
-    {
-        OutputDebugStringW(L"[WindInput] Failed to write message length\n");
-        Disconnect();
-        return FALSE;
-    }
-
-    // Write message content
-    if (!WriteFile(_hPipe, utf8Buffer.data(), messageLength, &bytesWritten, nullptr))
-    {
-        OutputDebugStringW(L"[WindInput] Failed to write message content\n");
-        Disconnect();
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
 BOOL CIPCClient::_ReceiveMessage(std::wstring& message)
 {
-    // Read length prefix (4 bytes)
+    // Read length prefix with timeout
     DWORD messageLength;
     DWORD bytesRead;
 
-    if (!ReadFile(_hPipe, &messageLength, sizeof(DWORD), &bytesRead, nullptr) || bytesRead != sizeof(DWORD))
+    if (!_ReadWithTimeout(&messageLength, sizeof(DWORD), &bytesRead, IPCConfig::READ_TIMEOUT_MS))
     {
-        OutputDebugStringW(L"[WindInput] Failed to read message length\n");
+        _LogError(L"Failed to read message length");
+        _RecordFailure();
         Disconnect();
         return FALSE;
     }
 
-    if (messageLength == 0 || messageLength > 1024 * 1024)
+    if (bytesRead != sizeof(DWORD))
     {
-        WCHAR debug[128];
-        wsprintfW(debug, L"[WindInput] Invalid message length: %d\n", messageLength);
-        OutputDebugStringW(debug);
+        _LogError(L"Incomplete length read: got %d bytes", bytesRead);
+        _RecordFailure();
+        Disconnect();
         return FALSE;
     }
 
-    // Read message content
+    if (messageLength == 0 || messageLength > IPCConfig::MAX_MESSAGE_SIZE)
+    {
+        _LogError(L"Invalid message length: %d", messageLength);
+        _RecordFailure();
+        return FALSE;
+    }
+
+    // Read message content with timeout
     std::vector<char> utf8Buffer(messageLength + 1);
-    if (!ReadFile(_hPipe, utf8Buffer.data(), messageLength, &bytesRead, nullptr) || bytesRead != messageLength)
+    DWORD totalRead = 0;
+
+    // May need multiple reads for large messages
+    while (totalRead < messageLength)
     {
-        OutputDebugStringW(L"[WindInput] Failed to read message content\n");
-        Disconnect();
-        return FALSE;
+        DWORD chunkRead;
+        if (!_ReadWithTimeout(utf8Buffer.data() + totalRead, messageLength - totalRead, &chunkRead, IPCConfig::READ_TIMEOUT_MS))
+        {
+            _LogError(L"Failed to read message content");
+            _RecordFailure();
+            Disconnect();
+            return FALSE;
+        }
+
+        if (chunkRead == 0)
+        {
+            _LogError(L"Incomplete content read: expected %d, got %d", messageLength, totalRead);
+            _RecordFailure();
+            Disconnect();
+            return FALSE;
+        }
+
+        totalRead += chunkRead;
     }
+
     utf8Buffer[messageLength] = '\0';
 
     // Convert from UTF-8
     int wideSize = MultiByteToWideChar(CP_UTF8, 0, utf8Buffer.data(), -1, nullptr, 0);
     if (wideSize <= 0)
     {
-        OutputDebugStringW(L"[WindInput] Failed to calculate wide string size\n");
+        _LogError(L"Failed to calculate wide string size");
         return FALSE;
     }
 
@@ -327,11 +645,9 @@ BOOL CIPCClient::_ReceiveMessage(std::wstring& message)
 
     message = wideBuffer.data();
 
-    // Log raw JSON response
-    WCHAR debug[1024];
-    wsprintfW(debug, L"[WindInput] Received raw JSON (len=%d): %.500s\n", (int)message.length(), message.c_str());
-    OutputDebugStringW(debug);
+    _LogDebug(L"Received JSON (len=%d): %.200s", (int)message.length(), message.c_str());
 
+    _RecordSuccess();
     return TRUE;
 }
 
@@ -344,18 +660,15 @@ BOOL CIPCClient::_ParseResponse(const std::wstring& json, ServiceResponse& respo
     response.chineseMode = FALSE;
     response.error.clear();
 
-    OutputDebugStringW(L"[WindInput] Parsing response JSON...\n");
-
     // Parse type field
     if (json.find(L"\"type\":\"ack\"") != std::wstring::npos)
     {
         response.type = ResponseType::Ack;
-        OutputDebugStringW(L"[WindInput] Response type: Ack\n");
     }
     else if (json.find(L"\"type\":\"insert_text\"") != std::wstring::npos)
     {
         response.type = ResponseType::InsertText;
-        OutputDebugStringW(L"[WindInput] Response type: InsertText\n");
+        _LogDebug(L"Response type: InsertText");
 
         // Extract text from data.text
         size_t textPos = json.find(L"\"text\":\"");
@@ -369,9 +682,7 @@ BOOL CIPCClient::_ParseResponse(const std::wstring& json, ServiceResponse& respo
             }
         }
 
-        WCHAR debug[256];
-        wsprintfW(debug, L"[WindInput] InsertText: text=%s (len=%d)\n", response.text.c_str(), (int)response.text.length());
-        OutputDebugStringW(debug);
+        _LogDebug(L"InsertText: text=%s", response.text.c_str());
     }
     else if (json.find(L"\"type\":\"update_composition\"") != std::wstring::npos)
     {
@@ -413,22 +724,12 @@ BOOL CIPCClient::_ParseResponse(const std::wstring& json, ServiceResponse& respo
     else if (json.find(L"\"type\":\"mode_changed\"") != std::wstring::npos)
     {
         response.type = ResponseType::ModeChanged;
-        OutputDebugStringW(L"[WindInput] Response type: ModeChanged\n");
+        _LogDebug(L"Response type: ModeChanged");
 
         // Extract chinese_mode from data
-        if (json.find(L"\"chinese_mode\":true") != std::wstring::npos)
-        {
-            response.chineseMode = TRUE;
-        }
-        else
-        {
-            response.chineseMode = FALSE;
-        }
+        response.chineseMode = (json.find(L"\"chinese_mode\":true") != std::wstring::npos) ? TRUE : FALSE;
 
-        WCHAR debug[128];
-        wsprintfW(debug, L"[WindInput] ModeChanged: chineseMode=%s\n",
-                  response.chineseMode ? L"true" : L"false");
-        OutputDebugStringW(debug);
+        _LogDebug(L"ModeChanged: chineseMode=%s", response.chineseMode ? L"true" : L"false");
     }
 
     // Check for error field
