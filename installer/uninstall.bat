@@ -94,4 +94,4 @@ echo.
 echo If the input method still appears in the list,
 echo please log out or restart your computer.
 echo.
-pause
+

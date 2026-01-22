@@ -60,4 +60,4 @@ echo - build\wind_input.exe (IME Service with Native UI)
 echo.
 echo Next step: Run installer\install.bat as Administrator
 echo.
-pause
+

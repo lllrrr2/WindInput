@@ -8,6 +8,7 @@ CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     , _pTextService(pTextService)
     , _dwKeySinkCookie(TF_INVALID_COOKIE)
     , _isComposing(FALSE)
+    , _shiftPending(FALSE)
 {
     _pTextService->AddRef();
 }
@@ -71,6 +72,33 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
 {
     *pfEaten = FALSE;
 
+    // Special handling for Shift key (mode toggle on release)
+    if (wParam == VK_SHIFT)
+    {
+        // Check if this is a key repeat (bit 30 of lParam)
+        if (lParam & 0x40000000)
+        {
+            // Key repeat, ignore
+            *pfEaten = TRUE;
+            return S_OK;
+        }
+
+        // Check if other modifiers are pressed (Ctrl+Shift, Alt+Shift are system shortcuts)
+        if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) || (GetAsyncKeyState(VK_MENU) & 0x8000))
+        {
+            _shiftPending = FALSE;
+            return S_OK;  // Let system handle it
+        }
+
+        // Mark shift as pending (will toggle mode on release if no other key pressed)
+        _shiftPending = TRUE;
+        *pfEaten = TRUE;
+        return S_OK;
+    }
+
+    // Any other key cancels shift pending
+    _shiftPending = FALSE;
+
     if (!_IsKeyWeShouldHandle(wParam))
     {
         return S_OK;
@@ -101,13 +129,26 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
 
 STDAPI CKeyEventSink::OnTestKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam, BOOL* pfEaten)
 {
-    *pfEaten = FALSE;
+    // We need to handle Shift key up for mode toggle
+    *pfEaten = (wParam == VK_SHIFT && _shiftPending) ? TRUE : FALSE;
     return S_OK;
 }
 
 STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam, BOOL* pfEaten)
 {
     *pfEaten = FALSE;
+
+    // Handle Shift key release for mode toggle
+    if (wParam == VK_SHIFT && _shiftPending)
+    {
+        _shiftPending = FALSE;
+
+        // Toggle mode
+        _pTextService->ToggleInputMode();
+
+        *pfEaten = TRUE;
+    }
+
     return S_OK;
 }
 

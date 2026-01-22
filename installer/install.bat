@@ -128,4 +128,3 @@ echo.
 echo Note: If old files could not be deleted, restart your
 echo computer and run this installer again to clean them up.
 echo.
-pause

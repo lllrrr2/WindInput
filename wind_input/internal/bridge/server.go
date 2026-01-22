@@ -275,9 +275,12 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 
 		// If caret data is included, update caret position first
 		if keyData.Caret != nil {
+			s.logger.Debug("Received caret with key event", "x", keyData.Caret.X, "y", keyData.Caret.Y, "height", keyData.Caret.Height)
 			if err := s.handler.HandleCaretUpdate(*keyData.Caret); err != nil {
 				s.logger.Debug("Failed to update caret from key event", "error", err)
 			}
+		} else {
+			s.logger.Debug("No caret data in key event", "key", keyData.Key)
 		}
 
 		result := s.handler.HandleKeyEvent(keyData)

@@ -38,6 +38,7 @@ private:
 
     // State
     BOOL _isComposing;
+    BOOL _shiftPending;  // True if Shift was pressed alone (for mode toggle on release)
 
     // Modifier key flags (using KEY_ prefix to avoid Windows macro conflicts)
     static const int KEY_MOD_SHIFT = 0x01;
