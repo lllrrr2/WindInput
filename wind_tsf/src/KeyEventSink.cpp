@@ -76,10 +76,6 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         return S_OK;
     }
 
-    WCHAR debug[128];
-    wsprintfW(debug, L"[WindInput] OnKeyDown: wParam=%d (0x%X)\n", (int)wParam, (int)wParam);
-    OutputDebugStringW(debug);
-
     // Send key to Go Service
     if (!_SendKeyToService(wParam))
     {
@@ -249,18 +245,22 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
     // Convert virtual key to character/key name
     std::wstring key;
     int keyCode = (int)wParam;
+    BOOL needCaret = FALSE;  // Whether to include caret position in request
 
     if (wParam >= 'A' && wParam <= 'Z')
     {
         // Letter key - convert to lowercase
         key = (wchar_t)towlower((wint_t)wParam);
 
-        // If starting composition, update caret position first
-        if (!_isComposing)
+        // Always include caret with letter keys (both Chinese and English mode need it)
+        // This replaces the separate caret_update call
+        needCaret = TRUE;
+
+        // Track composition state only in Chinese mode
+        if (_pTextService->IsChineseMode())
         {
-            _pTextService->SendCaretPositionUpdate();
+            _isComposing = TRUE;
         }
-        _isComposing = TRUE;
     }
     else if (wParam >= '1' && wParam <= '9')
     {
@@ -295,6 +295,17 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
 
     // Send key event to Go Service with actual modifier state
     int modifiers = _GetModifierState();
+
+    // Include caret position in the same request if needed
+    if (needCaret)
+    {
+        LONG x, y, height;
+        if (_pTextService->GetCaretPosition(&x, &y, &height))
+        {
+            return pIPCClient->SendKeyEvent(key, keyCode, modifiers, &x, &y, &height);
+        }
+    }
+
     return pIPCClient->SendKeyEvent(key, keyCode, modifiers);
 }
 
@@ -314,12 +325,11 @@ void CKeyEventSink::_HandleServiceResponse()
     switch (response.type)
     {
     case ResponseType::Ack:
-        OutputDebugStringW(L"[WindInput] Received ACK from service\n");
+        // ACK is common, no need to log
         break;
 
     case ResponseType::InsertText:
         {
-            OutputDebugStringW(L"[WindInput] Received InsertText from service\n");
             _isComposing = FALSE;
 
             // Insert text into application

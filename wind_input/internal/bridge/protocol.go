@@ -25,6 +25,8 @@ type KeyEventData struct {
 	KeyCode   int    `json:"keycode"`
 	Modifiers int    `json:"modifiers"`
 	Event     string `json:"event"` // "down" or "up"
+	// Caret position (optional, sent with key events to avoid separate caret_update)
+	Caret *CaretData `json:"caret,omitempty"`
 }
 
 // CaretData contains caret position information

@@ -437,7 +437,8 @@ void CIPCClient::Disconnect()
 // Message sending
 // ============================================================================
 
-BOOL CIPCClient::SendKeyEvent(const std::wstring& key, int keyCode, int modifiers)
+BOOL CIPCClient::SendKeyEvent(const std::wstring& key, int keyCode, int modifiers,
+                              const LONG* px, const LONG* py, const LONG* pHeight)
 {
     if (!_ShouldAttemptOperation())
     {
@@ -459,9 +460,18 @@ BOOL CIPCClient::SendKeyEvent(const std::wstring& key, int keyCode, int modifier
     oss << L"\"keycode\":" << keyCode << L",";
     oss << L"\"modifiers\":" << modifiers << L",";
     oss << L"\"event\":\"down\"";
-    oss << L"}}";
 
-    _LogDebug(L"Sending key event: key=%s, keycode=%d", key.c_str(), keyCode);
+    // Include caret info if provided (avoids separate caret_update call)
+    if (px != nullptr && py != nullptr && pHeight != nullptr)
+    {
+        oss << L",\"caret\":{";
+        oss << L"\"x\":" << *px << L",";
+        oss << L"\"y\":" << *py << L",";
+        oss << L"\"height\":" << *pHeight;
+        oss << L"}";
+    }
+
+    oss << L"}}";
 
     return _SendMessage(oss.str());
 }

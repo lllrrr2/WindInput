@@ -273,6 +273,13 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 			return &Response{Type: ResponseTypeAck, Error: "invalid key event data"}
 		}
 
+		// If caret data is included, update caret position first
+		if keyData.Caret != nil {
+			if err := s.handler.HandleCaretUpdate(*keyData.Caret); err != nil {
+				s.logger.Debug("Failed to update caret from key event", "error", err)
+			}
+		}
+
 		result := s.handler.HandleKeyEvent(keyData)
 		if result == nil {
 			return &Response{Type: ResponseTypeAck}

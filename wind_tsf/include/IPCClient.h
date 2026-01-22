@@ -79,10 +79,12 @@ public:
     // Check if service is available (considers circuit breaker)
     BOOL IsServiceAvailable();
 
-    // Send key event to Go Service
-    BOOL SendKeyEvent(const std::wstring& key, int keyCode, int modifiers = 0);
+    // Send key event to Go Service (with optional caret info for efficiency)
+    // If caret is provided (px, py, pHeight all non-null), includes caret in the same request
+    BOOL SendKeyEvent(const std::wstring& key, int keyCode, int modifiers = 0,
+                      const LONG* px = nullptr, const LONG* py = nullptr, const LONG* pHeight = nullptr);
 
-    // Send caret position update to Go Service
+    // Send caret position update to Go Service (standalone, use SendKeyEvent with caret for efficiency)
     BOOL SendCaretUpdate(int x, int y, int height);
 
     // Send focus lost notification

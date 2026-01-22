@@ -265,8 +265,6 @@ void CTextService::_UninitIPCClient()
 
 BOOL CTextService::InsertText(const std::wstring& text)
 {
-    OutputDebugStringW(L"[WindInput] InsertText called\n");
-
     if (_pThreadMgr == nullptr)
     {
         OutputDebugStringW(L"[WindInput] ThreadMgr is null\n");
@@ -320,10 +318,6 @@ BOOL CTextService::InsertText(const std::wstring& text)
         SendInput(2, input, sizeof(INPUT));
     }
 
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] Inserted text: %s\n", text.c_str());
-    OutputDebugStringW(debug);
-
     return TRUE;
 }
 
@@ -352,10 +346,6 @@ BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
             if (*pHeight <= 0)
                 *pHeight = 20;  // Default caret height
 
-            WCHAR debug[256];
-            wsprintfW(debug, L"[WindInput] Caret position (GUI): x=%d, y=%d, height=%d\n", *px, *py, *pHeight);
-            OutputDebugStringW(debug);
-
             return TRUE;
         }
     }
@@ -372,10 +362,6 @@ BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
             *px = pt.x;
             *py = pt.y + 20;  // Estimate caret height
             *pHeight = 20;
-
-            WCHAR debug[256];
-            wsprintfW(debug, L"[WindInput] Caret position (fallback): x=%d, y=%d, height=%d\n", *px, *py, *pHeight);
-            OutputDebugStringW(debug);
 
             return TRUE;
         }
