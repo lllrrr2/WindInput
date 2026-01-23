@@ -287,9 +287,10 @@ func (ct *CodeTable) parseEntryLine(line string) bool {
 
 	// 添加到码表
 	cand := candidate.Candidate{
-		Text:   text,
-		Code:   code,
-		Weight: weight,
+		Text:     text,
+		Code:     code,
+		Weight:   weight,
+		IsCommon: IsStringCommon(text),
 	}
 
 	ct.entries[code] = append(ct.entries[code], cand)

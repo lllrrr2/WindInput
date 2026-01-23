@@ -130,6 +130,14 @@ if exist "%BUILD_DIR%\dict\wubi\wubi86.txt" (
     echo        Please run build_all.bat first
 )
 
+REM Copy common chars table from build
+if exist "%BUILD_DIR%\dict\common_chars.txt" (
+    copy /Y "%BUILD_DIR%\dict\common_chars.txt" "%INSTALL_DIR%\dict\common_chars.txt" >nul
+    echo   - Common chars table: common_chars.txt
+) else (
+    echo [WARN] Common chars table not found in build directory
+)
+
 echo [7/8] Registering COM component...
 regsvr32 /s "%INSTALL_DIR%\wind_tsf.dll"
 if %errorLevel% neq 0 (
@@ -170,6 +178,7 @@ echo - wind_input.exe (IME Service)
 echo - wind_setting.exe (Settings UI)
 echo - dict\pinyin\pinyin.txt (Pinyin dictionary)
 echo - dict\wubi\wubi86.txt (Wubi86 dictionary)
+echo - dict\common_chars.txt (Common chars table)
 echo.
 echo The service will start automatically when you use the IME.
 echo.

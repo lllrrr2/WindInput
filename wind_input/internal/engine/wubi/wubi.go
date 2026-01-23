@@ -36,6 +36,7 @@ type Config struct {
 	EmptyCode     EmptyCodeMode  // 空码处理模式
 	TopCodeCommit bool           // 五码顶字上屏
 	PunctCommit   bool           // 标点顶字上屏
+	FilterMode    string         // 候选过滤模式
 }
 
 // DefaultConfig 返回默认配置
@@ -46,6 +47,7 @@ func DefaultConfig() *Config {
 		EmptyCode:     EmptyCodeClearAt4,
 		TopCodeCommit: true,
 		PunctCommit:   true,
+		FilterMode:    "smart",
 	}
 }
 
@@ -98,6 +100,37 @@ func (e *Engine) Convert(input string, maxCandidates int) ([]candidate.Candidate
 	return result.Candidates, nil
 }
 
+// ConvertRaw 转换输入为候选词（不应用过滤，用于测试）
+func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candidate, error) {
+	if e.codeTable == nil || input == "" {
+		return nil, nil
+	}
+
+	input = strings.ToLower(input)
+
+	// 精确匹配
+	candidates := e.codeTable.Lookup(input)
+
+	// 如果精确匹配为空，尝试前缀匹配
+	if len(candidates) == 0 {
+		candidates = e.codeTable.LookupPrefix(input)
+	}
+
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	// 排序（按权重降序）
+	sort.Sort(candidate.CandidateList(candidates))
+
+	// 限制数量
+	if maxCandidates > 0 && len(candidates) > maxCandidates {
+		candidates = candidates[:maxCandidates]
+	}
+
+	return candidates, nil
+}
+
 // ConvertEx 扩展转换，返回更多信息
 func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	result := &ConvertResult{}
@@ -136,6 +169,12 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 
 	// 排序（按权重降序）
 	sort.Sort(candidate.CandidateList(candidates))
+
+	filterMode := "smart"
+	if e.config != nil && e.config.FilterMode != "" {
+		filterMode = e.config.FilterMode
+	}
+	candidates = candidate.FilterCandidates(candidates, filterMode)
 
 	// 限制数量
 	if maxCandidates > 0 && len(candidates) > maxCandidates {

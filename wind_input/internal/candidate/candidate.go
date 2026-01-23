@@ -7,6 +7,7 @@ type Candidate struct {
 	Code   string // 通用编码（五笔/拼音等）
 	Weight int    // 权重（用于排序）
 	Hint   string // 提示信息（如反查时显示的编码）
+	IsCommon bool // 是否为通用规范汉字
 }
 
 // CandidateList 候选词列表

@@ -29,23 +29,37 @@ type Router struct {
 	configHandler *ConfigHandler
 	statusHandler *StatusHandler
 	engineHandler *EngineHandler
+	testHandler   *TestHandler
+	logHandler    *LogHandler
 }
 
 // NewRouter 创建路由管理器
 func NewRouter(logger *slog.Logger) *Router {
-	return &Router{
+	r := &Router{
 		logger: logger,
 	}
+	// 提前创建 LogHandler，使其可以在 RegisterServices 之前使用
+	r.logHandler = NewLogHandler(nil)
+	return r
 }
 
 // RegisterServices 注册服务
 func (r *Router) RegisterServices(services *Services) {
 	r.services = services
 
-	// 创建处理器
+	// 更新 logHandler 的 services
+	r.logHandler.services = services
+
+	// 创建其他处理器
 	r.configHandler = NewConfigHandler(services)
 	r.statusHandler = NewStatusHandler(services)
 	r.engineHandler = NewEngineHandler(services)
+	r.testHandler = NewTestHandler(services)
+}
+
+// GetLogHandler 获取日志处理器（供外部添加日志）
+func (r *Router) GetLogHandler() *LogHandler {
+	return r.logHandler
 }
 
 // SetupRoutes 设置路由
@@ -67,6 +81,13 @@ func (r *Router) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/engine", r.engineHandler.GetEngine)
 	mux.HandleFunc("POST /api/engine/switch", r.engineHandler.SwitchEngine)
 	mux.HandleFunc("GET /api/engine/list", r.engineHandler.ListEngines)
+
+	// 测试相关
+	mux.HandleFunc("POST /api/test/convert", r.testHandler.TestConvert)
+
+	// 日志相关
+	mux.HandleFunc("GET /api/logs", r.logHandler.GetLogs)
+	mux.HandleFunc("DELETE /api/logs", r.logHandler.ClearLogs)
 }
 
 // handleHealth 健康检查

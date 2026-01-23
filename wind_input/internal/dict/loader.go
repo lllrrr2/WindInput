@@ -85,9 +85,10 @@ func (d *SimpleDict) Load(path string) error {
 
 		// 添加到词库
 		cand := candidate.Candidate{
-			Text:   text,
-			Pinyin: pinyin,
-			Weight: weight,
+			Text:     text,
+			Pinyin:   pinyin,
+			Weight:   weight,
+			IsCommon: IsStringCommon(text),
 		}
 
 		d.entries[pinyin] = append(d.entries[pinyin], cand)
@@ -125,9 +126,10 @@ func (d *SimpleDict) LookupPhrase(syllables []string) []candidate.Candidate {
 // AddEntry 添加词条
 func (d *SimpleDict) AddEntry(pinyin, text string, weight int) {
 	cand := candidate.Candidate{
-		Text:   text,
-		Pinyin: pinyin,
-		Weight: weight,
+		Text:     text,
+		Pinyin:   pinyin,
+		Weight:   weight,
+		IsCommon: IsStringCommon(text),
 	}
 	d.entries[pinyin] = append(d.entries[pinyin], cand)
 }
@@ -136,9 +138,10 @@ func (d *SimpleDict) AddEntry(pinyin, text string, weight int) {
 func (d *SimpleDict) AddPhrase(syllables []string, text string, weight int) {
 	key := strings.Join(syllables, "")
 	cand := candidate.Candidate{
-		Text:   text,
-		Pinyin: key,
-		Weight: weight,
+		Text:     text,
+		Pinyin:   key,
+		Weight:   weight,
+		IsCommon: IsStringCommon(text),
 	}
 	d.phrases[key] = append(d.phrases[key], cand)
 }

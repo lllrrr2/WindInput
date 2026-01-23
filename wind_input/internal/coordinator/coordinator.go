@@ -107,7 +107,7 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	// Handle Shift key for mode toggle
 	if data.KeyCode == 16 { // VK_SHIFT
 		c.chineseMode = !c.chineseMode
-		c.logger.Info("Mode toggled by Shift", "chineseMode", c.chineseMode)
+		c.logger.Debug("Mode toggled by Shift", "chineseMode", c.chineseMode)
 
 		// Clear any pending input when switching modes
 		if len(c.inputBuffer) > 0 {
@@ -278,9 +278,13 @@ func (c *Coordinator) handleEscape() *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleSpace() *bridge.KeyEventResult {
-	// Select first candidate
+	// Select first candidate of current page
 	if len(c.candidates) > 0 {
-		return c.selectCandidate(0)
+		// Calculate index of first candidate on current page
+		index := (c.currentPage - 1) * c.candidatesPerPage
+		if index < len(c.candidates) {
+			return c.selectCandidate(index)
+		}
 	} else if len(c.inputBuffer) > 0 {
 		// No candidates, commit raw input
 		text := c.inputBuffer
@@ -512,7 +516,7 @@ func (c *Coordinator) HandleFocusLost() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.logger.Info("Focus lost, clearing state")
+	c.logger.Debug("Focus lost, clearing state")
 	c.clearState()
 	c.hideUI()
 }
@@ -523,7 +527,7 @@ func (c *Coordinator) HandleToggleMode() bool {
 	defer c.mu.Unlock()
 
 	c.chineseMode = !c.chineseMode
-	c.logger.Info("Mode toggled via IPC", "chineseMode", c.chineseMode)
+	c.logger.Debug("Mode toggled via IPC", "chineseMode", c.chineseMode)
 
 	// Clear any pending input when switching modes
 	if len(c.inputBuffer) > 0 {
@@ -596,7 +600,7 @@ func (c *Coordinator) handleEngineSwitchKey() *bridge.KeyEventResult {
 		if err := config.UpdateEngineType(string(newType)); err != nil {
 			c.logger.Error("Failed to save engine type to config", "error", err)
 		} else {
-			c.logger.Info("Engine type saved to config", "type", newType)
+			c.logger.Debug("Engine type saved to config", "type", newType)
 		}
 	}()
 
@@ -675,7 +679,7 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 		c.uiManager.UpdateConfig(uiConfig.FontSize, uiConfig.FontPath)
 	}
 
-	c.logger.Info("UI config updated", "candidatesPerPage", c.candidatesPerPage)
+	c.logger.Debug("UI config updated", "candidatesPerPage", c.candidatesPerPage)
 }
 
 // ClearInputState 清空输入状态（供外部调用）

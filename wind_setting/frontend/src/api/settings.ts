@@ -34,6 +34,7 @@ export interface WubiConfig {
 
 export interface EngineConfig {
   type: string;
+  filter_mode: string;
   pinyin: PinyinConfig;
   wubi: WubiConfig;
 }
@@ -157,4 +158,34 @@ export async function switchEngine(type: string): Promise<APIResponse<{ previous
 // 重载配置
 export async function reloadConfig(): Promise<APIResponse<{ reloaded: string[]; errors: string[] }>> {
   return request('POST', '/api/config/reload');
+}
+
+// 测试转换
+export async function testConvert(
+  input: string,
+  engine: string = 'current',
+  filterMode: string = 'current'
+): Promise<APIResponse<{ candidates: any[]; engine: string; filterMode: string }>> {
+  return request('POST', '/api/test/convert', { input, engine, filterMode });
+}
+
+// 日志条目
+export interface LogEntry {
+  time: string;
+  level: string;
+  message: string;
+}
+
+// 获取日志
+export async function getLogs(level: string = 'all', filter: string = ''): Promise<APIResponse<{ logs: LogEntry[]; total: number }>> {
+  const params = new URLSearchParams();
+  if (level && level !== 'all') params.append('level', level);
+  if (filter) params.append('filter', filter);
+  const query = params.toString();
+  return request('GET', `/api/logs${query ? '?' + query : ''}`);
+}
+
+// 清空日志
+export async function clearLogs(): Promise<APIResponse> {
+  return request('DELETE', '/api/logs');
 }

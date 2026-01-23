@@ -49,6 +49,11 @@ func (s *Server) RegisterServices(services *Services) {
 	s.router.RegisterServices(services)
 }
 
+// GetLogHandler 获取日志处理器（供外部创建 slog handler）
+func (s *Server) GetLogHandler() *LogHandler {
+	return s.router.GetLogHandler()
+}
+
 // Start 启动服务器（阻塞）
 func (s *Server) Start() error {
 	mux := http.NewServeMux()

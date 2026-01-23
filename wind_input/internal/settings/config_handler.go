@@ -95,6 +95,7 @@ func (h *ConfigHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	// 更新 Engine 配置
 	if req.Engine != nil {
 		oldType := cfg.Engine.Type
+		oldFilterMode := cfg.Engine.FilterMode
 		cfg.Engine = *req.Engine
 
 		// 如果引擎类型改变，需要重载
@@ -102,6 +103,12 @@ func (h *ConfigHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 			response.NeedReload = append(response.NeedReload, "engine")
 		} else {
 			response.Applied = append(response.Applied, "engine")
+		}
+
+		// 如果过滤模式改变，立即更新引擎
+		if cfg.Engine.FilterMode != oldFilterMode && h.services.EngineMgr != nil {
+			h.services.EngineMgr.UpdateFilterMode(cfg.Engine.FilterMode)
+			h.services.Logger.Info("Filter mode updated", "mode", cfg.Engine.FilterMode)
 		}
 	}
 
@@ -162,6 +169,7 @@ func (h *ConfigHandler) GetConfigMeta(w http.ResponseWriter, r *http.Request) {
 			},
 			"engine": {
 				{Name: "type", Type: "string", Description: "引擎类型 (pinyin/wubi)", UpdateMode: "reload", Default: "pinyin"},
+				{Name: "filter_mode", Type: "string", Description: "字符过滤模式 (general/gb18030/smart)", UpdateMode: "reload", Default: "smart"},
 			},
 			"engine.pinyin": {
 				{Name: "show_wubi_hint", Type: "bool", Description: "显示五笔编码提示", UpdateMode: "hot", Default: true},
@@ -221,6 +229,14 @@ func (h *ConfigHandler) ValidateConfig(w http.ResponseWriter, r *http.Request) {
 		default:
 			response.Valid = false
 			response.Errors["engine.type"] = "无效的引擎类型，必须是 pinyin 或 wubi"
+		}
+
+		switch req.Config.Engine.FilterMode {
+		case "", "general", "gb18030", "smart":
+			// 有效
+		default:
+			response.Valid = false
+			response.Errors["engine.filter_mode"] = "无效的过滤模式，必须是 general / gb18030 / smart"
 		}
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/config"
 	"github.com/huanfeng/wind_input/internal/coordinator"
+	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
 	"github.com/huanfeng/wind_input/internal/engine/wubi"
@@ -175,9 +176,19 @@ func main() {
 		level = slog.LevelInfo
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	// 创建基础的 stdout handler
+	stdoutHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
-	}))
+	})
+
+	// 先创建 settings server 以获取 LogHandler（稍后会注册完整的 services）
+	tempLogger := slog.New(stdoutHandler)
+	settingsServer := settings.NewServer(tempLogger)
+
+	// 创建包含 LogHandler 的自定义 slog handler
+	logHandler := settingsServer.GetLogHandler()
+	customHandler := settings.NewSlogHandler(logHandler, stdoutHandler, level)
+	logger := slog.New(customHandler)
 	slog.SetDefault(logger)
 
 	logger.Info("WindInput IME Service starting...")
@@ -194,6 +205,11 @@ func main() {
 		os.Exit(1)
 	}
 	exeDir := filepath.Dir(exePath)
+
+	// Initialize common chars table for filtering
+	commonCharsPath := filepath.Join(exeDir, "dict", "common_chars.txt")
+	dict.InitCommonCharsWithPath(commonCharsPath)
+	logger.Info("Common chars table initialized", "path", commonCharsPath, "count", dict.GetCommonCharCount())
 
 	// Create engine manager
 	engineMgr := engine.NewManager()
@@ -212,6 +228,7 @@ func main() {
 	// 解析拼音配置
 	pinyinConfig := &pinyin.Config{
 		ShowWubiHint: cfg.Engine.Pinyin.ShowWubiHint,
+		FilterMode:   cfg.Engine.FilterMode,
 	}
 
 	// 解析五笔配置（无论当前引擎类型，都需要配置以便动态切换）
@@ -219,6 +236,7 @@ func main() {
 		MaxCodeLength: 4,
 		TopCodeCommit: cfg.Engine.Wubi.TopCodeCommit,
 		PunctCommit:   cfg.Engine.Wubi.PunctCommit,
+		FilterMode:    cfg.Engine.FilterMode,
 	}
 	// 解析自动上屏模式
 	switch cfg.Engine.Wubi.AutoCommit {
@@ -291,8 +309,7 @@ func main() {
 	// Create coordinator with Engine Manager, UI Manager and config
 	coord := coordinator.NewCoordinator(engineMgr, uiManager, cfg, logger)
 
-	// Create and start Settings HTTP server
-	settingsServer := settings.NewServer(logger)
+	// 注册完整的 services 到 settings server
 	settingsServer.RegisterServices(&settings.Services{
 		Config:      cfg,
 		EngineMgr:   engineMgr,
@@ -302,6 +319,7 @@ func main() {
 			return config.Save(c)
 		},
 	})
+
 	settingsServer.StartAsync()
 	logger.Info("Settings server started", "addr", settings.DefaultAddr)
 

@@ -74,6 +74,14 @@ if exist "%SCRIPT_DIR%ref\极爽词库6.txt" (
 ) else (
     echo [WARN] Wubi dictionary not found in ref directory
 )
+
+REM Copy common chars table
+if exist "%SCRIPT_DIR%dict\common_chars.txt" (
+    copy /Y "%SCRIPT_DIR%dict\common_chars.txt" "%SCRIPT_DIR%build\dict\common_chars.txt" >nul
+    echo   - Common chars table copied
+) else (
+    echo [WARN] Common chars table not found
+)
 echo.
 
 echo [5/5] Checking output files...
@@ -100,6 +108,7 @@ echo - build\wind_input.exe (IME Service with Native UI)
 echo - build\wind_setting.exe (Settings UI, optional)
 echo - build\dict\pinyin\pinyin.txt (Pinyin dictionary)
 echo - build\dict\wubi\wubi86.txt (Wubi dictionary)
+echo - build\dict\common_chars.txt (Common chars table)
 echo.
 echo For development:
 echo   cd build ^&^& wind_input.exe -log debug

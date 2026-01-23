@@ -85,6 +85,25 @@ func (m *Manager) Convert(input string, maxCandidates int) ([]candidate.Candidat
 	return engine.Convert(input, maxCandidates)
 }
 
+// ConvertRaw 使用当前引擎转换输入（不应用过滤，用于测试）
+func (m *Manager) ConvertRaw(input string, maxCandidates int) ([]candidate.Candidate, error) {
+	engine := m.GetCurrentEngine()
+	if engine == nil {
+		return nil, fmt.Errorf("未设置当前引擎")
+	}
+
+	// 检查引擎是否支持 ConvertRaw
+	if pinyinEngine, ok := engine.(*pinyin.Engine); ok {
+		return pinyinEngine.ConvertRaw(input, maxCandidates)
+	}
+	if wubiEngine, ok := engine.(*wubi.Engine); ok {
+		return wubiEngine.ConvertRaw(input, maxCandidates)
+	}
+
+	// 回退到普通 Convert
+	return engine.Convert(input, maxCandidates)
+}
+
 // ConvertEx 扩展转换，返回更多信息
 func (m *Manager) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	engine := m.GetCurrentEngine()
@@ -352,7 +371,7 @@ func (m *Manager) loadPinyinEngineLocked() error {
 	// 创建引擎
 	config := m.pinyinConfig
 	if config == nil {
-		config = &pinyin.Config{ShowWubiHint: true}
+		config = &pinyin.Config{ShowWubiHint: true, FilterMode: "smart"}
 	}
 	engine := pinyin.NewEngineWithConfig(d, config)
 
@@ -427,4 +446,48 @@ func (m *Manager) GetEngineDisplayName() string {
 	default:
 		return "?"
 	}
+}
+
+// UpdateFilterMode 更新当前引擎的过滤模式
+func (m *Manager) UpdateFilterMode(mode string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 更新保存的配置
+	if m.pinyinConfig != nil {
+		m.pinyinConfig.FilterMode = mode
+	}
+	if m.wubiConfig != nil {
+		m.wubiConfig.FilterMode = mode
+	}
+
+	// 更新当前运行的引擎配置
+	if m.currentEngine != nil {
+		switch e := m.currentEngine.(type) {
+		case *pinyin.Engine:
+			if cfg := e.GetConfig(); cfg != nil {
+				cfg.FilterMode = mode
+			}
+		case *wubi.Engine:
+			if cfg := e.GetConfig(); cfg != nil {
+				cfg.FilterMode = mode
+			}
+		}
+	}
+
+	// 更新所有已注册引擎的配置
+	for _, engine := range m.engines {
+		switch e := engine.(type) {
+		case *pinyin.Engine:
+			if cfg := e.GetConfig(); cfg != nil {
+				cfg.FilterMode = mode
+			}
+		case *wubi.Engine:
+			if cfg := e.GetConfig(); cfg != nil {
+				cfg.FilterMode = mode
+			}
+		}
+	}
+
+	log.Printf("[EngineManager] 更新过滤模式: %s", mode)
 }

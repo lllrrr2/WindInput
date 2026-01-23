@@ -4,6 +4,8 @@
 /build/
 /wind_tsf/build/
 
+/ref/
+
 # CMake/CLion generated
 CMakeCache.txt
 CMakeFiles/

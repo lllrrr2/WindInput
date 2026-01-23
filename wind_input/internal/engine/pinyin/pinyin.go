@@ -10,6 +10,7 @@ import (
 // Config 拼音引擎配置
 type Config struct {
 	ShowWubiHint bool // 显示五笔编码提示
+	FilterMode   string // 候选过滤模式
 }
 
 // Engine 拼音引擎
@@ -24,14 +25,14 @@ type Engine struct {
 func NewEngine(d dict.Dict) *Engine {
 	return &Engine{
 		dict:   d,
-		config: &Config{ShowWubiHint: false},
+		config: &Config{ShowWubiHint: false, FilterMode: "smart"},
 	}
 }
 
 // NewEngineWithConfig 创建带配置的拼音引擎
 func NewEngineWithConfig(d dict.Dict, config *Config) *Engine {
 	if config == nil {
-		config = &Config{ShowWubiHint: false}
+		config = &Config{ShowWubiHint: false, FilterMode: "smart"}
 	}
 	return &Engine{
 		dict:   d,
@@ -42,6 +43,11 @@ func NewEngineWithConfig(d dict.Dict, config *Config) *Engine {
 // SetConfig 设置配置
 func (e *Engine) SetConfig(config *Config) {
 	e.config = config
+}
+
+// GetConfig 获取配置
+func (e *Engine) GetConfig() *Config {
+	return e.config
 }
 
 // LoadWubiTable 加载五笔码表（用于反查）
@@ -160,6 +166,102 @@ func (e *Engine) Convert(input string, maxCandidates int) ([]candidate.Candidate
 	}
 
 	sort.Sort(candidates)
+
+	filterMode := "smart"
+	if e.config != nil && e.config.FilterMode != "" {
+		filterMode = e.config.FilterMode
+	}
+	candidates = candidate.FilterCandidates(candidates, filterMode)
+
+	// 限制返回数量
+	if maxCandidates > 0 && len(candidates) > maxCandidates {
+		candidates = candidates[:maxCandidates]
+	}
+
+	// 添加五笔编码提示
+	if e.config != nil && e.config.ShowWubiHint && e.wubiReverse != nil {
+		for i := range candidates {
+			wubiCode := e.lookupWubiCode(candidates[i].Text)
+			if wubiCode != "" {
+				candidates[i].Hint = wubiCode
+			}
+		}
+	}
+
+	return candidates, nil
+}
+
+// ConvertRaw 转换拼音为候选词（不应用过滤，用于测试）
+func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candidate, error) {
+	if len(input) == 0 {
+		return nil, nil
+	}
+
+	// 解析音节
+	syllablesList := ParseSyllables(input)
+	if len(syllablesList) == 0 {
+		return nil, nil
+	}
+
+	// 收集所有候选词
+	candidatesMap := make(map[string]*candidate.Candidate)
+
+	// 对每一种音节分割方式
+	for _, syllables := range syllablesList {
+		// 尝试查找完整短语
+		phraseCandidates := e.dict.LookupPhrase(syllables)
+		for _, cand := range phraseCandidates {
+			if existing, ok := candidatesMap[cand.Text]; ok {
+				if cand.Weight > existing.Weight {
+					*existing = cand
+				}
+			} else {
+				c := cand
+				candidatesMap[cand.Text] = &c
+			}
+		}
+
+		// 如果是单个音节，直接查找
+		if len(syllables) == 1 {
+			singleCandidates := e.dict.Lookup(syllables[0])
+			for _, cand := range singleCandidates {
+				if existing, ok := candidatesMap[cand.Text]; ok {
+					if cand.Weight > existing.Weight {
+						*existing = cand
+					}
+				} else {
+					c := cand
+					candidatesMap[cand.Text] = &c
+				}
+			}
+		} else {
+			// 多音节：尝试组合查找
+			for _, syllable := range syllables {
+				singleCandidates := e.dict.Lookup(syllable)
+				for _, cand := range singleCandidates {
+					cand.Weight = cand.Weight / 2
+					if existing, ok := candidatesMap[cand.Text]; ok {
+						if cand.Weight > existing.Weight {
+							*existing = cand
+						}
+					} else {
+						c := cand
+						candidatesMap[cand.Text] = &c
+					}
+				}
+			}
+		}
+	}
+
+	// 转换为列表并排序
+	candidates := make(candidate.CandidateList, 0, len(candidatesMap))
+	for _, cand := range candidatesMap {
+		candidates = append(candidates, *cand)
+	}
+
+	sort.Sort(candidates)
+
+	// 不应用过滤！
 
 	// 限制返回数量
 	if maxCandidates > 0 && len(candidates) > maxCandidates {
