@@ -1,0 +1,410 @@
+// Package dict 提供词库管理功能
+package dict
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"unicode/utf16"
+
+	"github.com/huanfeng/wind_input/internal/candidate"
+)
+
+// CodeTableHeader 码表头信息
+type CodeTableHeader struct {
+	Name          string // 词库名称
+	Version       string // 版本
+	Author        string // 作者
+	CodeScheme    string // 编码方案（拼音/五笔86等）
+	CodeLength    int    // 最大码长
+	BWCodeLength  int    // 反查码长
+	SpecialPrefix string // 特殊前缀（如zz用于反查）
+	PhraseRule    int    // 短语规则
+}
+
+// CodeTable 码表数据结构
+type CodeTable struct {
+	Header     CodeTableHeader
+	entries    map[string][]candidate.Candidate // code -> candidates
+	entryOrder int                              // 用于跟踪词条顺序，作为默认权重
+}
+
+// NewCodeTable 创建新的码表
+func NewCodeTable() *CodeTable {
+	return &CodeTable{
+		entries: make(map[string][]candidate.Candidate),
+	}
+}
+
+// LoadCodeTable 加载码表文件
+// 支持 UTF-8 和 UTF-16 LE 编码
+// 支持 [CODETABLEHEADER] 和 [CODETABLE] 格式
+func LoadCodeTable(path string) (*CodeTable, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取文件失败: %w", err)
+	}
+
+	// 检测并转换编码
+	content, err := decodeContent(data)
+	if err != nil {
+		return nil, fmt.Errorf("解码文件失败: %w", err)
+	}
+
+	ct := NewCodeTable()
+	if err := ct.parse(content); err != nil {
+		return nil, err
+	}
+
+	return ct, nil
+}
+
+// decodeContent 检测编码并转换为 UTF-8 字符串
+func decodeContent(data []byte) (string, error) {
+	// 检查 UTF-16 LE BOM (FF FE)
+	if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE {
+		return decodeUTF16LE(data[2:])
+	}
+
+	// 检查 UTF-16 BE BOM (FE FF)
+	if len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF {
+		return decodeUTF16BE(data[2:])
+	}
+
+	// 检查 UTF-8 BOM (EF BB BF)
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		return string(data[3:]), nil
+	}
+
+	// 尝试检测是否为 UTF-16 LE（无 BOM 但每个字符后有 0x00）
+	if isLikelyUTF16LE(data) {
+		return decodeUTF16LE(data)
+	}
+
+	// 默认 UTF-8
+	return string(data), nil
+}
+
+// isLikelyUTF16LE 检测数据是否可能是 UTF-16 LE 编码
+func isLikelyUTF16LE(data []byte) bool {
+	if len(data) < 10 {
+		return false
+	}
+	// 检查前几个字符是否符合 UTF-16 LE 模式（ASCII 字符后跟 0x00）
+	nullCount := 0
+	for i := 1; i < len(data) && i < 20; i += 2 {
+		if data[i] == 0x00 {
+			nullCount++
+		}
+	}
+	return nullCount > 5
+}
+
+// decodeUTF16LE 解码 UTF-16 LE 数据
+func decodeUTF16LE(data []byte) (string, error) {
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1] // 确保偶数长度
+	}
+
+	u16s := make([]uint16, len(data)/2)
+	for i := 0; i < len(data); i += 2 {
+		u16s[i/2] = uint16(data[i]) | uint16(data[i+1])<<8
+	}
+
+	runes := utf16.Decode(u16s)
+	return string(runes), nil
+}
+
+// decodeUTF16BE 解码 UTF-16 BE 数据
+func decodeUTF16BE(data []byte) (string, error) {
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1]
+	}
+
+	u16s := make([]uint16, len(data)/2)
+	for i := 0; i < len(data); i += 2 {
+		u16s[i/2] = uint16(data[i])<<8 | uint16(data[i+1])
+	}
+
+	runes := utf16.Decode(u16s)
+	return string(runes), nil
+}
+
+// parse 解析码表内容
+func (ct *CodeTable) parse(content string) error {
+	reader := bufio.NewReader(strings.NewReader(content))
+
+	inHeader := false
+	inTable := false
+	lineNum := 0
+	entryCount := 0
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("读取行失败: %w", err)
+		}
+
+		lineNum++
+		line = strings.TrimSpace(line)
+
+		// 跳过空行
+		if line == "" {
+			if err == io.EOF {
+				break
+			}
+			continue
+		}
+
+		// 检查段落标记
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section := strings.ToUpper(strings.Trim(line, "[]"))
+			switch section {
+			case "CODETABLEHEADER":
+				inHeader = true
+				inTable = false
+			case "CODETABLE":
+				inHeader = false
+				inTable = true
+			default:
+				inHeader = false
+				inTable = false
+			}
+			if err == io.EOF {
+				break
+			}
+			continue
+		}
+
+		// 解析头部
+		if inHeader {
+			ct.parseHeaderLine(line)
+		}
+
+		// 解析码表条目
+		if inTable {
+			if ct.parseEntryLine(line) {
+				entryCount++
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+	}
+
+	if entryCount == 0 {
+		return fmt.Errorf("码表为空，未找到有效条目")
+	}
+
+	return nil
+}
+
+// parseHeaderLine 解析头部行
+func (ct *CodeTable) parseHeaderLine(line string) {
+	parts := strings.SplitN(line, "=", 2)
+	if len(parts) != 2 {
+		return
+	}
+
+	key := strings.TrimSpace(parts[0])
+	value := strings.TrimSpace(parts[1])
+
+	switch strings.ToLower(key) {
+	case "name":
+		ct.Header.Name = value
+	case "version":
+		ct.Header.Version = value
+	case "author":
+		ct.Header.Author = value
+	case "codescheme":
+		ct.Header.CodeScheme = value
+	case "codelength":
+		if v, err := strconv.Atoi(value); err == nil {
+			ct.Header.CodeLength = v
+		}
+	case "bwcodelength":
+		if v, err := strconv.Atoi(value); err == nil {
+			ct.Header.BWCodeLength = v
+		}
+	case "specialprefix":
+		ct.Header.SpecialPrefix = value
+	case "phraserule":
+		if v, err := strconv.Atoi(value); err == nil {
+			ct.Header.PhraseRule = v
+		}
+	}
+}
+
+// parseEntryLine 解析码表条目行
+// 格式: 编码\t汉字\t词频（词频可选）
+func (ct *CodeTable) parseEntryLine(line string) bool {
+	// 跳过注释
+	if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+		return false
+	}
+
+	// 使用 tab 分割
+	parts := strings.Split(line, "\t")
+	if len(parts) < 2 {
+		// 尝试用空格分割
+		parts = strings.Fields(line)
+		if len(parts) < 2 {
+			return false
+		}
+	}
+
+	code := strings.TrimSpace(parts[0])
+	text := strings.TrimSpace(parts[1])
+
+	if code == "" || text == "" {
+		return false
+	}
+
+	// 解析词频（可选）
+	// 如果没有词频字段，使用文件顺序作为权重（越靠前权重越高）
+	weight := 0
+	hasExplicitWeight := false
+	if len(parts) >= 3 {
+		if w, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil {
+			weight = w
+			hasExplicitWeight = true
+		}
+	}
+
+	// 如果没有显式词频，使用递减的顺序权重
+	// 基数设为 1000000，确保文件靠前的词条有更高权重
+	if !hasExplicitWeight {
+		weight = 1000000 - ct.entryOrder
+		if weight < 0 {
+			weight = 0
+		}
+	}
+
+	// 添加到码表
+	cand := candidate.Candidate{
+		Text:   text,
+		Code:   code,
+		Weight: weight,
+	}
+
+	ct.entries[code] = append(ct.entries[code], cand)
+	ct.entryOrder++
+	return true
+}
+
+// Lookup 查找编码对应的候选词
+func (ct *CodeTable) Lookup(code string) []candidate.Candidate {
+	code = strings.ToLower(code)
+	return ct.entries[code]
+}
+
+// LookupPrefix 前缀匹配查找
+func (ct *CodeTable) LookupPrefix(prefix string) []candidate.Candidate {
+	prefix = strings.ToLower(prefix)
+	var results []candidate.Candidate
+
+	for code, candidates := range ct.entries {
+		if strings.HasPrefix(code, prefix) {
+			results = append(results, candidates...)
+		}
+	}
+
+	return results
+}
+
+// EntryCount 返回词条数量
+func (ct *CodeTable) EntryCount() int {
+	count := 0
+	for _, candidates := range ct.entries {
+		count += len(candidates)
+	}
+	return count
+}
+
+// GetMaxCodeLength 获取最大码长
+func (ct *CodeTable) GetMaxCodeLength() int {
+	if ct.Header.CodeLength > 0 {
+		return ct.Header.CodeLength
+	}
+	// 如果头部没有指定，从数据中推断
+	maxLen := 0
+	for code := range ct.entries {
+		if len(code) > maxLen {
+			maxLen = len(code)
+		}
+	}
+	return maxLen
+}
+
+// GetCodeScheme 获取编码方案
+func (ct *CodeTable) GetCodeScheme() string {
+	return ct.Header.CodeScheme
+}
+
+// IsWubi 判断是否为五笔码表
+func (ct *CodeTable) IsWubi() bool {
+	scheme := strings.ToLower(ct.Header.CodeScheme)
+	return strings.Contains(scheme, "五笔") ||
+		strings.Contains(scheme, "wubi") ||
+		ct.Header.CodeLength == 4
+}
+
+// IsPinyin 判断是否为拼音码表
+func (ct *CodeTable) IsPinyin() bool {
+	scheme := strings.ToLower(ct.Header.CodeScheme)
+	return strings.Contains(scheme, "拼音") ||
+		strings.Contains(scheme, "pinyin")
+}
+
+// GetEntries 获取所有条目（用于反向查找）
+func (ct *CodeTable) GetEntries() map[string][]candidate.Candidate {
+	return ct.entries
+}
+
+// BuildReverseIndex 构建反向索引（文字 -> 编码）
+func (ct *CodeTable) BuildReverseIndex() map[string][]string {
+	reverseIndex := make(map[string][]string)
+	for code, candidates := range ct.entries {
+		for _, cand := range candidates {
+			reverseIndex[cand.Text] = append(reverseIndex[cand.Text], code)
+		}
+	}
+	return reverseIndex
+}
+
+// WriteTo 将码表写入 writer（用于导出）
+func (ct *CodeTable) WriteTo(w io.Writer) error {
+	buf := &bytes.Buffer{}
+
+	// 写入头部
+	buf.WriteString("[CODETABLEHEADER]\n")
+	if ct.Header.Name != "" {
+		buf.WriteString(fmt.Sprintf("Name=%s\n", ct.Header.Name))
+	}
+	if ct.Header.Version != "" {
+		buf.WriteString(fmt.Sprintf("Version=%s\n", ct.Header.Version))
+	}
+	if ct.Header.Author != "" {
+		buf.WriteString(fmt.Sprintf("Author=%s\n", ct.Header.Author))
+	}
+	if ct.Header.CodeScheme != "" {
+		buf.WriteString(fmt.Sprintf("CodeScheme=%s\n", ct.Header.CodeScheme))
+	}
+	buf.WriteString(fmt.Sprintf("CodeLength=%d\n", ct.Header.CodeLength))
+	buf.WriteString("[CODETABLE]\n")
+
+	// 写入条目
+	for code, candidates := range ct.entries {
+		for _, cand := range candidates {
+			buf.WriteString(fmt.Sprintf("%s\t%s\t%d\n", code, cand.Text, cand.Weight))
+		}
+	}
+
+	_, err := w.Write(buf.Bytes())
+	return err
+}

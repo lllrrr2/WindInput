@@ -13,8 +13,10 @@ import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/config"
 	"github.com/huanfeng/wind_input/internal/coordinator"
-	"github.com/huanfeng/wind_input/internal/dict"
+	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
+	"github.com/huanfeng/wind_input/internal/engine/wubi"
+	"github.com/huanfeng/wind_input/internal/settings"
 	"github.com/huanfeng/wind_input/internal/ui"
 )
 
@@ -193,44 +195,82 @@ func main() {
 	}
 	exeDir := filepath.Dir(exePath)
 
-	// Load dictionary
-	d := dict.NewSimpleDict()
-	fullDictPath := filepath.Join(exeDir, cfg.Dictionary.SystemDict)
-	logger.Info("Loading dictionary", "path", fullDictPath)
+	// Create engine manager
+	engineMgr := engine.NewManager()
 
-	if err := d.Load(fullDictPath); err != nil {
-		logger.Warn("Failed to load dictionary, using test data", "error", err)
-		// Add test data
-		d.AddEntry("ni", "你", 100)
-		d.AddEntry("ni", "泥", 20)
-		d.AddEntry("ni", "尼", 10)
-		d.AddEntry("hao", "好", 100)
-		d.AddEntry("hao", "号", 50)
-		d.AddEntry("hao", "浩", 30)
-		d.AddEntry("shi", "是", 100)
-		d.AddEntry("shi", "事", 80)
-		d.AddEntry("shi", "时", 70)
-		d.AddEntry("wo", "我", 100)
-		d.AddEntry("wo", "握", 30)
-		d.AddEntry("de", "的", 100)
-		d.AddEntry("de", "得", 80)
-		d.AddEntry("da", "大", 100)
-		d.AddEntry("da", "打", 80)
-		d.AddEntry("xiao", "小", 100)
-		d.AddEntry("xiao", "笑", 80)
-		d.AddEntry("zhong", "中", 100)
-		d.AddEntry("zhong", "钟", 80)
-		d.AddEntry("guo", "国", 100)
-		d.AddEntry("guo", "过", 80)
-		d.AddEntry("ren", "人", 100)
-		d.AddEntry("ren", "任", 80)
-		d.AddPhrase([]string{"ni", "hao"}, "你好", 150)
-		d.AddPhrase([]string{"zhong", "guo"}, "中国", 150)
-		d.AddPhrase([]string{"zhong", "guo", "ren"}, "中国人", 200)
+	// Set paths for dynamic engine switching
+	engineMgr.SetExeDir(exeDir)
+	engineMgr.SetDictPaths(
+		filepath.Join(exeDir, config.GetPinyinDictPath()),
+		filepath.Join(exeDir, config.GetWubiDictPath()),
+	)
+
+	// Initialize engine based on config
+	fullDictPath := filepath.Join(exeDir, cfg.Dictionary.SystemDict)
+	logger.Info("Loading dictionary", "path", fullDictPath, "engine_type", cfg.Engine.Type)
+
+	// 解析拼音配置
+	pinyinConfig := &pinyin.Config{
+		ShowWubiHint: cfg.Engine.Pinyin.ShowWubiHint,
 	}
 
-	// Create pinyin engine
-	eng := pinyin.NewEngine(d)
+	// 解析五笔配置（无论当前引擎类型，都需要配置以便动态切换）
+	wubiConfig := &wubi.Config{
+		MaxCodeLength: 4,
+		TopCodeCommit: cfg.Engine.Wubi.TopCodeCommit,
+		PunctCommit:   cfg.Engine.Wubi.PunctCommit,
+	}
+	// 解析自动上屏模式
+	switch cfg.Engine.Wubi.AutoCommit {
+	case "none":
+		wubiConfig.AutoCommit = wubi.AutoCommitNone
+	case "unique":
+		wubiConfig.AutoCommit = wubi.AutoCommitUnique
+	case "unique_at_4":
+		wubiConfig.AutoCommit = wubi.AutoCommitUniqueAt4
+	case "unique_full_match":
+		wubiConfig.AutoCommit = wubi.AutoCommitUniqueFullMatch
+	default:
+		wubiConfig.AutoCommit = wubi.AutoCommitUniqueAt4
+	}
+	// 解析空码处理模式
+	switch cfg.Engine.Wubi.EmptyCode {
+	case "none":
+		wubiConfig.EmptyCode = wubi.EmptyCodeNone
+	case "clear":
+		wubiConfig.EmptyCode = wubi.EmptyCodeClear
+	case "clear_at_4":
+		wubiConfig.EmptyCode = wubi.EmptyCodeClearAt4
+	case "to_english":
+		wubiConfig.EmptyCode = wubi.EmptyCodeToEnglish
+	default:
+		wubiConfig.EmptyCode = wubi.EmptyCodeClearAt4
+	}
+
+	// 设置引擎配置（用于动态切换）
+	engineMgr.SetPinyinConfig(pinyinConfig)
+	engineMgr.SetWubiConfig(wubiConfig)
+
+	// 初始化引擎
+	engineConfig := &engine.EngineConfig{
+		Type:         engine.EngineType(cfg.Engine.Type),
+		DictPath:     fullDictPath,
+		WubiDictPath: filepath.Join(exeDir, config.GetWubiDictPath()),
+		PinyinConfig: pinyinConfig,
+		WubiConfig:   wubiConfig,
+	}
+
+	if err := engineMgr.InitializeFromConfig(engineConfig); err != nil {
+		logger.Warn("Failed to initialize engine from config, falling back to pinyin", "error", err)
+		// 回退到拼音引擎
+		engineConfig.Type = engine.EngineTypePinyin
+		if err := engineMgr.InitializeFromConfig(engineConfig); err != nil {
+			logger.Error("Failed to initialize fallback engine", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	logger.Info("Engine initialized", "info", engineMgr.GetEngineInfo())
 
 	// Create UI Manager (native Windows UI)
 	uiManager := ui.NewManager(logger)
@@ -248,8 +288,22 @@ func main() {
 	uiManager.WaitReady()
 	logger.Info("UI Manager is ready")
 
-	// Create coordinator with UI Manager and config
-	coord := coordinator.NewCoordinator(eng, uiManager, cfg, logger)
+	// Create coordinator with Engine Manager, UI Manager and config
+	coord := coordinator.NewCoordinator(engineMgr, uiManager, cfg, logger)
+
+	// Create and start Settings HTTP server
+	settingsServer := settings.NewServer(logger)
+	settingsServer.RegisterServices(&settings.Services{
+		Config:      cfg,
+		EngineMgr:   engineMgr,
+		Coordinator: coord,
+		Logger:      logger,
+		OnConfigSave: func(c *config.Config) error {
+			return config.Save(c)
+		},
+	})
+	settingsServer.StartAsync()
+	logger.Info("Settings server started", "addr", settings.DefaultAddr)
 
 	// Create Bridge IPC server (connects to C++)
 	bridgeServer := bridge.NewServer(coord, logger)

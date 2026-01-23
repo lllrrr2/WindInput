@@ -21,7 +21,7 @@ const (
 
 // Coordinator orchestrates between C++ Bridge, Engine, and native UI
 type Coordinator struct {
-	engine    engine.Engine
+	engineMgr *engine.Manager
 	uiManager *ui.Manager
 	logger    *slog.Logger
 	config    *config.Config
@@ -32,11 +32,11 @@ type Coordinator struct {
 	chineseMode bool // true = Chinese, false = English
 
 	// Input state
-	inputBuffer        string
-	candidates         []ui.Candidate
-	currentPage        int
-	totalPages         int
-	candidatesPerPage  int
+	inputBuffer       string
+	candidates        []ui.Candidate
+	currentPage       int
+	totalPages        int
+	candidatesPerPage int
 
 	// Caret position (from C++)
 	caretX      int
@@ -49,7 +49,7 @@ type Coordinator struct {
 }
 
 // NewCoordinator creates a new Coordinator
-func NewCoordinator(eng engine.Engine, uiManager *ui.Manager, cfg *config.Config, logger *slog.Logger) *Coordinator {
+func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *config.Config, logger *slog.Logger) *Coordinator {
 	candidatesPerPage := 9
 	if cfg != nil && cfg.UI.CandidatesPerPage > 0 {
 		candidatesPerPage = cfg.UI.CandidatesPerPage
@@ -61,7 +61,7 @@ func NewCoordinator(eng engine.Engine, uiManager *ui.Manager, cfg *config.Config
 	}
 
 	return &Coordinator{
-		engine:            eng,
+		engineMgr:         engineMgr,
 		uiManager:         uiManager,
 		logger:            logger,
 		config:            cfg,
@@ -86,11 +86,16 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	// Use Debug for high-frequency key events to reduce log noise
 	c.logger.Debug("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode)
 
-	// Check for Ctrl or Alt modifiers - these should be passed to the system
-	// Note: C++ side already filters most of these, but we double-check here
+	// Check for Ctrl or Alt modifiers
 	hasCtrl := data.Modifiers&ModCtrl != 0
 	hasAlt := data.Modifiers&ModAlt != 0
 
+	// Handle Ctrl+` for engine switch (VK_OEM_3 = 192)
+	if hasCtrl && data.KeyCode == 192 {
+		return c.handleEngineSwitchKey()
+	}
+
+	// Other Ctrl/Alt combinations should be passed to the system
 	if hasCtrl || hasAlt {
 		c.logger.Debug("Key has Ctrl/Alt modifier, passing to system")
 		return nil
@@ -146,6 +151,12 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	case data.KeyCode == 32: // Space
 		return c.handleSpace()
 
+	case key == "page_up" || data.KeyCode == 189: // - key (VK_OEM_MINUS = 0xBD = 189)
+		return c.handlePageUp()
+
+	case key == "page_down" || data.KeyCode == 187: // = key (VK_OEM_PLUS = 0xBB = 187)
+		return c.handlePageDown()
+
 	case len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')):
 		// Chinese mode: convert to lowercase for pinyin
 		return c.handleAlphaKey(strings.ToLower(key))
@@ -163,7 +174,59 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	c.inputBuffer += key
 	c.logger.Debug("Input buffer updated", "buffer", c.inputBuffer)
 
-	c.updateCandidates()
+	// 处理顶码（如五笔的五码顶字）
+	if c.engineMgr != nil {
+		commitText, newInput, shouldCommit := c.engineMgr.HandleTopCode(c.inputBuffer)
+		if shouldCommit {
+			c.inputBuffer = newInput
+			c.logger.Debug("Top code commit", "text", commitText, "newInput", newInput)
+
+			// 如果还有剩余输入，继续处理
+			if len(c.inputBuffer) > 0 {
+				c.updateCandidates()
+				c.showUI()
+			} else {
+				c.hideUI()
+			}
+
+			return &bridge.KeyEventResult{
+				Type: bridge.ResponseTypeInsertText,
+				Text: commitText,
+			}
+		}
+	}
+
+	// 更新候选词
+	result := c.updateCandidatesEx()
+
+	// 检查自动上屏
+	if result != nil && result.ShouldCommit {
+		c.clearState()
+		c.hideUI()
+		return &bridge.KeyEventResult{
+			Type: bridge.ResponseTypeInsertText,
+			Text: result.CommitText,
+		}
+	}
+
+	// 检查空码处理
+	if result != nil && result.IsEmpty {
+		if result.ShouldClear {
+			c.clearState()
+			c.hideUI()
+			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
+		}
+		if result.ToEnglish {
+			text := c.inputBuffer
+			c.clearState()
+			c.hideUI()
+			return &bridge.KeyEventResult{
+				Type: bridge.ResponseTypeInsertText,
+				Text: text,
+			}
+		}
+	}
+
 	c.showUI()
 	return nil // Just show candidates, don't insert anything yet
 }
@@ -181,6 +244,11 @@ func (c *Coordinator) handleBackspace() *bridge.KeyEventResult {
 
 		c.updateCandidates()
 		c.showUI()
+	} else {
+		// Buffer is already empty - this shouldn't happen normally
+		// Return ClearComposition to reset C++ side's _isComposing state
+		c.logger.Debug("Backspace with empty buffer, clearing composition state")
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
 	}
 	return nil
 }
@@ -204,9 +272,9 @@ func (c *Coordinator) handleEscape() *bridge.KeyEventResult {
 	if len(c.inputBuffer) > 0 {
 		c.clearState()
 		c.hideUI()
-		return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
 	}
-	return nil
+	// Always return ClearComposition to ensure C++ side's _isComposing is reset
+	return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
 }
 
 func (c *Coordinator) handleSpace() *bridge.KeyEventResult {
@@ -235,6 +303,30 @@ func (c *Coordinator) handleNumberKey(num int) *bridge.KeyEventResult {
 	return nil
 }
 
+func (c *Coordinator) handlePageUp() *bridge.KeyEventResult {
+	// Only handle if we have candidates and are not on the first page
+	if len(c.candidates) == 0 || c.currentPage <= 1 {
+		return nil
+	}
+
+	c.currentPage--
+	c.logger.Debug("Page up", "currentPage", c.currentPage, "totalPages", c.totalPages)
+	c.showUI()
+	return nil
+}
+
+func (c *Coordinator) handlePageDown() *bridge.KeyEventResult {
+	// Only handle if we have candidates and are not on the last page
+	if len(c.candidates) == 0 || c.currentPage >= c.totalPages {
+		return nil
+	}
+
+	c.currentPage++
+	c.logger.Debug("Page down", "currentPage", c.currentPage, "totalPages", c.totalPages)
+	c.showUI()
+	return nil
+}
+
 func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 	if index < 0 || index >= len(c.candidates) {
 		return nil
@@ -254,29 +346,38 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) updateCandidates() {
+	c.updateCandidatesEx()
+}
+
+func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 	if len(c.inputBuffer) == 0 {
 		c.candidates = nil
-		return
+		return nil
 	}
 
-	// Convert using engine
-	engineCandidates, err := c.engine.Convert(c.inputBuffer, 50)
-	if err != nil {
-		c.logger.Error("Engine convert failed", "error", err)
-		return
+	if c.engineMgr == nil {
+		return nil
 	}
+
+	// 使用扩展转换获取更多信息
+	result := c.engineMgr.ConvertEx(c.inputBuffer, 50)
 
 	// Convert to UI candidates
-	c.candidates = make([]ui.Candidate, len(engineCandidates))
-	for i, ec := range engineCandidates {
-		c.candidates[i] = ui.Candidate{
+	c.candidates = make([]ui.Candidate, len(result.Candidates))
+	for i, ec := range result.Candidates {
+		cand := ui.Candidate{
 			Text:   ec.Text,
 			Index:  i + 1,
 			Weight: ec.Weight,
 		}
+		// 如果有提示信息（如反查编码），添加到注释
+		if ec.Hint != "" {
+			cand.Comment = ec.Hint
+		}
+		c.candidates[i] = cand
 	}
 
-	c.logger.Debug("Got candidates", "count", len(c.candidates))
+	c.logger.Debug("Got candidates", "count", len(c.candidates), "empty", result.IsEmpty)
 
 	// Calculate pagination
 	c.totalPages = (len(c.candidates) + c.candidatesPerPage - 1) / c.candidatesPerPage
@@ -284,6 +385,8 @@ func (c *Coordinator) updateCandidates() {
 		c.totalPages = 1
 	}
 	c.currentPage = 1
+
+	return result
 }
 
 func (c *Coordinator) showUI() {
@@ -464,4 +567,123 @@ func (c *Coordinator) HandleCapsLockState(on bool) {
 	}
 
 	c.uiManager.ShowModeIndicator(indicator, x, y)
+}
+
+// handleEngineSwitchKey 处理引擎切换快捷键 (Ctrl+`)
+func (c *Coordinator) handleEngineSwitchKey() *bridge.KeyEventResult {
+	if c.engineMgr == nil {
+		return nil
+	}
+
+	// 检查是否有输入需要清除
+	hadInput := len(c.inputBuffer) > 0
+
+	// 清除当前输入状态
+	c.clearState()
+	c.hideUI()
+
+	// 切换引擎
+	newType, err := c.engineMgr.ToggleEngine()
+	if err != nil {
+		c.logger.Error("Failed to switch engine", "error", err)
+		return nil
+	}
+
+	c.logger.Info("Engine switched", "newType", newType)
+
+	// 保存到用户配置
+	go func() {
+		if err := config.UpdateEngineType(string(newType)); err != nil {
+			c.logger.Error("Failed to save engine type to config", "error", err)
+		} else {
+			c.logger.Info("Engine type saved to config", "type", newType)
+		}
+	}()
+
+	// 显示引擎指示器
+	c.showEngineIndicator()
+
+	// 返回 ClearComposition 让 C++ 端清除 _isComposing 状态
+	if hadInput {
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
+	}
+	return nil
+}
+
+// showEngineIndicator 显示引擎切换指示器
+func (c *Coordinator) showEngineIndicator() {
+	if c.uiManager == nil || !c.uiManager.IsReady() {
+		return
+	}
+
+	// 获取引擎显示名称
+	engineName := c.engineMgr.GetEngineDisplayName()
+
+	// Use valid position or fallback
+	x := c.caretX
+	y := c.caretY + c.caretHeight + 5
+	const maxCoord = 32000
+	if (c.caretX == 0 && c.caretY == 0) || x > maxCoord || x < -maxCoord || y > maxCoord || y < -maxCoord {
+		if c.lastValidX != 0 || c.lastValidY != 0 {
+			x = c.lastValidX
+			y = c.lastValidY
+		} else {
+			x = 400
+			y = 300
+		}
+	}
+
+	c.uiManager.ShowModeIndicator(engineName, x, y)
+}
+
+// GetCurrentEngineName 获取当前引擎名称
+func (c *Coordinator) GetCurrentEngineName() string {
+	if c.engineMgr == nil {
+		return "unknown"
+	}
+	return string(c.engineMgr.GetCurrentType())
+}
+
+// UpdateUIConfig 更新 UI 配置（热更新）
+func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if uiConfig == nil {
+		return
+	}
+
+	// 更新每页候选数
+	if uiConfig.CandidatesPerPage > 0 {
+		c.candidatesPerPage = uiConfig.CandidatesPerPage
+		// 重新计算总页数
+		if len(c.candidates) > 0 {
+			c.totalPages = (len(c.candidates) + c.candidatesPerPage - 1) / c.candidatesPerPage
+			if c.currentPage > c.totalPages {
+				c.currentPage = c.totalPages
+			}
+		}
+	}
+
+	// 更新配置引用
+	if c.config != nil {
+		c.config.UI = *uiConfig
+	}
+
+	// 通知 UI Manager 更新字体等设置
+	if c.uiManager != nil {
+		c.uiManager.UpdateConfig(uiConfig.FontSize, uiConfig.FontPath)
+	}
+
+	c.logger.Info("UI config updated", "candidatesPerPage", c.candidatesPerPage)
+}
+
+// ClearInputState 清空输入状态（供外部调用）
+func (c *Coordinator) ClearInputState() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.clearState()
+	c.hideUI()
+	c.logger.Debug("Input state cleared")
 }

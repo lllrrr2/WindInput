@@ -18,9 +18,8 @@ if %errorLevel% neq 0 (
 REM Get script directory
 set SCRIPT_DIR=%~dp0
 set BUILD_DIR=%SCRIPT_DIR%..\build
-set DICT_DIR=%SCRIPT_DIR%..\dict
 
-echo [1/6] Checking files...
+echo [1/7] Checking files...
 if not exist "%BUILD_DIR%\wind_tsf.dll" (
     echo [ERROR] wind_tsf.dll not found
     echo Please run build_all.bat first
@@ -35,11 +34,12 @@ if not exist "%BUILD_DIR%\wind_input.exe" (
     exit /b 1
 )
 
-echo [2/6] Stopping old processes...
+echo [2/7] Stopping old processes...
 taskkill /F /IM wind_input.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-echo [3/6] Creating install directory...
+echo [3/7] Creating install directory...
+echo [4/7] Handling existing files...
 set INSTALL_DIR=%ProgramFiles%\WindInput
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
@@ -71,7 +71,7 @@ if exist "%INSTALL_DIR%\wind_input.exe" (
     )
 )
 
-echo [5/6] Copying files...
+echo [5/7] Copying files...
 copy /Y "%BUILD_DIR%\wind_tsf.dll" "%INSTALL_DIR%\" >nul
 if %errorLevel% neq 0 (
     echo [ERROR] Failed to copy wind_tsf.dll
@@ -86,9 +86,30 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-xcopy /Y /E /I "%DICT_DIR%" "%INSTALL_DIR%\dict\" >nul 2>&1
+echo [6/7] Copying dictionaries from build directory...
+REM Create dict directories
+if not exist "%INSTALL_DIR%\dict\pinyin" mkdir "%INSTALL_DIR%\dict\pinyin"
+if not exist "%INSTALL_DIR%\dict\wubi" mkdir "%INSTALL_DIR%\dict\wubi"
 
-echo [6/6] Registering COM component...
+REM Copy pinyin dictionary from build
+if exist "%BUILD_DIR%\dict\pinyin\pinyin.txt" (
+    copy /Y "%BUILD_DIR%\dict\pinyin\pinyin.txt" "%INSTALL_DIR%\dict\pinyin\pinyin.txt" >nul
+    echo   - Pinyin dictionary: pinyin.txt
+) else (
+    echo [WARN] Pinyin dictionary not found in build directory
+    echo        Please run build_all.bat first
+)
+
+REM Copy wubi dictionary from build
+if exist "%BUILD_DIR%\dict\wubi\wubi86.txt" (
+    copy /Y "%BUILD_DIR%\dict\wubi\wubi86.txt" "%INSTALL_DIR%\dict\wubi\wubi86.txt" >nul
+    echo   - Wubi dictionary: wubi86.txt
+) else (
+    echo [WARN] Wubi dictionary not found in build directory
+    echo        Please run build_all.bat first
+)
+
+echo [7/7] Registering COM component...
 regsvr32 /s "%INSTALL_DIR%\wind_tsf.dll"
 if %errorLevel% neq 0 (
     echo [ERROR] COM registration failed
@@ -116,15 +137,23 @@ echo.
 echo Components installed:
 echo - wind_tsf.dll (TSF Bridge)
 echo - wind_input.exe (IME Service)
-echo - dict\ (Dictionary files)
+echo - dict\pinyin\pinyin.txt (Pinyin dictionary)
+echo - dict\wubi\wubi86.txt (Wubi86 dictionary)
 echo.
 echo The service will start automatically when you use the IME.
 echo.
 echo Usage:
 echo 1. Press Win+Space to switch input method
 echo 2. Select "WindInput" from the input method list
-echo 3. Start typing pinyin (e.g., ni, hao, zhongguo)
+echo 3. Start typing (default: Pinyin mode)
+echo.
+echo Hotkeys:
+echo - Shift: Toggle Chinese/English mode
+echo - Ctrl+`: Switch between Pinyin and Wubi engine
+echo.
+echo Config location: %%APPDATA%%\WindInput\config.yaml
 echo.
 echo Note: If old files could not be deleted, restart your
 echo computer and run this installer again to clean them up.
 echo.
+pause

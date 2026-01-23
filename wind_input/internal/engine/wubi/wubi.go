@@ -1,0 +1,247 @@
+// Package wubi 提供五笔输入法引擎
+package wubi
+
+import (
+	"sort"
+	"strings"
+
+	"github.com/huanfeng/wind_input/internal/candidate"
+	"github.com/huanfeng/wind_input/internal/dict"
+)
+
+// AutoCommitMode 自动上屏模式
+type AutoCommitMode int
+
+const (
+	AutoCommitNone           AutoCommitMode = iota // 不自动上屏
+	AutoCommitUnique                               // 候选唯一时上屏
+	AutoCommitUniqueAt4                            // 四码唯一时上屏
+	AutoCommitUniqueFullMatch                      // 编码完整匹配且唯一时上屏
+)
+
+// EmptyCodeMode 空码处理模式
+type EmptyCodeMode int
+
+const (
+	EmptyCodeNone        EmptyCodeMode = iota // 不处理（继续输入）
+	EmptyCodeClear                            // 清空编码
+	EmptyCodeClearAt4                         // 四码时清空
+	EmptyCodeToEnglish                        // 转为英文上屏
+)
+
+// Config 五笔引擎配置
+type Config struct {
+	MaxCodeLength int            // 最大码长，默认4
+	AutoCommit    AutoCommitMode // 自动上屏模式
+	EmptyCode     EmptyCodeMode  // 空码处理模式
+	TopCodeCommit bool           // 五码顶字上屏
+	PunctCommit   bool           // 标点顶字上屏
+}
+
+// DefaultConfig 返回默认配置
+func DefaultConfig() *Config {
+	return &Config{
+		MaxCodeLength: 4,
+		AutoCommit:    AutoCommitUniqueAt4,
+		EmptyCode:     EmptyCodeClearAt4,
+		TopCodeCommit: true,
+		PunctCommit:   true,
+	}
+}
+
+// Engine 五笔输入引擎
+type Engine struct {
+	codeTable *dict.CodeTable // 主码表
+	config    *Config
+}
+
+// NewEngine 创建五笔引擎
+func NewEngine(config *Config) *Engine {
+	if config == nil {
+		config = DefaultConfig()
+	}
+	return &Engine{
+		config: config,
+	}
+}
+
+// LoadCodeTable 加载主码表
+func (e *Engine) LoadCodeTable(path string) error {
+	ct, err := dict.LoadCodeTable(path)
+	if err != nil {
+		return err
+	}
+	e.codeTable = ct
+
+	// 如果码表指定了最大码长，使用码表的设置
+	if ct.GetMaxCodeLength() > 0 && ct.GetMaxCodeLength() < e.config.MaxCodeLength {
+		e.config.MaxCodeLength = ct.GetMaxCodeLength()
+	}
+
+	return nil
+}
+
+
+// ConvertResult 转换结果
+type ConvertResult struct {
+	Candidates    []candidate.Candidate
+	ShouldCommit  bool   // 是否应该自动上屏
+	CommitText    string // 自动上屏的文字
+	IsEmpty       bool   // 是否空码
+	ShouldClear   bool   // 是否应该清空
+	ToEnglish     bool   // 是否转为英文
+}
+
+// Convert 转换输入为候选词
+func (e *Engine) Convert(input string, maxCandidates int) ([]candidate.Candidate, error) {
+	result := e.ConvertEx(input, maxCandidates)
+	return result.Candidates, nil
+}
+
+// ConvertEx 扩展转换，返回更多信息
+func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
+	result := &ConvertResult{}
+
+	if e.codeTable == nil || input == "" {
+		return result
+	}
+
+	input = strings.ToLower(input)
+	inputLen := len(input)
+
+	// 精确匹配
+	candidates := e.codeTable.Lookup(input)
+
+	// 如果精确匹配为空，尝试前缀匹配
+	if len(candidates) == 0 {
+		candidates = e.codeTable.LookupPrefix(input)
+	}
+
+	// 空码处理
+	if len(candidates) == 0 {
+		result.IsEmpty = true
+		switch e.config.EmptyCode {
+		case EmptyCodeClear:
+			result.ShouldClear = true
+		case EmptyCodeClearAt4:
+			if inputLen >= e.config.MaxCodeLength {
+				result.ShouldClear = true
+			}
+		case EmptyCodeToEnglish:
+			result.ToEnglish = true
+			result.CommitText = input
+		}
+		return result
+	}
+
+	// 排序（按权重降序）
+	sort.Sort(candidate.CandidateList(candidates))
+
+	// 限制数量
+	if maxCandidates > 0 && len(candidates) > maxCandidates {
+		candidates = candidates[:maxCandidates]
+	}
+
+	result.Candidates = candidates
+
+	// 检查自动上屏条件
+	e.checkAutoCommit(result, input, candidates)
+
+	return result
+}
+
+// checkAutoCommit 检查是否满足自动上屏条件
+func (e *Engine) checkAutoCommit(result *ConvertResult, input string, candidates []candidate.Candidate) {
+	if len(candidates) == 0 {
+		return
+	}
+
+	inputLen := len(input)
+
+	switch e.config.AutoCommit {
+	case AutoCommitUnique:
+		// 候选唯一时上屏
+		if len(candidates) == 1 {
+			result.ShouldCommit = true
+			result.CommitText = candidates[0].Text
+		}
+
+	case AutoCommitUniqueAt4:
+		// 四码唯一时上屏
+		if inputLen >= e.config.MaxCodeLength && len(candidates) == 1 {
+			result.ShouldCommit = true
+			result.CommitText = candidates[0].Text
+		}
+
+	case AutoCommitUniqueFullMatch:
+		// 编码完整匹配且唯一时上屏
+		exactMatch := e.codeTable.Lookup(input)
+		if len(exactMatch) == 1 {
+			result.ShouldCommit = true
+			result.CommitText = exactMatch[0].Text
+		}
+	}
+}
+
+// HandleTopCode 处理顶码（五码顶字）
+// 当输入第五码时，自动上屏首选并将第五码作为新输入
+func (e *Engine) HandleTopCode(input string) (commitText string, newInput string, shouldCommit bool) {
+	if !e.config.TopCodeCommit {
+		return "", input, false
+	}
+
+	if len(input) <= e.config.MaxCodeLength {
+		return "", input, false
+	}
+
+	// 取前四码的首选
+	prefix := input[:e.config.MaxCodeLength]
+	candidates := e.codeTable.Lookup(prefix)
+	if len(candidates) == 0 {
+		candidates = e.codeTable.LookupPrefix(prefix)
+	}
+
+	if len(candidates) > 0 {
+		sort.Sort(candidate.CandidateList(candidates))
+		return candidates[0].Text, input[e.config.MaxCodeLength:], true
+	}
+
+	return "", input, false
+}
+
+// Reset 重置引擎状态
+func (e *Engine) Reset() {
+	// 五笔引擎无状态，无需重置
+}
+
+// Type 返回引擎类型
+func (e *Engine) Type() string {
+	return "wubi"
+}
+
+// GetConfig 获取配置
+func (e *Engine) GetConfig() *Config {
+	return e.config
+}
+
+// SetConfig 设置配置
+func (e *Engine) SetConfig(config *Config) {
+	e.config = config
+}
+
+// GetCodeTableInfo 获取码表信息
+func (e *Engine) GetCodeTableInfo() *dict.CodeTableHeader {
+	if e.codeTable == nil {
+		return nil
+	}
+	header := e.codeTable.Header
+	return &header
+}
+
+// GetEntryCount 获取词条数量
+func (e *Engine) GetEntryCount() int {
+	if e.codeTable == nil {
+		return 0
+	}
+	return e.codeTable.EntryCount()
+}

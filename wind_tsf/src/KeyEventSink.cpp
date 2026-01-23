@@ -275,21 +275,29 @@ BOOL CKeyEventSink::_IsKeyWeShouldHandle(WPARAM wParam)
 
     // If Ctrl or Alt is pressed with any key, don't intercept
     // This allows Ctrl+C, Ctrl+V, Alt+Tab, etc. to work
+    // Exception: Ctrl+` (VK_OEM_3 = 0xC0) for engine switching
     if (modifiers & (KEY_MOD_CTRL | KEY_MOD_ALT))
     {
+        // Allow Ctrl+` for engine switching
+        if ((modifiers & KEY_MOD_CTRL) && !(modifiers & KEY_MOD_ALT) && wParam == VK_OEM_3)
+        {
+            return TRUE;
+        }
         return FALSE;
     }
 
     // Always handle when composing
     if (_isComposing)
     {
-        // Handle letters, numbers, backspace, enter, escape, space
+        // Handle letters, numbers, backspace, enter, escape, space, and page keys
         if ((wParam >= 'A' && wParam <= 'Z') ||
             (wParam >= '1' && wParam <= '9') ||
             wParam == VK_BACK ||
             wParam == VK_RETURN ||
             wParam == VK_ESCAPE ||
-            wParam == VK_SPACE)
+            wParam == VK_SPACE ||
+            wParam == VK_OEM_MINUS ||  // - key for page up
+            wParam == VK_OEM_PLUS)     // = key for page down
         {
             return TRUE;
         }
@@ -378,6 +386,18 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
     {
         key = L"shift";
     }
+    else if (wParam == VK_OEM_3)  // ` key (backtick/tilde)
+    {
+        key = L"`";
+    }
+    else if (wParam == VK_OEM_MINUS)  // - key for page up
+    {
+        key = L"page_up";
+    }
+    else if (wParam == VK_OEM_PLUS)  // = key for page down
+    {
+        key = L"page_down";
+    }
     else
     {
         return FALSE;
@@ -442,6 +462,8 @@ void CKeyEventSink::_HandleServiceResponse()
 
     case ResponseType::ModeChanged:
         OutputDebugStringW(L"[WindInput] Received ModeChanged from service\n");
+        // Clear composing state when mode changes
+        _isComposing = FALSE;
         // Update local mode state and language bar icon
         _pTextService->SetInputMode(response.chineseMode);
         break;

@@ -19,6 +19,7 @@ const (
 type Config struct {
 	General    GeneralConfig    `yaml:"general"`
 	Dictionary DictionaryConfig `yaml:"dictionary"`
+	Engine     EngineConfig     `yaml:"engine"`
 	Hotkeys    HotkeyConfig     `yaml:"hotkeys"`
 	UI         UIConfig         `yaml:"ui"`
 }
@@ -33,11 +34,33 @@ type GeneralConfig struct {
 type DictionaryConfig struct {
 	SystemDict string `yaml:"system_dict"`
 	UserDict   string `yaml:"user_dict"`
+	PinyinDict string `yaml:"pinyin_dict"` // 拼音词库（用于反查）
+}
+
+// EngineConfig 引擎配置
+type EngineConfig struct {
+	Type   string       `yaml:"type"` // pinyin / wubi
+	Pinyin PinyinConfig `yaml:"pinyin"`
+	Wubi   WubiConfig   `yaml:"wubi"`
+}
+
+// PinyinConfig 拼音引擎配置
+type PinyinConfig struct {
+	ShowWubiHint bool `yaml:"show_wubi_hint"` // 显示五笔编码提示（反查）
+}
+
+// WubiConfig 五笔引擎配置
+type WubiConfig struct {
+	AutoCommit    string `yaml:"auto_commit"`     // none / unique / unique_at_4 / unique_full_match
+	EmptyCode     string `yaml:"empty_code"`      // none / clear / clear_at_4 / to_english
+	TopCodeCommit bool   `yaml:"top_code_commit"` // 五码顶字上屏
+	PunctCommit   bool   `yaml:"punct_commit"`    // 标点顶字上屏
 }
 
 // HotkeyConfig contains hotkey settings
 type HotkeyConfig struct {
-	ToggleMode string `yaml:"toggle_mode"` // "shift", "ctrl+space", etc.
+	ToggleMode   string `yaml:"toggle_mode"`   // "shift", "ctrl+space", etc.
+	SwitchEngine string `yaml:"switch_engine"` // "ctrl+`", "ctrl+shift+e", etc.
 }
 
 // UIConfig contains UI settings
@@ -55,11 +78,25 @@ func DefaultConfig() *Config {
 			LogLevel:           "info",
 		},
 		Dictionary: DictionaryConfig{
-			SystemDict: "dict/pinyin/base.txt",
+			SystemDict: "dict/pinyin/pinyin.txt",
 			UserDict:   UserDictFile,
+			PinyinDict: "dict/pinyin/pinyin.txt",
+		},
+		Engine: EngineConfig{
+			Type: "pinyin",
+			Pinyin: PinyinConfig{
+				ShowWubiHint: true, // 默认显示五笔编码提示
+			},
+			Wubi: WubiConfig{
+				AutoCommit:    "unique_at_4",
+				EmptyCode:     "clear_at_4",
+				TopCodeCommit: true,
+				PunctCommit:   true,
+			},
 		},
 		Hotkeys: HotkeyConfig{
-			ToggleMode: "shift",
+			ToggleMode:   "shift",
+			SwitchEngine: "ctrl+`",
 		},
 		UI: UIConfig{
 			FontSize:          18,
@@ -157,4 +194,34 @@ func Save(config *Config) error {
 // SaveDefault saves the default configuration to file
 func SaveDefault() error {
 	return Save(DefaultConfig())
+}
+
+// UpdateEngineType updates the engine type in config and saves
+func UpdateEngineType(engineType string) error {
+	cfg, err := Load()
+	if err != nil {
+		cfg = DefaultConfig()
+	}
+
+	cfg.Engine.Type = engineType
+
+	// Update system dict based on engine type
+	switch engineType {
+	case "wubi":
+		cfg.Dictionary.SystemDict = "dict/wubi/wubi86.txt"
+	case "pinyin":
+		cfg.Dictionary.SystemDict = "dict/pinyin/pinyin.txt"
+	}
+
+	return Save(cfg)
+}
+
+// GetWubiDictPath returns the path to the wubi dictionary
+func GetWubiDictPath() string {
+	return "dict/wubi/wubi86.txt"
+}
+
+// GetPinyinDictPath returns the path to the pinyin dictionary
+func GetPinyinDictPath() string {
+	return "dict/pinyin/pinyin.txt"
 }

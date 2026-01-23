@@ -329,3 +329,12 @@ func (m *Manager) doShowModeIndicator(mode string, x, y int) {
 		m.Hide() // Use public method which goes through channel
 	}()
 }
+
+// UpdateConfig 更新 UI 配置（热更新）
+func (m *Manager) UpdateConfig(fontSize float64, fontPath string) {
+	// 更新渲染器的字体设置
+	if m.renderer != nil {
+		m.renderer.UpdateFont(fontSize, fontPath)
+	}
+	m.logger.Info("UI config updated", "fontSize", fontSize, "fontPath", fontPath)
+}

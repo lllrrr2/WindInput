@@ -12,8 +12,9 @@ import (
 
 // SimpleDict 简单的词库实现（使用 map）
 type SimpleDict struct {
-	entries map[string][]candidate.Candidate // pinyin -> candidates
-	phrases map[string][]candidate.Candidate // joined syllables -> candidates
+	entries    map[string][]candidate.Candidate // pinyin -> candidates
+	phrases    map[string][]candidate.Candidate // joined syllables -> candidates
+	entryCount int                              // 总词条数
 }
 
 // NewSimpleDict 创建简单词库
@@ -35,10 +36,9 @@ func (d *SimpleDict) Load(path string) error {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	lineNum := 0
+	entryOrder := 0
 
 	for scanner.Scan() {
-		lineNum++
 		line := strings.TrimSpace(scanner.Text())
 
 		// 跳过空行和注释
@@ -46,19 +46,40 @@ func (d *SimpleDict) Load(path string) error {
 			continue
 		}
 
-		// 解析行
-		parts := strings.Fields(line)
+		// 跳过码表头部标记
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			continue
+		}
+
+		// 解析行（支持 tab 或空格分隔）
+		var parts []string
+		if strings.Contains(line, "\t") {
+			parts = strings.Split(line, "\t")
+		} else {
+			parts = strings.Fields(line)
+		}
 		if len(parts) < 2 {
 			continue
 		}
 
-		pinyin := parts[0]
-		text := parts[1]
-		weight := 50 // 默认权重
+		pinyin := strings.TrimSpace(parts[0])
+		text := strings.TrimSpace(parts[1])
 
+		// 解析权重：如果有显式权重则使用，否则按文件顺序递减
+		weight := 0
+		hasExplicitWeight := false
 		if len(parts) >= 3 {
-			if w, err := strconv.Atoi(parts[2]); err == nil {
+			if w, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil {
 				weight = w
+				hasExplicitWeight = true
+			}
+		}
+
+		// 如果没有显式权重，使用递减的顺序权重
+		if !hasExplicitWeight {
+			weight = 1000000 - entryOrder
+			if weight < 0 {
+				weight = 0
 			}
 		}
 
@@ -70,7 +91,10 @@ func (d *SimpleDict) Load(path string) error {
 		}
 
 		d.entries[pinyin] = append(d.entries[pinyin], cand)
+		entryOrder++
 	}
+
+	d.entryCount = entryOrder
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("failed to read dict file: %w", err)
@@ -86,8 +110,15 @@ func (d *SimpleDict) Lookup(pinyin string) []candidate.Candidate {
 }
 
 // LookupPhrase 查找短语
+// syllables 是音节列表，如 ["ni", "hao"]
+// 会拼接成 "nihao" 在 entries 中查找
 func (d *SimpleDict) LookupPhrase(syllables []string) []candidate.Candidate {
-	key := strings.Join(syllables, "")
+	key := strings.ToLower(strings.Join(syllables, ""))
+	// 优先从 entries 查找（词库中的词组是以完整拼音为 key 存储的）
+	if results := d.entries[key]; len(results) > 0 {
+		return results
+	}
+	// 回退到 phrases（用于手动添加的短语）
 	return d.phrases[key]
 }
 
@@ -110,4 +141,9 @@ func (d *SimpleDict) AddPhrase(syllables []string, text string, weight int) {
 		Weight: weight,
 	}
 	d.phrases[key] = append(d.phrases[key], cand)
+}
+
+// EntryCount 返回词条数量
+func (d *SimpleDict) EntryCount() int {
+	return d.entryCount
 }

@@ -3,8 +3,10 @@ package candidate
 // Candidate 候选词
 type Candidate struct {
 	Text   string // 候选文字
-	Pinyin string // 拼音
+	Pinyin string // 拼音（兼容旧代码）
+	Code   string // 通用编码（五笔/拼音等）
 	Weight int    // 权重（用于排序）
+	Hint   string // 提示信息（如反查时显示的编码）
 }
 
 // CandidateList 候选词列表

@@ -65,6 +65,20 @@ func (r *Renderer) SetFontPath(path string) {
 	r.fontPath = path
 }
 
+// UpdateFont updates font settings
+func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
+	scale := GetDPIScale()
+
+	if fontSize > 0 {
+		r.config.FontSize = fontSize * scale
+		r.config.IndexFontSize = (fontSize - 4) * scale
+	}
+
+	if fontPath != "" {
+		r.fontPath = fontPath
+	}
+}
+
 // RenderCandidates renders candidates to an image
 func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, totalPages int) *image.RGBA {
 	cfg := r.config
