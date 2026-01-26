@@ -195,14 +195,34 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
             _pLangBarItemButton->ForceRefresh();
         }
 
-        // Send focus_gained to service (for toolbar display)
-        if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
-        {
-            _pIPCClient->SendFocusGained();
+        // Get caret position for toolbar placement
+        LONG caretX = 0, caretY = 0, caretHeight = 0;
+        GetCaretPosition(&caretX, &caretY, &caretHeight);
 
-            // Receive response to keep protocol in sync
-            ServiceResponse response;
-            _pIPCClient->ReceiveResponse(response);
+        // Send focus_gained to service (for toolbar display)
+        // Will try to connect if not already connected
+        if (_pIPCClient != nullptr)
+        {
+            if (_pIPCClient->SendFocusGained(caretX, caretY, caretHeight))
+            {
+                // Receive response - may be StatusUpdate with current state
+                ServiceResponse response;
+                if (_pIPCClient->ReceiveResponse(response))
+                {
+                    // If we got a status update, sync our state with the service
+                    if (response.type == ResponseType::StatusUpdate)
+                    {
+                        _bChineseMode = response.chineseMode;
+                        OutputDebugStringW(L"[WindInput] Synced state from focus_gained response\n");
+
+                        // Update language bar button
+                        if (_pLangBarItemButton != nullptr)
+                        {
+                            _pLangBarItemButton->UpdateLangBarButton(_bChineseMode);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -343,6 +363,12 @@ BOOL CTextService::InsertText(const std::wstring& text)
     return TRUE;
 }
 
+// Static variables to track last known good caret position
+static LONG s_lastCaretX = 0;
+static LONG s_lastCaretY = 0;
+static LONG s_lastCaretHeight = 20;
+static BOOL s_hasLastCaretPos = FALSE;
+
 BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
 {
     // Method 1: Try to get caret position from the GUI thread info
@@ -361,14 +387,24 @@ BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
             // Convert from client coordinates to screen coordinates
             ClientToScreen(guiInfo.hwndCaret, &caretPos);
 
-            *px = caretPos.x;
-            *py = caretPos.y;
-            *pHeight = guiInfo.rcCaret.bottom - guiInfo.rcCaret.top;
+            // Validate position (not at origin, which usually means failure)
+            if (caretPos.x > 0 || caretPos.y > 0)
+            {
+                *px = caretPos.x;
+                *py = caretPos.y;
+                *pHeight = guiInfo.rcCaret.bottom - guiInfo.rcCaret.top;
 
-            if (*pHeight <= 0)
-                *pHeight = 20;  // Default caret height
+                if (*pHeight <= 0)
+                    *pHeight = 20;  // Default caret height
 
-            return TRUE;
+                // Save as last known good position
+                s_lastCaretX = *px;
+                s_lastCaretY = *py;
+                s_lastCaretHeight = *pHeight;
+                s_hasLastCaretPos = TRUE;
+
+                return TRUE;
+            }
         }
     }
 
@@ -381,12 +417,63 @@ BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
         if (hwnd != nullptr)
         {
             ClientToScreen(hwnd, &pt);
-            *px = pt.x;
-            *py = pt.y + 20;  // Estimate caret height
+
+            // Validate position
+            if (pt.x > 0 || pt.y > 0)
+            {
+                *px = pt.x;
+                *py = pt.y + 20;  // Estimate caret height
+                *pHeight = 20;
+
+                // Save as last known good position
+                s_lastCaretX = *px;
+                s_lastCaretY = *py;
+                s_lastCaretHeight = *pHeight;
+                s_hasLastCaretPos = TRUE;
+
+                return TRUE;
+            }
+        }
+    }
+
+    // Method 3: For browsers/WebView2, try to get focus window position
+    // Browsers often don't expose caret position properly, so we use the focus window
+    HWND hwndFocus = GetForegroundWindow();
+    if (hwndFocus != nullptr)
+    {
+        RECT rc;
+        if (GetWindowRect(hwndFocus, &rc))
+        {
+            // If we have a last known position within this window, use it
+            if (s_hasLastCaretPos &&
+                s_lastCaretX >= rc.left && s_lastCaretX <= rc.right &&
+                s_lastCaretY >= rc.top && s_lastCaretY <= rc.bottom)
+            {
+                *px = s_lastCaretX;
+                *py = s_lastCaretY;
+                *pHeight = s_lastCaretHeight;
+                return TRUE;
+            }
+
+            // Otherwise, position near the center-left of the window
+            // This is a fallback for browsers that don't report caret position
+            *px = rc.left + 100;  // Some offset from left edge
+            *py = rc.top + (rc.bottom - rc.top) / 2;  // Vertical center
             *pHeight = 20;
 
+            OutputDebugStringW(L"[WindInput] GetCaretPosition: Using window position fallback\n");
             return TRUE;
         }
+    }
+
+    // Method 4: Use last known good position if available
+    if (s_hasLastCaretPos)
+    {
+        *px = s_lastCaretX;
+        *py = s_lastCaretY;
+        *pHeight = s_lastCaretHeight;
+        OutputDebugStringW(L"[WindInput] GetCaretPosition: Using last known position\n");
+        return TRUE;
     }
 
     OutputDebugStringW(L"[WindInput] GetCaretPosition: Failed to get caret position\n");

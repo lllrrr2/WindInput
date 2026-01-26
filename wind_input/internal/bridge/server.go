@@ -33,11 +33,12 @@ type KeyEventResult struct {
 type MessageHandler interface {
 	HandleKeyEvent(data KeyEventData) *KeyEventResult
 	HandleCaretUpdate(data CaretData) error
-	HandleFocusLost()                                  // Called when focus is lost
-	HandleFocusGained()                                // Called when focus is gained
-	HandleToggleMode() bool                            // Called when mode toggle requested, returns new chineseMode state
-	HandleCapsLockState(on bool)                       // Called when Caps Lock state changes, shows A/a indicator
+	HandleFocusLost()                                   // Called when focus is lost
+	HandleFocusGained() *StatusUpdateData               // Called when focus is gained, returns current status
+	HandleToggleMode() bool                             // Called when mode toggle requested, returns new chineseMode state
+	HandleCapsLockState(on bool)                        // Called when Caps Lock state changes, shows A/a indicator
 	HandleMenuCommand(command string) *StatusUpdateData // Called when menu command received
+	HandleClientDisconnected(activeClients int)         // Called when a client disconnects, with remaining active count
 }
 
 // Server handles IPC communication with C++ TSF Bridge
@@ -122,7 +123,11 @@ func (s *Server) Start() error {
 
 			s.mu.Lock()
 			delete(s.activeHandles, h)
+			activeCount := len(s.activeHandles)
 			s.mu.Unlock()
+
+			// Notify handler that a client disconnected
+			s.handler.HandleClientDisconnected(activeCount)
 		}(handle, clientID)
 	}
 }
@@ -325,7 +330,25 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 		return &Response{Type: ResponseTypeAck}
 
 	case RequestTypeFocusGained:
-		s.handler.HandleFocusGained()
+		// Parse optional caret data from focus_gained
+		var focusData struct {
+			Caret *CaretData `json:"caret,omitempty"`
+		}
+		if len(request.Data) > 0 {
+			if err := json.Unmarshal(request.Data, &focusData); err == nil && focusData.Caret != nil {
+				s.logger.Debug("Focus gained with caret", "x", focusData.Caret.X, "y", focusData.Caret.Y)
+				// Update caret position before handling focus
+				s.handler.HandleCaretUpdate(*focusData.Caret)
+			}
+		}
+
+		statusUpdate := s.handler.HandleFocusGained()
+		if statusUpdate != nil {
+			return &Response{
+				Type: ResponseTypeStatusUpdate,
+				Data: statusUpdate,
+			}
+		}
 		return &Response{Type: ResponseTypeAck}
 
 	case RequestTypeCaretUpdate:

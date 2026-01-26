@@ -96,7 +96,8 @@ public:
     BOOL SendFocusLost();
 
     // Send focus gained notification (for toolbar display)
-    BOOL SendFocusGained();
+    // Includes caret position so service knows which screen to show toolbar on
+    BOOL SendFocusGained(LONG caretX = 0, LONG caretY = 0, LONG caretHeight = 0);
 
     // Send toggle mode request
     BOOL SendToggleMode();

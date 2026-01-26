@@ -84,9 +84,11 @@ type ToolbarConfig struct {
 
 // InputConfig contains input behavior settings
 type InputConfig struct {
-	FullWidth          bool `yaml:"full_width" json:"full_width"`                       // 全角模式
-	ChinesePunctuation bool `yaml:"chinese_punctuation" json:"chinese_punctuation"`     // 中文标点
-	PunctFollowMode    bool `yaml:"punct_follow_mode" json:"punct_follow_mode"`         // 标点随中英文切换
+	FullWidth          bool   `yaml:"full_width" json:"full_width"`                       // 全角模式
+	ChinesePunctuation bool   `yaml:"chinese_punctuation" json:"chinese_punctuation"`     // 中文标点
+	PunctFollowMode    bool   `yaml:"punct_follow_mode" json:"punct_follow_mode"`         // 标点随中英文切换
+	SelectKey2         string `yaml:"select_key_2" json:"select_key_2"`                   // 第2候选选择键: "semicolon"(;), "comma"(,), "lshift", "lctrl", "none"
+	SelectKey3         string `yaml:"select_key_3" json:"select_key_3"`                   // 第3候选选择键: "quote"('), "period"(.), "rshift", "rctrl", "none"
 }
 
 // DefaultConfig returns the default configuration
@@ -131,9 +133,11 @@ func DefaultConfig() *Config {
 			PositionY: 0,
 		},
 		Input: InputConfig{
-			FullWidth:          false, // 默认半角
-			ChinesePunctuation: true,  // 默认中文标点
-			PunctFollowMode:    false, // 默认不跟随模式切换（可在设置中启用）
+			FullWidth:          false,      // 默认半角
+			ChinesePunctuation: true,       // 默认中文标点
+			PunctFollowMode:    false,      // 默认不跟随模式切换（可在设置中启用）
+			SelectKey2:         "semicolon", // 默认分号选第2候选
+			SelectKey3:         "quote",     // 默认引号选第3候选
 		},
 	}
 }

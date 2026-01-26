@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"os"
@@ -181,6 +182,18 @@ func main() {
 		Level: level,
 	})
 
+	// 创建文件日志 handler（日志文件在 %APPDATA%\WindInput\wind_input.log）
+	var fileHandler slog.Handler
+	logDir := filepath.Join(os.Getenv("APPDATA"), "WindInput")
+	os.MkdirAll(logDir, 0755)
+	logFilePath := filepath.Join(logDir, "wind_input.log")
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err == nil {
+		fileHandler = slog.NewTextHandler(logFile, &slog.HandlerOptions{
+			Level: level,
+		})
+	}
+
 	// 先创建 settings server 以获取 LogHandler（稍后会注册完整的 services）
 	tempLogger := slog.New(stdoutHandler)
 	settingsServer := settings.NewServer(tempLogger)
@@ -188,7 +201,13 @@ func main() {
 	// 创建包含 LogHandler 的自定义 slog handler
 	logHandler := settingsServer.GetLogHandler()
 	customHandler := settings.NewSlogHandler(logHandler, stdoutHandler, level)
-	logger := slog.New(customHandler)
+	// 如果有文件 handler，用 MultiHandler 包装
+	var logger *slog.Logger
+	if fileHandler != nil {
+		logger = slog.New(newMultiHandler(customHandler, fileHandler))
+	} else {
+		logger = slog.New(customHandler)
+	}
 	slog.SetDefault(logger)
 
 	logger.Info("WindInput IME Service starting...")
@@ -332,4 +351,47 @@ func main() {
 		logger.Error("Bridge server failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// multiHandler wraps multiple slog handlers
+type multiHandler struct {
+	handlers []slog.Handler
+}
+
+func newMultiHandler(handlers ...slog.Handler) *multiHandler {
+	return &multiHandler{handlers: handlers}
+}
+
+func (h *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, handler := range h.handlers {
+		if handler.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *multiHandler) Handle(ctx context.Context, r slog.Record) error {
+	for _, handler := range h.handlers {
+		if handler.Enabled(ctx, r.Level) {
+			handler.Handle(ctx, r)
+		}
+	}
+	return nil
+}
+
+func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	newHandlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		newHandlers[i] = handler.WithAttrs(attrs)
+	}
+	return newMultiHandler(newHandlers...)
+}
+
+func (h *multiHandler) WithGroup(name string) slog.Handler {
+	newHandlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		newHandlers[i] = handler.WithGroup(name)
+	}
+	return newMultiHandler(newHandlers...)
 }

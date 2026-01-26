@@ -407,6 +407,28 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 		return c.handleNumberKey(int(key[0] - '0'))
 
+	case c.isSelectKey2(key, data.KeyCode):
+		// Handle 2nd candidate selection key (e.g., semicolon)
+		if len(c.candidates) >= 2 && len(c.inputBuffer) > 0 {
+			return c.selectCandidate(1) // Select 2nd candidate (index 1)
+		}
+		// If no candidates, treat as punctuation
+		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
+			return c.handlePunctuation(rune(key[0]))
+		}
+		return nil
+
+	case c.isSelectKey3(key, data.KeyCode):
+		// Handle 3rd candidate selection key (e.g., quote)
+		if len(c.candidates) >= 3 && len(c.inputBuffer) > 0 {
+			return c.selectCandidate(2) // Select 3rd candidate (index 2)
+		}
+		// If no candidates, treat as punctuation
+		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
+			return c.handlePunctuation(rune(key[0]))
+		}
+		return nil
+
 	case len(key) == 1 && c.isPunctuation(rune(key[0])):
 		return c.handlePunctuation(rune(key[0]))
 
@@ -801,12 +823,42 @@ func (c *Coordinator) HandleFocusLost() {
 	c.clearState()
 }
 
-// HandleFocusGained handles focus gained events
-func (c *Coordinator) HandleFocusGained() {
+// HandleClientDisconnected handles TSF client disconnection
+// When all clients disconnect (activeClients == 0), hide the toolbar
+func (c *Coordinator) HandleClientDisconnected(activeClients int) {
+	c.logger.Debug("Client disconnected", "activeClients", activeClients)
+
+	if activeClients == 0 {
+		c.logger.Info("All TSF clients disconnected, hiding toolbar")
+		c.mu.Lock()
+		c.imeActivated = false
+		c.mu.Unlock()
+
+		// Hide toolbar and candidate window
+		if c.uiManager != nil {
+			c.uiManager.SetToolbarVisible(false)
+			c.uiManager.Hide()
+		}
+	}
+}
+
+// HandleFocusGained handles focus gained events and returns current status
+func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
 	c.logger.Debug("Focus gained")
 
 	// Set IME as activated (this will show toolbar if enabled)
 	c.SetIMEActivated(true)
+
+	// Return current status so TSF can sync state
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return &bridge.StatusUpdateData{
+		ChineseMode:        c.chineseMode,
+		FullWidth:          c.fullWidth,
+		ChinesePunctuation: c.chinesePunctuation,
+		ToolbarVisible:     c.toolbarVisible,
+		CapsLock:           ui.GetCapsLockState(),
+	}
 }
 
 // HandleToggleMode toggles the input mode and returns the new state
@@ -994,15 +1046,15 @@ func (c *Coordinator) UpdateToolbarConfig(toolbarConfig *config.ToolbarConfig) {
 
 	// 通知 UI Manager 更新工具栏状态
 	if c.uiManager != nil {
-		c.uiManager.SetToolbarVisible(c.toolbarVisible)
-		if c.toolbarVisible {
-			c.uiManager.SetToolbarPosition(toolbarConfig.PositionX, toolbarConfig.PositionY)
-			c.uiManager.UpdateToolbarState(ui.ToolbarState{
-				ChineseMode:   c.chineseMode,
-				FullWidth:     c.fullWidth,
-				ChinesePunct:  c.chinesePunctuation,
-				CapsLock:      ui.GetCapsLockState(),
+		if c.toolbarVisible && c.imeActivated {
+			c.uiManager.ShowToolbarWithState(toolbarConfig.PositionX, toolbarConfig.PositionY, ui.ToolbarState{
+				ChineseMode:  c.chineseMode,
+				FullWidth:    c.fullWidth,
+				ChinesePunct: c.chinesePunctuation,
+				CapsLock:     ui.GetCapsLockState(),
 			})
+		} else {
+			c.uiManager.SetToolbarVisible(false)
 		}
 	}
 
@@ -1059,12 +1111,9 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.imeActivated == activated {
-		return // No change
-	}
-
+	wasActivated := c.imeActivated
 	c.imeActivated = activated
-	c.logger.Debug("IME activation changed", "activated", activated)
+	c.logger.Debug("IME activation", "activated", activated, "wasActivated", wasActivated)
 
 	if c.uiManager == nil {
 		return
@@ -1073,26 +1122,34 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 	if activated {
 		// IME activated - show toolbar if enabled
 		if c.toolbarVisible {
-			c.uiManager.SetToolbarVisible(true)
-			// Load position from config, or calculate default position if (0, 0)
-			if c.config != nil {
-				posX := c.config.Toolbar.PositionX
-				posY := c.config.Toolbar.PositionY
-				// If position is (0, 0), calculate default position (bottom-right corner)
-				if posX == 0 && posY == 0 {
-					toolbarWidth, toolbarHeight := 140, 30 // Base size, will be scaled by DPI
-					posX, posY = ui.GetDefaultToolbarPosition(
-						ui.ScaleIntForDPI(toolbarWidth),
-						ui.ScaleIntForDPI(toolbarHeight),
-					)
-					// Save the calculated position
-					c.config.Toolbar.PositionX = posX
-					c.config.Toolbar.PositionY = posY
-					c.logger.Debug("Auto-calculated toolbar position", "x", posX, "y", posY)
-				}
-				c.uiManager.SetToolbarPosition(posX, posY)
+			// Always recalculate toolbar position based on current caret/focus position
+			// This ensures toolbar follows the active screen when switching between apps
+			toolbarWidth, toolbarHeight := 140, 30 // Base size, will be scaled by DPI
+			var posX, posY int
+
+			// Use caret position to determine which monitor to show toolbar on
+			if c.caretX > 0 || c.caretY > 0 {
+				posX, posY = ui.GetToolbarPositionForCaret(
+					c.caretX, c.caretY,
+					ui.ScaleIntForDPI(toolbarWidth),
+					ui.ScaleIntForDPI(toolbarHeight),
+				)
+			} else {
+				// No valid caret position yet, use mouse position as fallback
+				posX, posY = ui.GetDefaultToolbarPosition(
+					ui.ScaleIntForDPI(toolbarWidth),
+					ui.ScaleIntForDPI(toolbarHeight),
+				)
 			}
-			c.syncToolbarState()
+			c.logger.Debug("Toolbar position calculated", "x", posX, "y", posY, "caretX", c.caretX, "caretY", c.caretY)
+
+			// Show toolbar with position and state in one atomic operation
+			c.uiManager.ShowToolbarWithState(posX, posY, ui.ToolbarState{
+				ChineseMode:  c.chineseMode,
+				FullWidth:    c.fullWidth,
+				ChinesePunct: c.chinesePunctuation,
+				CapsLock:     ui.GetCapsLockState(),
+			})
 		}
 	} else {
 		// IME deactivated - always hide toolbar
@@ -1168,7 +1225,31 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 
 		// Update UI
 		if c.uiManager != nil {
-			c.uiManager.SetToolbarVisible(c.toolbarVisible)
+			if c.toolbarVisible && c.imeActivated {
+				// Calculate position based on current caret
+				toolbarWidth, toolbarHeight := 140, 30
+				var posX, posY int
+				if c.caretX > 0 || c.caretY > 0 {
+					posX, posY = ui.GetToolbarPositionForCaret(
+						c.caretX, c.caretY,
+						ui.ScaleIntForDPI(toolbarWidth),
+						ui.ScaleIntForDPI(toolbarHeight),
+					)
+				} else {
+					posX, posY = ui.GetDefaultToolbarPosition(
+						ui.ScaleIntForDPI(toolbarWidth),
+						ui.ScaleIntForDPI(toolbarHeight),
+					)
+				}
+				c.uiManager.ShowToolbarWithState(posX, posY, ui.ToolbarState{
+					ChineseMode:  c.chineseMode,
+					FullWidth:    c.fullWidth,
+					ChinesePunct: c.chinesePunctuation,
+					CapsLock:     ui.GetCapsLockState(),
+				})
+			} else {
+				c.uiManager.SetToolbarVisible(false)
+			}
 		}
 
 		// Save to config
@@ -1311,6 +1392,46 @@ func (c *Coordinator) TransformPunctuation(r rune) (string, bool) {
 
 	// Use punctuation converter which handles paired punctuation (quotes)
 	return c.punctConverter.ToChinesePunctStr(r)
+}
+
+// isSelectKey2 checks if the key is configured as the 2nd candidate selection key
+func (c *Coordinator) isSelectKey2(key string, keyCode int) bool {
+	if c.config == nil {
+		return false
+	}
+	switch c.config.Input.SelectKey2 {
+	case "semicolon":
+		return key == ";" || keyCode == 186 // VK_OEM_1
+	case "comma":
+		return key == "," || keyCode == 188 // VK_OEM_COMMA
+	case "lshift":
+		return keyCode == 160 // VK_LSHIFT
+	case "lctrl":
+		return keyCode == 162 // VK_LCONTROL
+	case "none", "":
+		return false
+	}
+	return false
+}
+
+// isSelectKey3 checks if the key is configured as the 3rd candidate selection key
+func (c *Coordinator) isSelectKey3(key string, keyCode int) bool {
+	if c.config == nil {
+		return false
+	}
+	switch c.config.Input.SelectKey3 {
+	case "quote":
+		return key == "'" || keyCode == 222 // VK_OEM_7
+	case "period":
+		return key == "." || keyCode == 190 // VK_OEM_PERIOD
+	case "rshift":
+		return keyCode == 161 // VK_RSHIFT
+	case "rctrl":
+		return keyCode == 163 // VK_RCONTROL
+	case "none", "":
+		return false
+	}
+	return false
 }
 
 // isPunctuation checks if a character is a punctuation mark that can be converted

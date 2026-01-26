@@ -156,8 +156,9 @@ func (w *ToolbarWindow) Create() error {
 		w.logger.Warn("RegisterClassExW failed (may already exist)", "error", err)
 	}
 
-	// Create layered window (without WS_EX_NOACTIVATE so we can receive mouse events)
-	exStyle := uint32(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW)
+	// Create layered window with WS_EX_NOACTIVATE to prevent focus stealing
+	// Mouse events still work because we use SetCapture in handleMouseDown
+	exStyle := uint32(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
 	style := uint32(WS_POPUP)
 
 	// Initial size

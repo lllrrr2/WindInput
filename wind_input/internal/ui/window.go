@@ -569,17 +569,13 @@ const (
 	VK_CAPITAL               = 0x14 // CapsLock key
 )
 
-// GetCurrentMonitorWorkArea returns the work area (excluding taskbar) of the monitor
-// containing the mouse cursor. Returns (left, top, right, bottom).
-func GetCurrentMonitorWorkArea() (left, top, right, bottom int) {
-	// Get cursor position
-	var pt POINT
-	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
-
-	// Get monitor from cursor position
+// GetMonitorWorkAreaFromPoint returns the work area (excluding taskbar) of the monitor
+// containing the specified point. Returns (left, top, right, bottom).
+func GetMonitorWorkAreaFromPoint(x, y int) (left, top, right, bottom int) {
+	// Get monitor from specified position
 	hMonitor, _, _ := procMonitorFromPoint.Call(
-		uintptr(pt.X),
-		uintptr(pt.Y),
+		uintptr(x),
+		uintptr(y),
 		MONITOR_DEFAULTTONEAREST,
 	)
 
@@ -601,10 +597,41 @@ func GetCurrentMonitorWorkArea() (left, top, right, bottom int) {
 	return int(mi.RcWork.Left), int(mi.RcWork.Top), int(mi.RcWork.Right), int(mi.RcWork.Bottom)
 }
 
+// GetCurrentMonitorWorkArea returns the work area (excluding taskbar) of the monitor
+// containing the mouse cursor. Returns (left, top, right, bottom).
+func GetCurrentMonitorWorkArea() (left, top, right, bottom int) {
+	// Get cursor position
+	var pt POINT
+	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+
+	return GetMonitorWorkAreaFromPoint(int(pt.X), int(pt.Y))
+}
+
 // GetDefaultToolbarPosition returns the default position for the toolbar
 // (bottom-right corner of the current monitor's work area)
 func GetDefaultToolbarPosition(toolbarWidth, toolbarHeight int) (x, y int) {
 	left, top, right, bottom := GetCurrentMonitorWorkArea()
+
+	// Position at bottom-right corner with some margin
+	margin := 10
+	x = right - toolbarWidth - margin
+	y = bottom - toolbarHeight - margin
+
+	// Ensure position is within work area
+	if x < left {
+		x = left + margin
+	}
+	if y < top {
+		y = top + margin
+	}
+
+	return x, y
+}
+
+// GetToolbarPositionForCaret returns the toolbar position for the monitor containing the caret
+// (bottom-right corner of that monitor's work area)
+func GetToolbarPositionForCaret(caretX, caretY, toolbarWidth, toolbarHeight int) (x, y int) {
+	left, top, right, bottom := GetMonitorWorkAreaFromPoint(caretX, caretY)
 
 	// Position at bottom-right corner with some margin
 	margin := 10

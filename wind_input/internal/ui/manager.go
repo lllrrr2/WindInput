@@ -19,8 +19,10 @@ type UICommand struct {
 	Page       int
 	TotalPages int
 	ModeText   string
-	// Toolbar state
+	// Toolbar state and position
 	ToolbarState *ToolbarState
+	ToolbarX     int
+	ToolbarY     int
 }
 
 // Manager manages the candidate window UI
@@ -178,7 +180,7 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 	case "mode":
 		m.doShowModeIndicator(cmd.ModeText, cmd.X, cmd.Y)
 	case "toolbar_show":
-		m.doShowToolbar()
+		m.doShowToolbar(cmd)
 	case "toolbar_hide":
 		m.doHideToolbar()
 	case "toolbar_update":
@@ -392,18 +394,40 @@ func (m *Manager) SetToolbarVisible(visible bool) {
 	}
 	m.mu.Unlock()
 
-	cmdType := "toolbar_hide"
-	if visible {
-		cmdType = "toolbar_show"
+	if !visible {
+		select {
+		case m.cmdCh <- UICommand{Type: "toolbar_hide"}:
+			if m.cmdEvent != 0 {
+				SetEvent(m.cmdEvent)
+			}
+		default:
+			m.logger.Warn("UI command channel full, dropping toolbar hide command")
+		}
 	}
+	// For showing toolbar, use ShowToolbarWithState instead
+}
+
+// ShowToolbarWithState shows the toolbar with position and state in one atomic operation
+func (m *Manager) ShowToolbarWithState(x, y int, state ToolbarState) {
+	m.mu.Lock()
+	if !m.ready {
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Unlock()
 
 	select {
-	case m.cmdCh <- UICommand{Type: cmdType}:
+	case m.cmdCh <- UICommand{
+		Type:         "toolbar_show",
+		ToolbarX:     x,
+		ToolbarY:     y,
+		ToolbarState: &state,
+	}:
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
 		}
 	default:
-		m.logger.Warn("UI command channel full, dropping toolbar visibility command")
+		m.logger.Warn("UI command channel full, dropping toolbar show command")
 	}
 }
 
@@ -430,6 +454,8 @@ func (m *Manager) UpdateToolbarState(state ToolbarState) {
 func (m *Manager) SetToolbarPosition(x, y int) {
 	if m.toolbar != nil {
 		m.toolbar.SetPosition(x, y)
+		// Re-render to update layered window with new position
+		m.toolbar.Render()
 	}
 }
 
@@ -460,11 +486,27 @@ func (m *Manager) OpenSettings() {
 	}
 }
 
-// doShowToolbar shows the toolbar (called from UI thread)
-func (m *Manager) doShowToolbar() {
-	if m.toolbar != nil {
-		m.toolbar.Show()
+// doShowToolbar shows the toolbar with optional position and state (called from UI thread)
+func (m *Manager) doShowToolbar(cmd UICommand) {
+	if m.toolbar == nil {
+		return
 	}
+
+	// Set position if provided
+	if cmd.ToolbarX != 0 || cmd.ToolbarY != 0 {
+		m.toolbar.SetPosition(cmd.ToolbarX, cmd.ToolbarY)
+	}
+
+	// Set state if provided (before rendering)
+	if cmd.ToolbarState != nil {
+		m.toolbar.SetState(*cmd.ToolbarState)
+	} else {
+		// Just render with current state
+		m.toolbar.Render()
+	}
+
+	m.toolbar.Show()
+	m.logger.Debug("Toolbar shown", "x", cmd.ToolbarX, "y", cmd.ToolbarY)
 }
 
 // doHideToolbar hides the toolbar (called from UI thread)
@@ -483,33 +525,63 @@ func (m *Manager) doUpdateToolbar(state *ToolbarState) {
 
 // doOpenSettings opens the settings window (called from UI thread)
 func (m *Manager) doOpenSettings() {
-	m.logger.Info("Opening settings in browser")
+	m.logger.Info("Opening settings application")
 
-	// Open settings page in default browser
-	// Use "cmd /c start" on Windows to open URL in default browser
-	url := "http://127.0.0.1:18923"
-
-	// We need to use Windows ShellExecute or cmd /c start to open the browser
-	// Since we can't easily import os/exec in this context, we'll use the shell32.dll
+	// Try to launch wind_setting.exe
+	// First try the install directory, then fall back to current directory
 	shell32 := windows.NewLazySystemDLL("shell32.dll")
 	procShellExecuteW := shell32.NewProc("ShellExecuteW")
 
-	urlPtr, _ := windows.UTF16PtrFromString(url)
+	// Try paths in order of preference
+	paths := []string{
+		"C:\\Program Files\\WindInput\\wind_setting.exe",
+		"wind_setting.exe", // Current directory or PATH
+	}
+
 	openPtr, _ := windows.UTF16PtrFromString("open")
+	var lastRet uintptr
+	var lastErr error
+
+	for _, path := range paths {
+		pathPtr, _ := windows.UTF16PtrFromString(path)
+
+		ret, _, err := procShellExecuteW.Call(
+			0,                                // hwnd
+			uintptr(unsafe.Pointer(openPtr)), // lpOperation ("open")
+			uintptr(unsafe.Pointer(pathPtr)), // lpFile (path to exe)
+			0,                                // lpParameters
+			0,                                // lpDirectory
+			1,                                // nShowCmd (SW_SHOWNORMAL)
+		)
+
+		lastRet = ret
+		lastErr = err
+
+		// ShellExecuteW returns >32 on success
+		if ret > 32 {
+			m.logger.Info("Settings application launched successfully", "path", path)
+			return
+		}
+	}
+
+	// All paths failed, fall back to opening the web URL
+	m.logger.Warn("Failed to launch wind_setting.exe, falling back to web URL", "ret", lastRet, "error", lastErr)
+
+	url := "http://127.0.0.1:18923"
+	urlPtr, _ := windows.UTF16PtrFromString(url)
 
 	ret, _, err := procShellExecuteW.Call(
-		0,                             // hwnd
+		0,                                // hwnd
 		uintptr(unsafe.Pointer(openPtr)), // lpOperation ("open")
 		uintptr(unsafe.Pointer(urlPtr)),  // lpFile (URL)
-		0,                             // lpParameters
-		0,                             // lpDirectory
-		1,                             // nShowCmd (SW_SHOWNORMAL)
+		0,                                // lpParameters
+		0,                                // lpDirectory
+		1,                                // nShowCmd (SW_SHOWNORMAL)
 	)
 
-	// ShellExecuteW returns >32 on success
 	if ret <= 32 {
 		m.logger.Error("Failed to open settings URL", "error", err, "ret", ret)
 	} else {
-		m.logger.Info("Settings URL opened successfully")
+		m.logger.Info("Settings URL opened successfully (fallback)")
 	}
 }

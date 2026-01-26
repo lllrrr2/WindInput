@@ -513,16 +513,26 @@ BOOL CIPCClient::SendFocusLost()
     return _SendMessage(json);
 }
 
-BOOL CIPCClient::SendFocusGained()
+BOOL CIPCClient::SendFocusGained(LONG caretX, LONG caretY, LONG caretHeight)
 {
-    if (!IsConnected())
+    // Try to connect if not connected (important for first focus_gained)
+    if (!_ShouldAttemptOperation())
     {
         return FALSE;
     }
 
-    _LogDebug(L"Sending focus_gained");
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
 
-    std::wstring json = L"{\"type\":\"focus_gained\",\"data\":{}}";
+    _LogDebug(L"Sending focus_gained with caret: x=%ld, y=%ld, h=%ld", caretX, caretY, caretHeight);
+
+    // Include caret position so service knows which screen to show toolbar on
+    wchar_t buffer[256];
+    swprintf_s(buffer, L"{\"type\":\"focus_gained\",\"data\":{\"caret\":{\"x\":%ld,\"y\":%ld,\"height\":%ld}}}",
+               caretX, caretY, caretHeight);
+    std::wstring json = buffer;
     return _SendMessage(json);
 }
 
