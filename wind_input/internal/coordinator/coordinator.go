@@ -50,6 +50,7 @@ type Coordinator struct {
 	caretX      int
 	caretY      int
 	caretHeight int
+	caretValid  bool // true if we have received valid caret position (coordinates can be negative in multi-monitor)
 
 	// Last known valid window position (for fallback)
 	lastValidX int
@@ -806,6 +807,7 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 	c.caretX = data.X
 	c.caretY = data.Y
 	c.caretHeight = data.Height
+	c.caretValid = true // Mark that we have received valid caret position
 
 	c.logger.Debug("Caret position updated", "x", c.caretX, "y", c.caretY, "height", c.caretHeight)
 	return nil
@@ -1185,7 +1187,8 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 			var posX, posY int
 
 			// Use caret position to determine which monitor to show toolbar on
-			if c.caretX > 0 || c.caretY > 0 {
+			// Note: coordinates can be negative in multi-monitor setups, use caretValid flag
+			if c.caretValid {
 				posX, posY = ui.GetToolbarPositionForCaret(
 					c.caretX, c.caretY,
 					ui.ScaleIntForDPI(toolbarWidth),
@@ -1284,9 +1287,10 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 		if c.uiManager != nil {
 			if c.toolbarVisible && c.imeActivated {
 				// Calculate position based on current caret
+				// Note: coordinates can be negative in multi-monitor setups, use caretValid flag
 				toolbarWidth, toolbarHeight := 140, 30
 				var posX, posY int
-				if c.caretX > 0 || c.caretY > 0 {
+				if c.caretValid {
 					posX, posY = ui.GetToolbarPositionForCaret(
 						c.caretX, c.caretY,
 						ui.ScaleIntForDPI(toolbarWidth),

@@ -572,10 +572,14 @@ const (
 // GetMonitorWorkAreaFromPoint returns the work area (excluding taskbar) of the monitor
 // containing the specified point. Returns (left, top, right, bottom).
 func GetMonitorWorkAreaFromPoint(x, y int) (left, top, right, bottom int) {
-	// Get monitor from specified position
+	// MonitorFromPoint expects POINT struct packed into a single 64-bit value on x64 Windows ABI
+	// POINT struct: { LONG x, LONG y } = 8 bytes total
+	// In x64 calling convention, 8-byte structs are passed in a single register
+	// Low 32 bits = x, High 32 bits = y
+	pt := uintptr(uint32(x)) | (uintptr(uint32(y)) << 32)
+
 	hMonitor, _, _ := procMonitorFromPoint.Call(
-		uintptr(x),
-		uintptr(y),
+		pt,
 		MONITOR_DEFAULTTONEAREST,
 	)
 
