@@ -64,6 +64,17 @@ STDAPI CKeyEventSink::OnSetFocus(BOOL fForeground)
 
 STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lParam, BOOL* pfEaten)
 {
+    *pfEaten = FALSE;
+
+    // First check if the context is read-only (browser non-editable area)
+    // This is critical for allowing browser shortcuts (Space to scroll, etc.)
+    if (_IsContextReadOnly(pContext))
+    {
+        // Read-only context, don't intercept any keys
+        return S_OK;
+    }
+
+    // Normal key handling
     *pfEaten = _IsKeyWeShouldHandle(wParam);
     return S_OK;
 }
@@ -73,6 +84,7 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     *pfEaten = FALSE;
 
     // Special handling for Shift key (mode toggle on release)
+    // Note: We still handle Shift even in read-only context for mode switching
     if (wParam == VK_SHIFT)
     {
         // Check if this is a key repeat (bit 30 of lParam)
@@ -98,6 +110,13 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
 
     // Any other key cancels shift pending
     _shiftPending = FALSE;
+
+    // Check if context is read-only (browser non-editable area)
+    // Don't intercept keys in read-only areas to allow browser shortcuts
+    if (_IsContextReadOnly(pContext))
+    {
+        return S_OK;
+    }
 
     if (!_IsKeyWeShouldHandle(wParam))
     {
@@ -558,4 +577,78 @@ void CKeyEventSink::_HandleServiceResponse()
         OutputDebugStringW(L"[WindInput] Unknown response type from service\n");
         break;
     }
+}
+
+// Check if the current context is read-only (e.g., browser non-editable area)
+BOOL CKeyEventSink::_IsContextReadOnly(ITfContext* pContext)
+{
+    if (!pContext)
+    {
+        return TRUE;  // No context, treat as read-only for safety
+    }
+
+    TF_STATUS tfStatus = {};
+    HRESULT hr = pContext->GetStatus(&tfStatus);
+
+    if (SUCCEEDED(hr))
+    {
+        // Check if the dynamic flags indicate read-only
+        if (tfStatus.dwDynamicFlags & TF_SD_READONLY)
+        {
+            OutputDebugStringW(L"[WindInput] Context is read-only (TF_SD_READONLY)\n");
+            return TRUE;
+        }
+
+        // Also check for loading state (some apps set this temporarily)
+        if (tfStatus.dwDynamicFlags & TF_SD_LOADING)
+        {
+            OutputDebugStringW(L"[WindInput] Context is loading (TF_SD_LOADING)\n");
+            return TRUE;
+        }
+    }
+
+    return FALSE;  // Context is writable
+}
+
+// Check if the current process is a browser (Chrome, Edge, Firefox, etc.)
+BOOL CKeyEventSink::_IsCurrentProcessBrowser()
+{
+    static BOOL s_checked = FALSE;
+    static BOOL s_isBrowser = FALSE;
+
+    // Cache the result since process name doesn't change
+    if (s_checked)
+    {
+        return s_isBrowser;
+    }
+
+    s_checked = TRUE;
+    s_isBrowser = FALSE;
+
+    // Get current process executable name
+    wchar_t exePath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, exePath, MAX_PATH) > 0)
+    {
+        // Extract filename from path
+        wchar_t* fileName = wcsrchr(exePath, L'\\');
+        if (fileName)
+        {
+            fileName++;  // Skip the backslash
+
+            // Check against known browser process names (case-insensitive)
+            if (_wcsicmp(fileName, L"chrome.exe") == 0 ||
+                _wcsicmp(fileName, L"msedge.exe") == 0 ||
+                _wcsicmp(fileName, L"firefox.exe") == 0 ||
+                _wcsicmp(fileName, L"brave.exe") == 0 ||
+                _wcsicmp(fileName, L"opera.exe") == 0 ||
+                _wcsicmp(fileName, L"vivaldi.exe") == 0 ||
+                _wcsicmp(fileName, L"iexplore.exe") == 0)
+            {
+                s_isBrowser = TRUE;
+                OutputDebugStringW(L"[WindInput] Running in browser process\n");
+            }
+        }
+    }
+
+    return s_isBrowser;
 }

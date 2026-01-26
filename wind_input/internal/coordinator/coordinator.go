@@ -884,6 +884,16 @@ func (c *Coordinator) HandleToggleMode() bool {
 	// Show mode indicator
 	c.showModeIndicator()
 
+	// Update toolbar state to sync Chinese/English mode
+	if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
+		c.uiManager.UpdateToolbarState(ui.ToolbarState{
+			ChineseMode:  c.chineseMode,
+			FullWidth:    c.fullWidth,
+			ChinesePunct: c.chinesePunctuation,
+			CapsLock:     ui.GetCapsLockState(),
+		})
+	}
+
 	return c.chineseMode
 }
 

@@ -52,4 +52,8 @@ private:
     wchar_t _VirtualKeyToPunctuation(WPARAM wParam, BOOL shiftPressed);
     BOOL _SendKeyToService(WPARAM wParam);
     void _HandleServiceResponse();
+
+    // Context state checking (for browser non-editable area detection)
+    BOOL _IsContextReadOnly(ITfContext* pContext);
+    BOOL _IsCurrentProcessBrowser();
 };
