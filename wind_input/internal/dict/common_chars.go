@@ -29,7 +29,7 @@ func InitCommonChars() {
 	commonCharOnce.Do(func() {
 		// 先加载内置核心字表
 		for _, char := range coreCommonChars {
-			if char > 0x4E00 { // 只添加汉字
+			if char >= 0x4E00 { // 只添加汉字（0x4E00 是 "一"）
 				commonCharMap[char] = true
 			}
 		}
@@ -80,7 +80,7 @@ func loadCommonCharsFromFilePath(path string) {
 		}
 		// 每个字符都是一个通用字
 		for _, char := range line {
-			if char > 0x4E00 { // 只添加汉字
+			if char >= 0x4E00 { // 只添加汉字（0x4E00 是 "一"）
 				commonCharMap[char] = true
 			}
 		}

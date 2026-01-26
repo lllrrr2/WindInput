@@ -48,6 +48,8 @@ private:
     // Helper methods
     int _GetModifierState();
     BOOL _IsKeyWeShouldHandle(WPARAM wParam);
+    BOOL _IsPunctuationKey(WPARAM wParam);
+    wchar_t _VirtualKeyToPunctuation(WPARAM wParam, BOOL shiftPressed);
     BOOL _SendKeyToService(WPARAM wParam);
     void _HandleServiceResponse();
 };

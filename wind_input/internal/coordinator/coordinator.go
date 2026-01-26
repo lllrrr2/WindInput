@@ -9,6 +9,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/config"
 	"github.com/huanfeng/wind_input/internal/engine"
+	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
 )
 
@@ -31,6 +32,13 @@ type Coordinator struct {
 	// Input mode state
 	chineseMode bool // true = Chinese, false = English
 
+	// Full-width and punctuation state
+	fullWidth          bool // true = full-width, false = half-width
+	chinesePunctuation bool // true = Chinese punctuation, false = English punctuation
+	punctFollowMode    bool // true = punctuation follows Chinese/English mode
+	toolbarVisible     bool // true = toolbar visible
+	imeActivated       bool // true = IME is activated (has focus)
+
 	// Input state
 	inputBuffer       string
 	candidates        []ui.Candidate
@@ -46,6 +54,9 @@ type Coordinator struct {
 	// Last known valid window position (for fallback)
 	lastValidX int
 	lastValidY int
+
+	// Punctuation converter with state (for paired punctuation like quotes)
+	punctConverter *transform.PunctuationConverter
 }
 
 // NewCoordinator creates a new Coordinator
@@ -60,20 +71,168 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		startInChineseMode = cfg.General.StartInChineseMode
 	}
 
-	return &Coordinator{
-		engineMgr:         engineMgr,
-		uiManager:         uiManager,
-		logger:            logger,
-		config:            cfg,
-		chineseMode:       startInChineseMode,
-		inputBuffer:       "",
-		candidates:        nil,
-		currentPage:       1,
-		totalPages:        1,
-		candidatesPerPage: candidatesPerPage,
-		caretX:            100,
-		caretY:            100,
-		caretHeight:       20,
+	// Load input settings from config
+	fullWidth := false
+	chinesePunctuation := true
+	punctFollowMode := false
+	toolbarVisible := false
+	if cfg != nil {
+		fullWidth = cfg.Input.FullWidth
+		chinesePunctuation = cfg.Input.ChinesePunctuation
+		punctFollowMode = cfg.Input.PunctFollowMode
+		toolbarVisible = cfg.Toolbar.Visible
+	}
+
+	c := &Coordinator{
+		engineMgr:          engineMgr,
+		uiManager:          uiManager,
+		logger:             logger,
+		config:             cfg,
+		chineseMode:        startInChineseMode,
+		fullWidth:          fullWidth,
+		chinesePunctuation: chinesePunctuation,
+		punctFollowMode:    punctFollowMode,
+		toolbarVisible:     toolbarVisible,
+		inputBuffer:        "",
+		candidates:         nil,
+		currentPage:        1,
+		totalPages:         1,
+		candidatesPerPage:  candidatesPerPage,
+		caretX:             100,
+		caretY:             100,
+		caretHeight:        20,
+		punctConverter:     transform.NewPunctuationConverter(),
+	}
+
+	// Set up toolbar callbacks
+	c.setupToolbarCallbacks()
+
+	return c
+}
+
+// setupToolbarCallbacks sets up the callbacks for toolbar button clicks
+func (c *Coordinator) setupToolbarCallbacks() {
+	if c.uiManager == nil {
+		return
+	}
+
+	c.uiManager.SetToolbarCallbacks(&ui.ToolbarCallback{
+		OnToggleMode: func() {
+			c.handleToolbarToggleMode()
+		},
+		OnToggleWidth: func() {
+			c.handleToolbarToggleWidth()
+		},
+		OnTogglePunct: func() {
+			c.handleToolbarTogglePunct()
+		},
+		OnOpenSettings: func() {
+			c.handleToolbarOpenSettings()
+		},
+		OnPositionChanged: func(x, y int) {
+			c.handleToolbarPositionChanged(x, y)
+		},
+	})
+}
+
+// handleToolbarToggleMode handles mode toggle from toolbar click
+func (c *Coordinator) handleToolbarToggleMode() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.chineseMode = !c.chineseMode
+	c.logger.Debug("Mode toggled via toolbar", "chineseMode", c.chineseMode)
+
+	// Clear any pending input when switching modes
+	if len(c.inputBuffer) > 0 {
+		c.clearState()
+		c.hideUI()
+	}
+
+	// Sync punctuation with mode if enabled
+	if c.punctFollowMode {
+		c.chinesePunctuation = c.chineseMode
+	}
+
+	// Reset punctuation converter state
+	c.punctConverter.Reset()
+
+	// Update toolbar state
+	c.syncToolbarState()
+}
+
+// handleToolbarToggleWidth handles width toggle from toolbar click
+func (c *Coordinator) handleToolbarToggleWidth() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.fullWidth = !c.fullWidth
+	c.logger.Debug("Full-width toggled via toolbar", "fullWidth", c.fullWidth)
+
+	// Update toolbar state
+	c.syncToolbarState()
+
+	// Save to config
+	c.saveInputConfig()
+}
+
+// handleToolbarTogglePunct handles punctuation toggle from toolbar click
+func (c *Coordinator) handleToolbarTogglePunct() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.chinesePunctuation = !c.chinesePunctuation
+	c.logger.Debug("Chinese punctuation toggled via toolbar", "chinesePunctuation", c.chinesePunctuation)
+
+	// Reset punctuation converter state
+	c.punctConverter.Reset()
+
+	// Update toolbar state
+	c.syncToolbarState()
+
+	// Save to config
+	c.saveInputConfig()
+}
+
+// handleToolbarOpenSettings handles settings button click from toolbar
+func (c *Coordinator) handleToolbarOpenSettings() {
+	c.logger.Info("Opening settings from toolbar")
+	if c.uiManager != nil {
+		c.uiManager.OpenSettings()
+	}
+}
+
+// handleToolbarPositionChanged handles toolbar position change (after dragging)
+func (c *Coordinator) handleToolbarPositionChanged(x, y int) {
+	c.logger.Debug("Toolbar position changed", "x", x, "y", y)
+	c.saveToolbarPosition(x, y)
+}
+
+// syncToolbarState synchronizes the current state to the toolbar
+func (c *Coordinator) syncToolbarState() {
+	if c.uiManager == nil {
+		return
+	}
+
+	c.uiManager.UpdateToolbarState(ui.ToolbarState{
+		ChineseMode:  c.chineseMode,
+		FullWidth:    c.fullWidth,
+		ChinesePunct: c.chinesePunctuation,
+		CapsLock:     ui.GetCapsLockState(), // Get actual CapsLock state
+	})
+}
+
+// saveToolbarPosition saves the toolbar position to config
+func (c *Coordinator) saveToolbarPosition(x, y int) {
+	if c.config == nil {
+		return
+	}
+
+	c.config.Toolbar.PositionX = x
+	c.config.Toolbar.PositionY = y
+
+	if err := config.Save(c.config); err != nil {
+		c.logger.Error("Failed to save toolbar position", "error", err)
 	}
 }
 
@@ -89,10 +248,33 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	// Check for Ctrl or Alt modifiers
 	hasCtrl := data.Modifiers&ModCtrl != 0
 	hasAlt := data.Modifiers&ModAlt != 0
+	hasShift := data.Modifiers&ModShift != 0
 
 	// Handle Ctrl+` for engine switch (VK_OEM_3 = 192)
 	if hasCtrl && data.KeyCode == 192 {
 		return c.handleEngineSwitchKey()
+	}
+
+	// Handle Shift+Space for full-width toggle
+	if hasShift && data.KeyCode == 32 { // VK_SPACE = 32
+		toggleKey := ""
+		if c.config != nil {
+			toggleKey = c.config.Hotkeys.ToggleFullWidth
+		}
+		if toggleKey == "shift+space" {
+			return c.handleToggleFullWidth()
+		}
+	}
+
+	// Handle Ctrl+. for punctuation toggle (VK_OEM_PERIOD = 190)
+	if hasCtrl && data.KeyCode == 190 {
+		toggleKey := ""
+		if c.config != nil {
+			toggleKey = c.config.Hotkeys.TogglePunct
+		}
+		if toggleKey == "ctrl+." {
+			return c.handleTogglePunct()
+		}
 	}
 
 	// Other Ctrl/Alt combinations should be passed to the system
@@ -115,8 +297,26 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 			c.hideUI()
 		}
 
+		// Sync punctuation with mode if enabled
+		if c.punctFollowMode {
+			c.chinesePunctuation = c.chineseMode
+		}
+
+		// Reset punctuation converter state when switching modes
+		c.punctConverter.Reset()
+
 		// Show mode indicator
 		c.showModeIndicator()
+
+		// Update toolbar state
+		if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
+			c.uiManager.UpdateToolbarState(ui.ToolbarState{
+				ChineseMode:  c.chineseMode,
+				FullWidth:    c.fullWidth,
+				ChinesePunct: c.chinesePunctuation,
+				CapsLock:     ui.GetCapsLockState(),
+			})
+		}
 
 		// Return mode_changed so C++ can update language bar icon
 		return &bridge.KeyEventResult{
@@ -135,6 +335,49 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 			}
 		}
 		return nil // Let other keys pass through
+	}
+
+	// Chinese mode with CapsLock: output uppercase letters directly
+	// This allows users to quickly type uppercase English while in Chinese mode
+	if ui.GetCapsLockState() {
+		if len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')) {
+			// If there's pending input, commit it first then output the uppercase letter
+			if len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
+				// Commit first candidate
+				candidate := c.candidates[0]
+				text := candidate.Text
+				if c.fullWidth {
+					text = transform.ToFullWidth(text)
+				}
+				c.clearState()
+				c.hideUI()
+
+				// Convert letter to uppercase and optionally apply full-width
+				upperKey := strings.ToUpper(key)
+				if c.fullWidth {
+					upperKey = transform.ToFullWidth(upperKey)
+				}
+
+				return &bridge.KeyEventResult{
+					Type: bridge.ResponseTypeInsertText,
+					Text: text + upperKey,
+				}
+			}
+
+			// No pending input, just output uppercase letter
+			c.clearState()
+			c.hideUI()
+
+			upperKey := strings.ToUpper(key)
+			if c.fullWidth {
+				upperKey = transform.ToFullWidth(upperKey)
+			}
+
+			return &bridge.KeyEventResult{
+				Type: bridge.ResponseTypeInsertText,
+				Text: upperKey,
+			}
+		}
 	}
 
 	// Chinese mode handling
@@ -164,6 +407,9 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 		return c.handleNumberKey(int(key[0] - '0'))
 
+	case len(key) == 1 && c.isPunctuation(rune(key[0])):
+		return c.handlePunctuation(rune(key[0]))
+
 	default:
 		c.logger.Debug("Unhandled key", "key", key, "keycode", data.KeyCode)
 		return nil
@@ -180,6 +426,11 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 		if shouldCommit {
 			c.inputBuffer = newInput
 			c.logger.Debug("Top code commit", "text", commitText, "newInput", newInput)
+
+			// Apply full-width conversion if enabled
+			if c.fullWidth {
+				commitText = transform.ToFullWidth(commitText)
+			}
 
 			// 如果还有剩余输入，继续处理
 			if len(c.inputBuffer) > 0 {
@@ -201,11 +452,16 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 
 	// 检查自动上屏
 	if result != nil && result.ShouldCommit {
+		text := result.CommitText
+		// Apply full-width conversion if enabled
+		if c.fullWidth {
+			text = transform.ToFullWidth(text)
+		}
 		c.clearState()
 		c.hideUI()
 		return &bridge.KeyEventResult{
 			Type: bridge.ResponseTypeInsertText,
-			Text: result.CommitText,
+			Text: text,
 		}
 	}
 
@@ -218,6 +474,10 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 		}
 		if result.ToEnglish {
 			text := c.inputBuffer
+			// Apply full-width conversion if enabled
+			if c.fullWidth {
+				text = transform.ToFullWidth(text)
+			}
 			c.clearState()
 			c.hideUI()
 			return &bridge.KeyEventResult{
@@ -254,9 +514,15 @@ func (c *Coordinator) handleBackspace() *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleEnter() *bridge.KeyEventResult {
-	// Commit raw pinyin as text
+	// Commit raw input as text
 	if len(c.inputBuffer) > 0 {
 		text := c.inputBuffer
+
+		// Apply full-width conversion if enabled
+		if c.fullWidth {
+			text = transform.ToFullWidth(text)
+		}
+
 		c.clearState()
 		c.hideUI()
 
@@ -288,6 +554,12 @@ func (c *Coordinator) handleSpace() *bridge.KeyEventResult {
 	} else if len(c.inputBuffer) > 0 {
 		// No candidates, commit raw input
 		text := c.inputBuffer
+
+		// Apply full-width conversion if enabled
+		if c.fullWidth {
+			text = transform.ToFullWidth(text)
+		}
+
 		c.clearState()
 		c.hideUI()
 		return &bridge.KeyEventResult{
@@ -340,6 +612,12 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 	c.logger.Debug("Candidate selected", "index", index, "text", candidate.Text)
 
 	text := candidate.Text
+
+	// Apply full-width conversion if enabled
+	if c.fullWidth {
+		text = transform.ToFullWidth(text)
+	}
+
 	c.clearState()
 	c.hideUI()
 
@@ -513,12 +791,22 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 
 // HandleFocusLost handles focus lost events
 func (c *Coordinator) HandleFocusLost() {
+	c.logger.Debug("Focus lost, clearing state")
+
+	// Set IME as deactivated (this will hide toolbar)
+	c.SetIMEActivated(false)
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	c.logger.Debug("Focus lost, clearing state")
 	c.clearState()
-	c.hideUI()
+}
+
+// HandleFocusGained handles focus gained events
+func (c *Coordinator) HandleFocusGained() {
+	c.logger.Debug("Focus gained")
+
+	// Set IME as activated (this will show toolbar if enabled)
+	c.SetIMEActivated(true)
 }
 
 // HandleToggleMode toggles the input mode and returns the new state
@@ -533,6 +821,12 @@ func (c *Coordinator) HandleToggleMode() bool {
 	if len(c.inputBuffer) > 0 {
 		c.clearState()
 		c.hideUI()
+	}
+
+	// Sync punctuation with mode if enabled
+	if c.punctFollowMode {
+		c.chinesePunctuation = c.chineseMode
+		c.punctConverter.Reset()
 	}
 
 	// Show mode indicator
@@ -682,6 +976,73 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 	c.logger.Debug("UI config updated", "candidatesPerPage", c.candidatesPerPage)
 }
 
+// UpdateToolbarConfig 更新工具栏配置（热更新）
+func (c *Coordinator) UpdateToolbarConfig(toolbarConfig *config.ToolbarConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if toolbarConfig == nil {
+		return
+	}
+
+	c.toolbarVisible = toolbarConfig.Visible
+
+	// 更新配置引用
+	if c.config != nil {
+		c.config.Toolbar = *toolbarConfig
+	}
+
+	// 通知 UI Manager 更新工具栏状态
+	if c.uiManager != nil {
+		c.uiManager.SetToolbarVisible(c.toolbarVisible)
+		if c.toolbarVisible {
+			c.uiManager.SetToolbarPosition(toolbarConfig.PositionX, toolbarConfig.PositionY)
+			c.uiManager.UpdateToolbarState(ui.ToolbarState{
+				ChineseMode:   c.chineseMode,
+				FullWidth:     c.fullWidth,
+				ChinesePunct:  c.chinesePunctuation,
+				CapsLock:      ui.GetCapsLockState(),
+			})
+		}
+	}
+
+	c.logger.Debug("Toolbar config updated", "visible", c.toolbarVisible)
+}
+
+// UpdateInputConfig 更新输入配置（热更新）
+func (c *Coordinator) UpdateInputConfig(inputConfig *config.InputConfig) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if inputConfig == nil {
+		return
+	}
+
+	c.fullWidth = inputConfig.FullWidth
+	c.chinesePunctuation = inputConfig.ChinesePunctuation
+	c.punctFollowMode = inputConfig.PunctFollowMode
+
+	// 更新配置引用
+	if c.config != nil {
+		c.config.Input = *inputConfig
+	}
+
+	// Reset punctuation converter state when config changes
+	c.punctConverter.Reset()
+
+	// 更新工具栏状态
+	if c.uiManager != nil && c.toolbarVisible {
+		c.uiManager.UpdateToolbarState(ui.ToolbarState{
+			ChineseMode:   c.chineseMode,
+			FullWidth:     c.fullWidth,
+			ChinesePunct:  c.chinesePunctuation,
+			CapsLock:      ui.GetCapsLockState(),
+		})
+	}
+
+	c.logger.Debug("Input config updated", "fullWidth", c.fullWidth, "chinesePunctuation", c.chinesePunctuation, "punctFollowMode", c.punctFollowMode)
+}
+
 // ClearInputState 清空输入状态（供外部调用）
 func (c *Coordinator) ClearInputState() {
 	c.mu.Lock()
@@ -690,4 +1051,398 @@ func (c *Coordinator) ClearInputState() {
 	c.clearState()
 	c.hideUI()
 	c.logger.Debug("Input state cleared")
+}
+
+// SetIMEActivated sets the IME activation state
+// When activated, show toolbar if enabled; when deactivated, hide toolbar
+func (c *Coordinator) SetIMEActivated(activated bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.imeActivated == activated {
+		return // No change
+	}
+
+	c.imeActivated = activated
+	c.logger.Debug("IME activation changed", "activated", activated)
+
+	if c.uiManager == nil {
+		return
+	}
+
+	if activated {
+		// IME activated - show toolbar if enabled
+		if c.toolbarVisible {
+			c.uiManager.SetToolbarVisible(true)
+			// Load position from config, or calculate default position if (0, 0)
+			if c.config != nil {
+				posX := c.config.Toolbar.PositionX
+				posY := c.config.Toolbar.PositionY
+				// If position is (0, 0), calculate default position (bottom-right corner)
+				if posX == 0 && posY == 0 {
+					toolbarWidth, toolbarHeight := 140, 30 // Base size, will be scaled by DPI
+					posX, posY = ui.GetDefaultToolbarPosition(
+						ui.ScaleIntForDPI(toolbarWidth),
+						ui.ScaleIntForDPI(toolbarHeight),
+					)
+					// Save the calculated position
+					c.config.Toolbar.PositionX = posX
+					c.config.Toolbar.PositionY = posY
+					c.logger.Debug("Auto-calculated toolbar position", "x", posX, "y", posY)
+				}
+				c.uiManager.SetToolbarPosition(posX, posY)
+			}
+			c.syncToolbarState()
+		}
+	} else {
+		// IME deactivated - always hide toolbar
+		c.uiManager.SetToolbarVisible(false)
+		// Also hide candidate window
+		c.hideUI()
+	}
+}
+
+// HandleMenuCommand handles menu commands from C++ (toggle_mode, toggle_width, toggle_punct, open_settings, toggle_toolbar)
+func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.logger.Info("HandleMenuCommand", "command", command)
+
+	switch command {
+	case "toggle_mode":
+		c.chineseMode = !c.chineseMode
+		c.logger.Debug("Mode toggled via menu", "chineseMode", c.chineseMode)
+
+		// Clear any pending input when switching modes
+		if len(c.inputBuffer) > 0 {
+			c.clearState()
+			c.hideUI()
+		}
+
+		// Sync punctuation with mode if enabled
+		if c.punctFollowMode {
+			c.chinesePunctuation = c.chineseMode
+		}
+
+		// Reset punctuation converter state when switching modes
+		c.punctConverter.Reset()
+
+		// Show mode indicator
+		c.showModeIndicator()
+
+	case "toggle_width":
+		c.fullWidth = !c.fullWidth
+		c.logger.Debug("Full-width toggled via menu", "fullWidth", c.fullWidth)
+
+		// Show indicator
+		indicator := "半"
+		if c.fullWidth {
+			indicator = "全"
+		}
+		c.showIndicator(indicator)
+
+		// Save to config
+		c.saveInputConfig()
+
+	case "toggle_punct":
+		c.chinesePunctuation = !c.chinesePunctuation
+		c.logger.Debug("Chinese punctuation toggled via menu", "chinesePunctuation", c.chinesePunctuation)
+
+		// Reset punctuation converter state
+		c.punctConverter.Reset()
+
+		// Show indicator
+		indicator := "英."
+		if c.chinesePunctuation {
+			indicator = "中，"
+		}
+		c.showIndicator(indicator)
+
+		// Save to config
+		c.saveInputConfig()
+
+	case "toggle_toolbar":
+		c.toolbarVisible = !c.toolbarVisible
+		c.logger.Debug("Toolbar visibility toggled via menu", "toolbarVisible", c.toolbarVisible)
+
+		// Update UI
+		if c.uiManager != nil {
+			c.uiManager.SetToolbarVisible(c.toolbarVisible)
+		}
+
+		// Save to config
+		c.saveToolbarConfig()
+
+	case "open_settings":
+		c.logger.Info("Opening settings requested")
+		// Open settings window (will be implemented in UI)
+		if c.uiManager != nil {
+			c.uiManager.OpenSettings()
+		}
+	}
+
+	// Return current status
+	return c.getStatusUpdate()
+}
+
+// getStatusUpdate returns the current status
+func (c *Coordinator) getStatusUpdate() *bridge.StatusUpdateData {
+	return &bridge.StatusUpdateData{
+		ChineseMode:        c.chineseMode,
+		FullWidth:          c.fullWidth,
+		ChinesePunctuation: c.chinesePunctuation,
+		ToolbarVisible:     c.toolbarVisible,
+		CapsLock:           ui.GetCapsLockState(),
+	}
+}
+
+// showIndicator shows a brief indicator text
+func (c *Coordinator) showIndicator(text string) {
+	if c.uiManager == nil || !c.uiManager.IsReady() {
+		return
+	}
+
+	// Use valid position or fallback
+	x := c.caretX
+	y := c.caretY + c.caretHeight + 5
+	const maxCoord = 32000
+	if (c.caretX == 0 && c.caretY == 0) || x > maxCoord || x < -maxCoord || y > maxCoord || y < -maxCoord {
+		if c.lastValidX != 0 || c.lastValidY != 0 {
+			x = c.lastValidX
+			y = c.lastValidY
+		} else {
+			x = 400
+			y = 300
+		}
+	}
+
+	c.uiManager.ShowModeIndicator(text, x, y)
+}
+
+// saveInputConfig saves the input configuration to file
+func (c *Coordinator) saveInputConfig() {
+	go func() {
+		cfg, err := config.Load()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
+		cfg.Input.FullWidth = c.fullWidth
+		cfg.Input.ChinesePunctuation = c.chinesePunctuation
+
+		if err := config.Save(cfg); err != nil {
+			c.logger.Error("Failed to save input config", "error", err)
+		} else {
+			c.logger.Debug("Input config saved")
+		}
+	}()
+}
+
+// saveToolbarConfig saves the toolbar configuration to file
+func (c *Coordinator) saveToolbarConfig() {
+	go func() {
+		cfg, err := config.Load()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
+		cfg.Toolbar.Visible = c.toolbarVisible
+
+		if err := config.Save(cfg); err != nil {
+			c.logger.Error("Failed to save toolbar config", "error", err)
+		} else {
+			c.logger.Debug("Toolbar config saved")
+		}
+	}()
+}
+
+// GetFullWidth returns the current full-width mode state
+func (c *Coordinator) GetFullWidth() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.fullWidth
+}
+
+// GetChinesePunctuation returns the current Chinese punctuation mode state
+func (c *Coordinator) GetChinesePunctuation() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.chinesePunctuation
+}
+
+// GetToolbarVisible returns the current toolbar visibility state
+func (c *Coordinator) GetToolbarVisible() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.toolbarVisible
+}
+
+// GetChineseMode returns the current Chinese mode state
+func (c *Coordinator) GetChineseMode() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.chineseMode
+}
+
+// TransformOutput applies full-width and punctuation transformations to output text
+func (c *Coordinator) TransformOutput(text string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	result := text
+
+	// Apply full-width conversion if enabled
+	if c.fullWidth {
+		result = transform.ToFullWidth(result)
+	}
+
+	return result
+}
+
+// TransformPunctuation transforms a punctuation character based on current settings
+func (c *Coordinator) TransformPunctuation(r rune) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.chinesePunctuation {
+		return string(r), false
+	}
+
+	// Use punctuation converter which handles paired punctuation (quotes)
+	return c.punctConverter.ToChinesePunctStr(r)
+}
+
+// isPunctuation checks if a character is a punctuation mark that can be converted
+func (c *Coordinator) isPunctuation(r rune) bool {
+	// Check common punctuation marks
+	switch r {
+	case ',', '.', '?', '!', ':', ';', '\'', '"',
+		'(', ')', '[', ']', '{', '}', '<', '>',
+		'~', '@', '$', '`', '^', '_':
+		return true
+	}
+	return false
+}
+
+// handlePunctuation handles punctuation input in Chinese mode
+// If no input buffer, directly output punctuation (converted if chinese punctuation is enabled)
+// If there's input buffer and punct_commit is enabled, commit current candidate and then output punctuation
+func (c *Coordinator) handlePunctuation(r rune) *bridge.KeyEventResult {
+	c.logger.Debug("handlePunctuation", "char", string(r), "buffer", c.inputBuffer)
+
+	// If there's input in buffer, check if we should commit first (punct_commit)
+	if len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
+		// Check if punct_commit is enabled in wubi config
+		punctCommit := false
+		if c.config != nil && c.config.Engine.Type == "wubi" {
+			punctCommit = c.config.Engine.Wubi.PunctCommit
+		}
+
+		if punctCommit {
+			// Commit first candidate, then output punctuation
+			candidate := c.candidates[0]
+			text := candidate.Text
+
+			// Apply full-width conversion if enabled
+			if c.fullWidth {
+				text = transform.ToFullWidth(text)
+			}
+
+			// Convert punctuation
+			punctText := string(r)
+			if c.chinesePunctuation {
+				var converted bool
+				punctText, converted = c.punctConverter.ToChinesePunctStr(r)
+				if !converted {
+					punctText = string(r)
+				}
+			}
+
+			// Apply full-width conversion to punctuation if enabled
+			if c.fullWidth {
+				punctText = transform.ToFullWidth(punctText)
+			}
+
+			c.clearState()
+			c.hideUI()
+
+			return &bridge.KeyEventResult{
+				Type: bridge.ResponseTypeInsertText,
+				Text: text + punctText,
+			}
+		}
+	}
+
+	// If there's input buffer but punct_commit is not enabled, just let it pass through
+	if len(c.inputBuffer) > 0 {
+		return nil
+	}
+
+	// No input buffer - directly handle punctuation
+	punctText := string(r)
+	if c.chinesePunctuation {
+		var converted bool
+		punctText, converted = c.punctConverter.ToChinesePunctStr(r)
+		if !converted {
+			punctText = string(r)
+		}
+	}
+
+	// Apply full-width conversion if enabled
+	if c.fullWidth {
+		punctText = transform.ToFullWidth(punctText)
+	}
+
+	return &bridge.KeyEventResult{
+		Type: bridge.ResponseTypeInsertText,
+		Text: punctText,
+	}
+}
+
+// handleToggleFullWidth handles the full-width toggle hotkey (e.g., Shift+Space)
+func (c *Coordinator) handleToggleFullWidth() *bridge.KeyEventResult {
+	c.fullWidth = !c.fullWidth
+	c.logger.Debug("Full-width toggled via hotkey", "fullWidth", c.fullWidth)
+
+	// Show indicator
+	indicator := "半"
+	if c.fullWidth {
+		indicator = "全"
+	}
+	c.showIndicator(indicator)
+
+	// Update toolbar state
+	c.syncToolbarState()
+
+	// Save to config
+	c.saveInputConfig()
+
+	// Consume the key (don't let it pass through)
+	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+}
+
+// handleTogglePunct handles the punctuation toggle hotkey (e.g., Ctrl+.)
+func (c *Coordinator) handleTogglePunct() *bridge.KeyEventResult {
+	c.chinesePunctuation = !c.chinesePunctuation
+	c.logger.Debug("Chinese punctuation toggled via hotkey", "chinesePunctuation", c.chinesePunctuation)
+
+	// Reset punctuation converter state
+	c.punctConverter.Reset()
+
+	// Show indicator
+	indicator := "英."
+	if c.chinesePunctuation {
+		indicator = "中，"
+	}
+	c.showIndicator(indicator)
+
+	// Update toolbar state
+	c.syncToolbarState()
+
+	// Save to config
+	c.saveInputConfig()
+
+	// Consume the key (don't let it pass through)
+	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 }

@@ -273,13 +273,25 @@ BOOL CKeyEventSink::_IsKeyWeShouldHandle(WPARAM wParam)
         return TRUE;
     }
 
+    // Handle Shift+Space (full-width toggle hotkey)
+    if (wParam == VK_SPACE && (modifiers & KEY_MOD_SHIFT) && !(modifiers & (KEY_MOD_CTRL | KEY_MOD_ALT)))
+    {
+        return TRUE;
+    }
+
     // If Ctrl or Alt is pressed with any key, don't intercept
     // This allows Ctrl+C, Ctrl+V, Alt+Tab, etc. to work
     // Exception: Ctrl+` (VK_OEM_3 = 0xC0) for engine switching
+    // Exception: Ctrl+. (VK_OEM_PERIOD = 0xBE) for punctuation toggle
     if (modifiers & (KEY_MOD_CTRL | KEY_MOD_ALT))
     {
         // Allow Ctrl+` for engine switching
         if ((modifiers & KEY_MOD_CTRL) && !(modifiers & KEY_MOD_ALT) && wParam == VK_OEM_3)
+        {
+            return TRUE;
+        }
+        // Allow Ctrl+. for punctuation toggle
+        if ((modifiers & KEY_MOD_CTRL) && !(modifiers & KEY_MOD_ALT) && wParam == VK_OEM_PERIOD)
         {
             return TRUE;
         }
@@ -297,21 +309,76 @@ BOOL CKeyEventSink::_IsKeyWeShouldHandle(WPARAM wParam)
             wParam == VK_ESCAPE ||
             wParam == VK_SPACE ||
             wParam == VK_OEM_MINUS ||  // - key for page up
-            wParam == VK_OEM_PLUS)     // = key for page down
+            wParam == VK_OEM_PLUS ||   // = key for page down
+            _IsPunctuationKey(wParam)) // punctuation keys
         {
             return TRUE;
         }
     }
     else
     {
-        // When not composing, only handle letters to start composition
-        if (wParam >= 'A' && wParam <= 'Z')
+        // When not composing in Chinese mode, handle letters and punctuation
+        if (_pTextService->IsChineseMode())
         {
-            return TRUE;
+            if (wParam >= 'A' && wParam <= 'Z')
+            {
+                return TRUE;
+            }
+            // Handle punctuation in Chinese mode (for direct punctuation conversion)
+            if (_IsPunctuationKey(wParam))
+            {
+                return TRUE;
+            }
+        }
+        else
+        {
+            // English mode: only handle letters
+            if (wParam >= 'A' && wParam <= 'Z')
+            {
+                return TRUE;
+            }
         }
     }
 
     return FALSE;
+}
+
+// Check if a key is a punctuation key we should handle
+BOOL CKeyEventSink::_IsPunctuationKey(WPARAM wParam)
+{
+    switch (wParam)
+    {
+    case VK_OEM_COMMA:    // , <
+    case VK_OEM_PERIOD:   // . >
+    case VK_OEM_1:        // ; :
+    case VK_OEM_2:        // / ?
+    case VK_OEM_3:        // ` ~
+    case VK_OEM_4:        // [ {
+    case VK_OEM_5:        // \ |
+    case VK_OEM_6:        // ] }
+    case VK_OEM_7:        // ' "
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+// Convert punctuation virtual key to character
+wchar_t CKeyEventSink::_VirtualKeyToPunctuation(WPARAM wParam, BOOL shiftPressed)
+{
+    switch (wParam)
+    {
+    case VK_OEM_COMMA:   return shiftPressed ? L'<' : L',';
+    case VK_OEM_PERIOD:  return shiftPressed ? L'>' : L'.';
+    case VK_OEM_1:       return shiftPressed ? L':' : L';';
+    case VK_OEM_2:       return shiftPressed ? L'?' : L'/';
+    case VK_OEM_3:       return shiftPressed ? L'~' : L'`';
+    case VK_OEM_4:       return shiftPressed ? L'{' : L'[';
+    case VK_OEM_5:       return shiftPressed ? L'|' : L'\\';
+    case VK_OEM_6:       return shiftPressed ? L'}' : L']';
+    case VK_OEM_7:       return shiftPressed ? L'"' : L'\'';
+    default:             return 0;
+    }
 }
 
 BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
@@ -328,11 +395,14 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
     int keyCode = (int)wParam;
     BOOL needCaret = FALSE;  // Whether to include caret position in request
 
+    // Get modifier state
+    int modifiers = _GetModifierState();
+    BOOL shiftPressed = (modifiers & KEY_MOD_SHIFT) != 0;
+
     if (wParam >= 'A' && wParam <= 'Z')
     {
         // Letter key - determine case based on Caps Lock and Shift state
         BOOL capsLock = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
-        BOOL shiftPressed = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
         // XOR logic: Caps Lock and Shift cancel each other
         BOOL shouldBeUppercase = capsLock ^ shiftPressed;
@@ -398,13 +468,23 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
     {
         key = L"page_down";
     }
+    else if (_IsPunctuationKey(wParam))
+    {
+        // Punctuation key
+        wchar_t punct = _VirtualKeyToPunctuation(wParam, shiftPressed);
+        if (punct != 0)
+        {
+            key = punct;
+        }
+        else
+        {
+            return FALSE;
+        }
+    }
     else
     {
         return FALSE;
     }
-
-    // Send key event to Go Service with actual modifier state
-    int modifiers = _GetModifierState();
 
     // Include caret position in the same request if needed
     if (needCaret)
@@ -466,6 +546,12 @@ void CKeyEventSink::_HandleServiceResponse()
         _isComposing = FALSE;
         // Update local mode state and language bar icon
         _pTextService->SetInputMode(response.chineseMode);
+        break;
+
+    case ResponseType::Consumed:
+        // Key was consumed by a hotkey (e.g., Shift+Space, Ctrl+.)
+        // Don't output anything, just consume the key
+        OutputDebugStringW(L"[WindInput] Key consumed by hotkey\n");
         break;
 
     default:

@@ -22,6 +22,8 @@ type Config struct {
 	Engine     EngineConfig     `yaml:"engine" json:"engine"`
 	Hotkeys    HotkeyConfig     `yaml:"hotkeys" json:"hotkeys"`
 	UI         UIConfig         `yaml:"ui" json:"ui"`
+	Toolbar    ToolbarConfig    `yaml:"toolbar" json:"toolbar"`
+	Input      InputConfig      `yaml:"input" json:"input"`
 }
 
 // GeneralConfig contains general settings
@@ -60,8 +62,10 @@ type WubiConfig struct {
 
 // HotkeyConfig contains hotkey settings
 type HotkeyConfig struct {
-	ToggleMode   string `yaml:"toggle_mode" json:"toggle_mode"`     // "shift", "ctrl+space", etc.
-	SwitchEngine string `yaml:"switch_engine" json:"switch_engine"` // "ctrl+`", "ctrl+shift+e", etc.
+	ToggleMode      string `yaml:"toggle_mode" json:"toggle_mode"`             // "shift", "ctrl+space", etc.
+	SwitchEngine    string `yaml:"switch_engine" json:"switch_engine"`         // "ctrl+`", "ctrl+shift+e", etc.
+	ToggleFullWidth string `yaml:"toggle_full_width" json:"toggle_full_width"` // "shift+space", "ctrl+shift+space", "none"
+	TogglePunct     string `yaml:"toggle_punct" json:"toggle_punct"`           // "ctrl+.", "ctrl+,", "none"
 }
 
 // UIConfig contains UI settings
@@ -69,6 +73,20 @@ type UIConfig struct {
 	FontSize          float64 `yaml:"font_size" json:"font_size"`
 	CandidatesPerPage int     `yaml:"candidates_per_page" json:"candidates_per_page"`
 	FontPath          string  `yaml:"font_path" json:"font_path"`
+}
+
+// ToolbarConfig contains toolbar settings
+type ToolbarConfig struct {
+	Visible   bool `yaml:"visible" json:"visible"`
+	PositionX int  `yaml:"position_x" json:"position_x"`
+	PositionY int  `yaml:"position_y" json:"position_y"`
+}
+
+// InputConfig contains input behavior settings
+type InputConfig struct {
+	FullWidth          bool `yaml:"full_width" json:"full_width"`                       // 全角模式
+	ChinesePunctuation bool `yaml:"chinese_punctuation" json:"chinese_punctuation"`     // 中文标点
+	PunctFollowMode    bool `yaml:"punct_follow_mode" json:"punct_follow_mode"`         // 标点随中英文切换
 }
 
 // DefaultConfig returns the default configuration
@@ -97,13 +115,25 @@ func DefaultConfig() *Config {
 			},
 		},
 		Hotkeys: HotkeyConfig{
-			ToggleMode:   "shift",
-			SwitchEngine: "ctrl+`",
+			ToggleMode:      "shift",
+			SwitchEngine:    "ctrl+`",
+			ToggleFullWidth: "shift+space",   // 默认 Shift+空格 切换全半角
+			TogglePunct:     "ctrl+.",        // 默认 Ctrl+. 切换中英文标点
 		},
 		UI: UIConfig{
 			FontSize:          18,
 			CandidatesPerPage: 9,
 			FontPath:          "",
+		},
+		Toolbar: ToolbarConfig{
+			Visible:   false, // 默认不显示工具栏
+			PositionX: 0,     // 0 表示使用自动计算位置（屏幕右下角）
+			PositionY: 0,
+		},
+		Input: InputConfig{
+			FullWidth:          false, // 默认半角
+			ChinesePunctuation: true,  // 默认中文标点
+			PunctFollowMode:    false, // 默认不跟随模式切换（可在设置中启用）
 		},
 	}
 }

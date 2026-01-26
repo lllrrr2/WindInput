@@ -50,12 +50,25 @@ export interface UIConfig {
   font_path: string;
 }
 
+export interface ToolbarConfig {
+  visible: boolean;
+  position_x: number;
+  position_y: number;
+}
+
+export interface InputConfig {
+  full_width: boolean;
+  chinese_punctuation: boolean;
+}
+
 export interface Config {
   general: GeneralConfig;
   dictionary: DictionaryConfig;
   engine: EngineConfig;
   hotkeys: HotkeyConfig;
   ui: UIConfig;
+  toolbar: ToolbarConfig;
+  input: InputConfig;
 }
 
 // 状态类型

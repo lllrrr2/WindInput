@@ -18,6 +18,9 @@ CLangBarItemButton::CLangBarItemButton(CTextService* pTextService)
     , _dwCookie(0)
     , _bChineseMode(TRUE)
     , _bCapsLock(FALSE)
+    , _bFullWidth(FALSE)
+    , _bChinesePunct(TRUE)
+    , _bToolbarVisible(FALSE)
 {
     // Initialize Caps Lock state
     _bCapsLock = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
@@ -144,12 +147,91 @@ STDAPI CLangBarItemButton::OnClick(TfLBIClick click, POINT pt, const RECT* prcAr
 
 STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu)
 {
-    return E_NOTIMPL;
+    if (pMenu == nullptr)
+        return E_INVALIDARG;
+
+    OutputDebugStringW(L"[WindInput] InitMenu called\n");
+
+    // Add menu items
+    // 中文模式
+    pMenu->AddMenuItem(MENU_ID_TOGGLE_MODE,
+        _bChineseMode ? TF_LBMENUF_CHECKED : 0,
+        NULL, NULL,
+        L"\x4E2D\x6587\x6A21\x5F0F", 4,  // 中文模式
+        NULL);
+
+    // 全角
+    pMenu->AddMenuItem(MENU_ID_TOGGLE_WIDTH,
+        _bFullWidth ? TF_LBMENUF_CHECKED : 0,
+        NULL, NULL,
+        L"\x5168\x89D2", 2,  // 全角
+        NULL);
+
+    // 中文标点
+    pMenu->AddMenuItem(MENU_ID_TOGGLE_PUNCT,
+        _bChinesePunct ? TF_LBMENUF_CHECKED : 0,
+        NULL, NULL,
+        L"\x4E2D\x6587\x6807\x70B9", 4,  // 中文标点
+        NULL);
+
+    // Separator
+    pMenu->AddMenuItem(0, TF_LBMENUF_SEPARATOR, NULL, NULL, NULL, 0, NULL);
+
+    // 显示工具栏
+    pMenu->AddMenuItem(MENU_ID_TOGGLE_TOOLBAR,
+        _bToolbarVisible ? TF_LBMENUF_CHECKED : 0,
+        NULL, NULL,
+        L"\x663E\x793A\x5DE5\x5177\x680F", 5,  // 显示工具栏
+        NULL);
+
+    // 设置...
+    pMenu->AddMenuItem(MENU_ID_OPEN_SETTINGS, 0,
+        NULL, NULL,
+        L"\x8BBE\x7F6E...", 3,  // 设置...
+        NULL);
+
+    return S_OK;
 }
 
 STDAPI CLangBarItemButton::OnMenuSelect(UINT wID)
 {
-    return E_NOTIMPL;
+    WCHAR debug[256];
+    wsprintfW(debug, L"[WindInput] OnMenuSelect: wID=%d\n", wID);
+    OutputDebugStringW(debug);
+
+    if (_pTextService == nullptr)
+        return E_FAIL;
+
+    const char* command = nullptr;
+
+    switch (wID)
+    {
+    case MENU_ID_TOGGLE_MODE:
+        command = "toggle_mode";
+        break;
+    case MENU_ID_TOGGLE_WIDTH:
+        command = "toggle_width";
+        break;
+    case MENU_ID_TOGGLE_PUNCT:
+        command = "toggle_punct";
+        break;
+    case MENU_ID_TOGGLE_TOOLBAR:
+        command = "toggle_toolbar";
+        break;
+    case MENU_ID_OPEN_SETTINGS:
+        command = "open_settings";
+        break;
+    default:
+        return E_INVALIDARG;
+    }
+
+    // Send menu command to Go service via IPC
+    if (command != nullptr)
+    {
+        _pTextService->SendMenuCommand(command);
+    }
+
+    return S_OK;
 }
 
 STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
@@ -439,4 +521,47 @@ void CLangBarItemButton::UpdateState(BOOL bChineseMode, BOOL bCapsLock)
     {
         _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
     }
+}
+
+void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
+{
+    BOOL needUpdate = (_bChineseMode != bChineseMode) ||
+                      (_bFullWidth != bFullWidth) ||
+                      (_bChinesePunct != bChinesePunct) ||
+                      (_bToolbarVisible != bToolbarVisible) ||
+                      (!bChineseMode && _bCapsLock != bCapsLock);
+
+    _bChineseMode = bChineseMode;
+    _bFullWidth = bFullWidth;
+    _bChinesePunct = bChinesePunct;
+    _bToolbarVisible = bToolbarVisible;
+    _bCapsLock = bCapsLock;
+
+    if (needUpdate && _pLangBarItemSink != nullptr)
+    {
+        _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
+    }
+
+    WCHAR debug[256];
+    wsprintfW(debug, L"[WindInput] UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d\n",
+              bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
+    OutputDebugStringW(debug);
+}
+
+void CLangBarItemButton::ForceRefresh()
+{
+    OutputDebugStringW(L"[WindInput] ForceRefresh called\n");
+
+    // Update current Caps Lock state
+    _bCapsLock = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
+
+    // Force update the language bar icon unconditionally
+    if (_pLangBarItemSink != nullptr)
+    {
+        _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP | TF_LBI_STATUS);
+    }
+
+    WCHAR debug[256];
+    wsprintfW(debug, L"[WindInput] ForceRefresh: mode=%d, caps=%d\n", _bChineseMode, _bCapsLock);
+    OutputDebugStringW(debug);
 }

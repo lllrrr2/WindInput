@@ -5,19 +5,22 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 // UICommand represents a command to the UI thread
 type UICommand struct {
-	Type       string // "show", "hide", "mode"
+	Type       string // "show", "hide", "mode", "toolbar_show", "toolbar_hide", "toolbar_update", "settings"
 	Candidates []Candidate
 	Input      string
 	X, Y       int
 	Page       int
 	TotalPages int
 	ModeText   string
+	// Toolbar state
+	ToolbarState *ToolbarState
 }
 
 // Manager manages the candidate window UI
@@ -25,6 +28,9 @@ type Manager struct {
 	window   *CandidateWindow
 	renderer *Renderer
 	logger   *slog.Logger
+
+	// Toolbar window
+	toolbar *ToolbarWindow
 
 	mu         sync.Mutex
 	candidates []Candidate
@@ -42,6 +48,9 @@ type Manager struct {
 
 	// Event to wake up the message loop when commands are available
 	cmdEvent windows.Handle
+
+	// Toolbar callbacks (set by coordinator)
+	toolbarCallbacks *ToolbarCallback
 }
 
 // NewManager creates a new UI manager
@@ -55,6 +64,7 @@ func NewManager(logger *slog.Logger) *Manager {
 	return &Manager{
 		window:   NewCandidateWindow(logger),
 		renderer: NewRenderer(DefaultRenderConfig()),
+		toolbar:  NewToolbarWindow(logger),
 		logger:   logger,
 		readyCh:  make(chan struct{}),
 		cmdCh:    make(chan UICommand, 100), // Buffered channel to avoid blocking IPC
@@ -71,9 +81,22 @@ func (m *Manager) Start() error {
 
 	m.logger.Info("Starting UI Manager...")
 
-	// Create window
+	// Create candidate window
 	if err := m.window.Create(); err != nil {
 		return err
+	}
+
+	// Create toolbar window
+	if err := m.toolbar.Create(); err != nil {
+		m.logger.Error("Failed to create toolbar window", "error", err)
+		// Non-fatal, continue without toolbar
+	} else {
+		// Set toolbar callbacks if available
+		m.mu.Lock()
+		if m.toolbarCallbacks != nil {
+			m.toolbar.SetCallback(m.toolbarCallbacks)
+		}
+		m.mu.Unlock()
 	}
 
 	m.mu.Lock()
@@ -154,6 +177,14 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 		m.doHide()
 	case "mode":
 		m.doShowModeIndicator(cmd.ModeText, cmd.X, cmd.Y)
+	case "toolbar_show":
+		m.doShowToolbar()
+	case "toolbar_hide":
+		m.doHideToolbar()
+	case "toolbar_update":
+		m.doUpdateToolbar(cmd.ToolbarState)
+	case "settings":
+		m.doOpenSettings()
 	}
 }
 
@@ -270,6 +301,9 @@ func (m *Manager) UpdatePosition(x, y int) {
 // Destroy destroys the UI manager
 func (m *Manager) Destroy() {
 	m.window.Destroy()
+	if m.toolbar != nil {
+		m.toolbar.Destroy()
+	}
 	if m.cmdEvent != 0 {
 		CloseEvent(m.cmdEvent)
 		m.cmdEvent = 0
@@ -337,4 +371,145 @@ func (m *Manager) UpdateConfig(fontSize float64, fontPath string) {
 		m.renderer.UpdateFont(fontSize, fontPath)
 	}
 	m.logger.Info("UI config updated", "fontSize", fontSize, "fontPath", fontPath)
+}
+
+// SetToolbarCallbacks sets the callbacks for toolbar actions
+func (m *Manager) SetToolbarCallbacks(callbacks *ToolbarCallback) {
+	m.mu.Lock()
+	m.toolbarCallbacks = callbacks
+	if m.toolbar != nil {
+		m.toolbar.SetCallback(callbacks)
+	}
+	m.mu.Unlock()
+}
+
+// SetToolbarVisible shows or hides the toolbar
+func (m *Manager) SetToolbarVisible(visible bool) {
+	m.mu.Lock()
+	if !m.ready {
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Unlock()
+
+	cmdType := "toolbar_hide"
+	if visible {
+		cmdType = "toolbar_show"
+	}
+
+	select {
+	case m.cmdCh <- UICommand{Type: cmdType}:
+		if m.cmdEvent != 0 {
+			SetEvent(m.cmdEvent)
+		}
+	default:
+		m.logger.Warn("UI command channel full, dropping toolbar visibility command")
+	}
+}
+
+// UpdateToolbarState updates the toolbar state
+func (m *Manager) UpdateToolbarState(state ToolbarState) {
+	m.mu.Lock()
+	if !m.ready {
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Unlock()
+
+	select {
+	case m.cmdCh <- UICommand{Type: "toolbar_update", ToolbarState: &state}:
+		if m.cmdEvent != 0 {
+			SetEvent(m.cmdEvent)
+		}
+	default:
+		m.logger.Warn("UI command channel full, dropping toolbar update command")
+	}
+}
+
+// SetToolbarPosition sets the toolbar position
+func (m *Manager) SetToolbarPosition(x, y int) {
+	if m.toolbar != nil {
+		m.toolbar.SetPosition(x, y)
+	}
+}
+
+// GetToolbarPosition returns the current toolbar position
+func (m *Manager) GetToolbarPosition() (int, int) {
+	if m.toolbar != nil {
+		return m.toolbar.GetPosition()
+	}
+	return 0, 0
+}
+
+// OpenSettings opens the settings window
+func (m *Manager) OpenSettings() {
+	m.mu.Lock()
+	if !m.ready {
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Unlock()
+
+	select {
+	case m.cmdCh <- UICommand{Type: "settings"}:
+		if m.cmdEvent != 0 {
+			SetEvent(m.cmdEvent)
+		}
+	default:
+		m.logger.Warn("UI command channel full, dropping settings command")
+	}
+}
+
+// doShowToolbar shows the toolbar (called from UI thread)
+func (m *Manager) doShowToolbar() {
+	if m.toolbar != nil {
+		m.toolbar.Show()
+	}
+}
+
+// doHideToolbar hides the toolbar (called from UI thread)
+func (m *Manager) doHideToolbar() {
+	if m.toolbar != nil {
+		m.toolbar.Hide()
+	}
+}
+
+// doUpdateToolbar updates the toolbar state (called from UI thread)
+func (m *Manager) doUpdateToolbar(state *ToolbarState) {
+	if m.toolbar != nil && state != nil {
+		m.toolbar.SetState(*state)
+	}
+}
+
+// doOpenSettings opens the settings window (called from UI thread)
+func (m *Manager) doOpenSettings() {
+	m.logger.Info("Opening settings in browser")
+
+	// Open settings page in default browser
+	// Use "cmd /c start" on Windows to open URL in default browser
+	url := "http://127.0.0.1:18923"
+
+	// We need to use Windows ShellExecute or cmd /c start to open the browser
+	// Since we can't easily import os/exec in this context, we'll use the shell32.dll
+	shell32 := windows.NewLazySystemDLL("shell32.dll")
+	procShellExecuteW := shell32.NewProc("ShellExecuteW")
+
+	urlPtr, _ := windows.UTF16PtrFromString(url)
+	openPtr, _ := windows.UTF16PtrFromString("open")
+
+	ret, _, err := procShellExecuteW.Call(
+		0,                             // hwnd
+		uintptr(unsafe.Pointer(openPtr)), // lpOperation ("open")
+		uintptr(unsafe.Pointer(urlPtr)),  // lpFile (URL)
+		0,                             // lpParameters
+		0,                             // lpDirectory
+		1,                             // nShowCmd (SW_SHOWNORMAL)
+	)
+
+	// ShellExecuteW returns >32 on success
+	if ret <= 32 {
+		m.logger.Error("Failed to open settings URL", "error", err, "ret", ret)
+	} else {
+		m.logger.Info("Settings URL opened successfully")
+	}
 }

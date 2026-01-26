@@ -39,6 +39,8 @@ enum class ResponseType
     UpdateComposition,
     ClearComposition,
     ModeChanged,
+    StatusUpdate,
+    Consumed,       // Key was consumed by a hotkey (no output)
     Unknown
 };
 
@@ -49,7 +51,10 @@ struct ServiceResponse
     std::wstring text;      // For InsertText
     std::wstring composition; // For UpdateComposition
     int caretPos;           // For UpdateComposition
-    BOOL chineseMode;       // For ModeChanged
+    BOOL chineseMode;       // For ModeChanged and StatusUpdate
+    BOOL fullWidth;         // For StatusUpdate
+    BOOL chinesePunct;      // For StatusUpdate
+    BOOL toolbarVisible;    // For StatusUpdate
     std::wstring error;
 };
 
@@ -90,11 +95,17 @@ public:
     // Send focus lost notification
     BOOL SendFocusLost();
 
+    // Send focus gained notification (for toolbar display)
+    BOOL SendFocusGained();
+
     // Send toggle mode request
     BOOL SendToggleMode();
 
     // Send Caps Lock state for indicator display
     BOOL SendCapsLockState(BOOL capsLockOn);
+
+    // Send menu command (toggle_mode, toggle_width, toggle_punct, open_settings, toggle_toolbar)
+    BOOL SendMenuCommand(const char* command);
 
     // Check if connected
     BOOL IsConnected() const { return _hPipe != INVALID_HANDLE_VALUE; }

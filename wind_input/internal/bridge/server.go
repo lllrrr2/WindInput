@@ -33,9 +33,11 @@ type KeyEventResult struct {
 type MessageHandler interface {
 	HandleKeyEvent(data KeyEventData) *KeyEventResult
 	HandleCaretUpdate(data CaretData) error
-	HandleFocusLost()            // Called when focus is lost
-	HandleToggleMode() bool      // Called when mode toggle requested, returns new chineseMode state
-	HandleCapsLockState(on bool) // Called when Caps Lock state changes, shows A/a indicator
+	HandleFocusLost()                                  // Called when focus is lost
+	HandleFocusGained()                                // Called when focus is gained
+	HandleToggleMode() bool                            // Called when mode toggle requested, returns new chineseMode state
+	HandleCapsLockState(on bool)                       // Called when Caps Lock state changes, shows A/a indicator
+	HandleMenuCommand(command string) *StatusUpdateData // Called when menu command received
 }
 
 // Server handles IPC communication with C++ TSF Bridge
@@ -310,12 +312,20 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 				Type: ResponseTypeModeChanged,
 				Data: ModeChangedData{ChineseMode: result.ChineseMode},
 			}
+		case ResponseTypeConsumed:
+			// Key was consumed (e.g., by a hotkey), no output
+			s.logger.Debug("Key consumed by hotkey", "clientID", clientID)
+			return &Response{Type: ResponseTypeConsumed}
 		default:
 			return &Response{Type: ResponseTypeAck}
 		}
 
 	case RequestTypeFocusLost:
 		s.handler.HandleFocusLost()
+		return &Response{Type: ResponseTypeAck}
+
+	case RequestTypeFocusGained:
+		s.handler.HandleFocusGained()
 		return &Response{Type: ResponseTypeAck}
 
 	case RequestTypeCaretUpdate:
@@ -353,6 +363,24 @@ func (s *Server) processRequest(request *Request, clientID int) *Response {
 
 		s.logger.Debug("Caps Lock state", "clientID", clientID, "on", capsData.CapsLockOn)
 		s.handler.HandleCapsLockState(capsData.CapsLockOn)
+		return &Response{Type: ResponseTypeAck}
+
+	case RequestTypeMenuCommand:
+		// Parse menu command data
+		var menuData MenuCommandData
+		if err := json.Unmarshal(request.Data, &menuData); err != nil {
+			s.logger.Error("Failed to parse menu command data", "clientID", clientID, "error", err)
+			return &Response{Type: ResponseTypeAck, Error: "invalid menu command data"}
+		}
+
+		s.logger.Info("Menu command received", "clientID", clientID, "command", menuData.Command)
+		statusUpdate := s.handler.HandleMenuCommand(menuData.Command)
+		if statusUpdate != nil {
+			return &Response{
+				Type: ResponseTypeStatusUpdate,
+				Data: statusUpdate,
+			}
+		}
 		return &Response{Type: ResponseTypeAck}
 
 	default:

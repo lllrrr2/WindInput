@@ -6,6 +6,13 @@
 
 class CTextService;
 
+// Menu item IDs for language bar right-click menu
+#define MENU_ID_TOGGLE_MODE      1
+#define MENU_ID_TOGGLE_WIDTH     2
+#define MENU_ID_TOGGLE_PUNCT     3
+#define MENU_ID_TOGGLE_TOOLBAR   4
+#define MENU_ID_OPEN_SETTINGS    5
+
 // Language bar button for showing Chinese/English mode
 class CLangBarItemButton : public ITfLangBarItemButton,
                            public ITfSource
@@ -49,13 +56,22 @@ public:
     // Update both mode and Caps Lock state
     void UpdateState(BOOL bChineseMode, BOOL bCapsLock);
 
+    // Update full status (called when receiving status_update from Go service)
+    void UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock);
+
+    // Force refresh the language bar icon (used when focus is gained)
+    void ForceRefresh();
+
 private:
     LONG _refCount;
     CTextService* _pTextService;
     ITfLangBarItemSink* _pLangBarItemSink;
     DWORD _dwCookie;
     BOOL _bChineseMode;
-    BOOL _bCapsLock;  // Caps Lock state
+    BOOL _bCapsLock;        // Caps Lock state
+    BOOL _bFullWidth;       // Full-width mode (全角)
+    BOOL _bChinesePunct;    // Chinese punctuation mode (中文标点)
+    BOOL _bToolbarVisible;  // Toolbar visibility
 
     // GUID for this language bar item
     static const GUID _guidLangBarItemButton;

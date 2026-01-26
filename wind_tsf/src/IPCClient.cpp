@@ -513,6 +513,19 @@ BOOL CIPCClient::SendFocusLost()
     return _SendMessage(json);
 }
 
+BOOL CIPCClient::SendFocusGained()
+{
+    if (!IsConnected())
+    {
+        return FALSE;
+    }
+
+    _LogDebug(L"Sending focus_gained");
+
+    std::wstring json = L"{\"type\":\"focus_gained\",\"data\":{}}";
+    return _SendMessage(json);
+}
+
 BOOL CIPCClient::SendToggleMode()
 {
     if (!_ShouldAttemptOperation())
@@ -547,6 +560,33 @@ BOOL CIPCClient::SendCapsLockState(BOOL capsLockOn)
     oss << L"{\"type\":\"caps_lock_state\",\"data\":{\"caps_lock_on\":";
     oss << (capsLockOn ? L"true" : L"false");
     oss << L"}}";
+
+    return _SendMessage(oss.str());
+}
+
+BOOL CIPCClient::SendMenuCommand(const char* command)
+{
+    if (!_ShouldAttemptOperation())
+    {
+        return FALSE;
+    }
+
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
+    _LogDebug(L"Sending menu_command: %S", command);
+
+    // Convert command to wide string
+    int wideSize = MultiByteToWideChar(CP_UTF8, 0, command, -1, nullptr, 0);
+    std::vector<wchar_t> wideCommand(wideSize);
+    MultiByteToWideChar(CP_UTF8, 0, command, -1, wideCommand.data(), wideSize);
+
+    std::wostringstream oss;
+    oss << L"{\"type\":\"menu_command\",\"data\":{\"command\":\"";
+    oss << wideCommand.data();
+    oss << L"\"}}";
 
     return _SendMessage(oss.str());
 }
@@ -688,6 +728,9 @@ BOOL CIPCClient::_ParseResponse(const std::wstring& json, ServiceResponse& respo
     response.composition.clear();
     response.caretPos = 0;
     response.chineseMode = FALSE;
+    response.fullWidth = FALSE;
+    response.chinesePunct = TRUE;
+    response.toolbarVisible = FALSE;
     response.error.clear();
 
     // Parse type field
@@ -760,6 +803,25 @@ BOOL CIPCClient::_ParseResponse(const std::wstring& json, ServiceResponse& respo
         response.chineseMode = (json.find(L"\"chinese_mode\":true") != std::wstring::npos) ? TRUE : FALSE;
 
         _LogDebug(L"ModeChanged: chineseMode=%s", response.chineseMode ? L"true" : L"false");
+    }
+    else if (json.find(L"\"type\":\"status_update\"") != std::wstring::npos)
+    {
+        response.type = ResponseType::StatusUpdate;
+        _LogDebug(L"Response type: StatusUpdate");
+
+        // Extract status fields from data
+        response.chineseMode = (json.find(L"\"chinese_mode\":true") != std::wstring::npos) ? TRUE : FALSE;
+        response.fullWidth = (json.find(L"\"full_width\":true") != std::wstring::npos) ? TRUE : FALSE;
+        response.chinesePunct = (json.find(L"\"chinese_punctuation\":true") != std::wstring::npos) ? TRUE : FALSE;
+        response.toolbarVisible = (json.find(L"\"toolbar_visible\":true") != std::wstring::npos) ? TRUE : FALSE;
+
+        _LogDebug(L"StatusUpdate: mode=%d, width=%d, punct=%d, toolbar=%d",
+                  response.chineseMode, response.fullWidth, response.chinesePunct, response.toolbarVisible);
+    }
+    else if (json.find(L"\"type\":\"consumed\"") != std::wstring::npos)
+    {
+        response.type = ResponseType::Consumed;
+        _LogDebug(L"Response type: Consumed (key consumed by hotkey)");
     }
 
     // Check for error field

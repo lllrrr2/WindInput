@@ -69,8 +69,16 @@ async function loadData() {
 
     const configRes = await api.getConfig();
     if (configRes.success && configRes.data) {
-      config.value = configRes.data;
-      formData.value = JSON.parse(JSON.stringify(configRes.data));
+      // Ensure toolbar and input fields exist with defaults
+      const cfg = configRes.data;
+      if (!cfg.toolbar) {
+        cfg.toolbar = { visible: false, position_x: 100, position_y: 100 };
+      }
+      if (!cfg.input) {
+        cfg.input = { full_width: false, chinese_punctuation: true };
+      }
+      config.value = cfg;
+      formData.value = JSON.parse(JSON.stringify(cfg));
     }
 
     const statusRes = await api.getStatus();
@@ -104,7 +112,8 @@ async function saveConfig() {
       if (res.data.needReload.length > 0) {
         saveMessage.value += '（部分设置需要重载生效）';
       }
-      await loadData();
+      // Update local config without reloading everything (preserves scroll position)
+      config.value = JSON.parse(JSON.stringify(formData.value)) as Config;
     } else {
       saveMessageType.value = 'error';
       saveMessage.value = res.error || '保存失败';
@@ -137,7 +146,19 @@ async function handleReload() {
     if (res.success) {
       saveMessageType.value = 'success';
       saveMessage.value = '重载成功';
-      await loadData();
+      // Only reload config data, not the full page
+      const configRes = await api.getConfig();
+      if (configRes.success && configRes.data) {
+        const cfg = configRes.data;
+        if (!cfg.toolbar) {
+          cfg.toolbar = { visible: false, position_x: 100, position_y: 100 };
+        }
+        if (!cfg.input) {
+          cfg.input = { full_width: false, chinese_punctuation: true };
+        }
+        config.value = cfg;
+        formData.value = JSON.parse(JSON.stringify(cfg));
+      }
     } else {
       saveMessageType.value = 'error';
       saveMessage.value = res.error || '重载失败';
@@ -147,6 +168,18 @@ async function handleReload() {
     saveMessage.value = '重载失败';
   }
   setTimeout(() => { saveMessage.value = ''; }, 3000);
+}
+
+// 仅刷新状态信息（用于关于页面）
+async function refreshStatus() {
+  try {
+    const statusRes = await api.getStatus();
+    if (statusRes.success && statusRes.data) {
+      status.value = statusRes.data;
+    }
+  } catch (e) {
+    console.error('刷新状态失败', e);
+  }
 }
 
 // 重置为当前配置
@@ -486,6 +519,50 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+
+          <div class="settings-card">
+            <div class="card-title">工具栏</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>显示工具栏</label>
+                <p class="setting-hint">在屏幕上显示可拖动的输入法工具栏</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.toolbar!.visible" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="card-title">输入选项</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>全角字符</label>
+                <p class="setting-hint">启用后输出全角字符（如：ＡＢＣ１２３）</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.input!.full_width" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>中文标点</label>
+                <p class="setting-hint">启用后输出中文标点符号（如：，。！？）</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.input!.chinese_punctuation" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- 快捷键设置 -->
@@ -651,7 +728,7 @@ onUnmounted(() => {
 
           <div class="about-actions">
             <button class="btn" @click="handleReload">重载配置</button>
-            <button class="btn" @click="loadData">刷新状态</button>
+            <button class="btn" @click="refreshStatus">刷新状态</button>
           </div>
         </section>
 

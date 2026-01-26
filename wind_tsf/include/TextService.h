@@ -55,6 +55,12 @@ public:
     // Update language bar Caps Lock state
     void UpdateCapsLockState(BOOL bCapsLock);
 
+    // Send menu command to Go service
+    void SendMenuCommand(const char* command);
+
+    // Update full status from Go service response
+    void UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock);
+
 private:
     LONG _refCount;
     ITfThreadMgr* _pThreadMgr;

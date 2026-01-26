@@ -184,17 +184,39 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
 {
     OutputDebugStringW(L"[WindInput] OnSetFocus called\n");
 
-    // If losing focus (pDocMgrFocus is null or different), notify service
-    if (pDocMgrFocus == nullptr || pDocMgrFocus != pDocMgrPrevFocus)
+    // If gaining focus (pDocMgrFocus is not null)
+    if (pDocMgrFocus != nullptr)
     {
-        OutputDebugStringW(L"[WindInput] Focus changed, notifying service\n");
+        OutputDebugStringW(L"[WindInput] Focus gained\n");
+
+        // Force refresh the language bar button to ensure it's visible
+        if (_pLangBarItemButton != nullptr)
+        {
+            _pLangBarItemButton->ForceRefresh();
+        }
+
+        // Send focus_gained to service (for toolbar display)
+        if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
+        {
+            _pIPCClient->SendFocusGained();
+
+            // Receive response to keep protocol in sync
+            ServiceResponse response;
+            _pIPCClient->ReceiveResponse(response);
+        }
+    }
+
+    // If losing focus (pDocMgrFocus is null)
+    if (pDocMgrFocus == nullptr)
+    {
+        OutputDebugStringW(L"[WindInput] Focus lost, notifying service\n");
 
         // Send focus_lost to service
         if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
         {
             _pIPCClient->SendFocusLost();
 
-            // Also receive response to keep protocol in sync
+            // Receive response to keep protocol in sync
             ServiceResponse response;
             _pIPCClient->ReceiveResponse(response);
         }
@@ -493,4 +515,68 @@ void CTextService::UpdateCapsLockState(BOOL bCapsLock)
     {
         _pLangBarItemButton->UpdateCapsLockState(bCapsLock);
     }
+}
+
+void CTextService::SendMenuCommand(const char* command)
+{
+    OutputDebugStringW(L"[WindInput] SendMenuCommand called\n");
+
+    if (_pIPCClient == nullptr)
+    {
+        OutputDebugStringW(L"[WindInput] SendMenuCommand: IPC client is null\n");
+        return;
+    }
+
+    if (!_pIPCClient->IsConnected() && !_pIPCClient->Connect())
+    {
+        OutputDebugStringW(L"[WindInput] SendMenuCommand: Failed to connect\n");
+        return;
+    }
+
+    if (_pIPCClient->SendMenuCommand(command))
+    {
+        ServiceResponse response;
+        if (_pIPCClient->ReceiveResponse(response))
+        {
+            // Handle response based on type
+            if (response.type == ResponseType::ModeChanged)
+            {
+                _bChineseMode = response.chineseMode;
+                if (_pLangBarItemButton != nullptr)
+                {
+                    _pLangBarItemButton->UpdateLangBarButton(_bChineseMode);
+                }
+            }
+            else if (response.type == ResponseType::StatusUpdate)
+            {
+                // Update all status fields
+                _bChineseMode = response.chineseMode;
+                if (_pLangBarItemButton != nullptr)
+                {
+                    _pLangBarItemButton->UpdateFullStatus(
+                        response.chineseMode,
+                        response.fullWidth,
+                        response.chinesePunct,
+                        response.toolbarVisible,
+                        (GetKeyState(VK_CAPITAL) & 0x0001) != 0  // Get current Caps Lock state
+                    );
+                }
+            }
+        }
+    }
+}
+
+void CTextService::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
+{
+    _bChineseMode = bChineseMode;
+
+    if (_pLangBarItemButton != nullptr)
+    {
+        _pLangBarItemButton->UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
+    }
+
+    WCHAR debug[256];
+    wsprintfW(debug, L"[WindInput] UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d\n",
+              bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
+    OutputDebugStringW(debug);
 }

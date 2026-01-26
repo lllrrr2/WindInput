@@ -36,6 +36,9 @@ var (
 	procPostMessageW             = user32.NewProc("PostMessageW")
 	procGetDpiForSystem          = user32.NewProc("GetDpiForSystem")
 	procMsgWaitForMultipleObjects = user32.NewProc("MsgWaitForMultipleObjects")
+	procMonitorFromPoint         = user32.NewProc("MonitorFromPoint")
+	procGetMonitorInfoW          = user32.NewProc("GetMonitorInfoW")
+	procGetKeyState              = user32.NewProc("GetKeyState")
 
 	procCreateEventW  = kernel32.NewProc("CreateEventW")
 	procSetEvent      = kernel32.NewProc("SetEvent")
@@ -542,4 +545,87 @@ func PeekMessage(msg *MSG) bool {
 func ProcessMessage(msg *MSG) {
 	procTranslateMessage.Call(uintptr(unsafe.Pointer(msg)))
 	procDispatchMessageW.Call(uintptr(unsafe.Pointer(msg)))
+}
+
+// MONITORINFO structure for GetMonitorInfo
+type MONITORINFO struct {
+	CbSize    uint32
+	RcMonitor RECT
+	RcWork    RECT
+	DwFlags   uint32
+}
+
+// RECT structure
+type RECT struct {
+	Left   int32
+	Top    int32
+	Right  int32
+	Bottom int32
+}
+
+// Monitor flags
+const (
+	MONITOR_DEFAULTTONEAREST = 0x00000002
+	VK_CAPITAL               = 0x14 // CapsLock key
+)
+
+// GetCurrentMonitorWorkArea returns the work area (excluding taskbar) of the monitor
+// containing the mouse cursor. Returns (left, top, right, bottom).
+func GetCurrentMonitorWorkArea() (left, top, right, bottom int) {
+	// Get cursor position
+	var pt POINT
+	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+
+	// Get monitor from cursor position
+	hMonitor, _, _ := procMonitorFromPoint.Call(
+		uintptr(pt.X),
+		uintptr(pt.Y),
+		MONITOR_DEFAULTTONEAREST,
+	)
+
+	if hMonitor == 0 {
+		// Fallback to primary monitor work area
+		return 0, 0, 1920, 1080
+	}
+
+	// Get monitor info
+	var mi MONITORINFO
+	mi.CbSize = uint32(unsafe.Sizeof(mi))
+	ret, _, _ := procGetMonitorInfoW.Call(hMonitor, uintptr(unsafe.Pointer(&mi)))
+
+	if ret == 0 {
+		// Fallback
+		return 0, 0, 1920, 1080
+	}
+
+	return int(mi.RcWork.Left), int(mi.RcWork.Top), int(mi.RcWork.Right), int(mi.RcWork.Bottom)
+}
+
+// GetDefaultToolbarPosition returns the default position for the toolbar
+// (bottom-right corner of the current monitor's work area)
+func GetDefaultToolbarPosition(toolbarWidth, toolbarHeight int) (x, y int) {
+	left, top, right, bottom := GetCurrentMonitorWorkArea()
+
+	// Position at bottom-right corner with some margin
+	margin := 10
+	x = right - toolbarWidth - margin
+	y = bottom - toolbarHeight - margin
+
+	// Ensure position is within work area
+	if x < left {
+		x = left + margin
+	}
+	if y < top {
+		y = top + margin
+	}
+
+	return x, y
+}
+
+// GetCapsLockState returns the current state of CapsLock key
+// Returns true if CapsLock is ON, false otherwise
+func GetCapsLockState() bool {
+	state, _, _ := procGetKeyState.Call(uintptr(VK_CAPITAL))
+	// The low-order bit indicates toggle state (0 = off, 1 = on)
+	return (state & 0x0001) != 0
 }

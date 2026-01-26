@@ -26,6 +26,8 @@ type ConfigResponse struct {
 	Engine     config.EngineConfig     `json:"engine"`
 	Hotkeys    config.HotkeyConfig     `json:"hotkeys"`
 	UI         config.UIConfig         `json:"ui"`
+	Toolbar    config.ToolbarConfig    `json:"toolbar"`
+	Input      config.InputConfig      `json:"input"`
 }
 
 // GetConfig 获取完整配置
@@ -41,6 +43,8 @@ func (h *ConfigHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		Engine:     h.services.Config.Engine,
 		Hotkeys:    h.services.Config.Hotkeys,
 		UI:         h.services.Config.UI,
+		Toolbar:    h.services.Config.Toolbar,
+		Input:      h.services.Config.Input,
 	})
 }
 
@@ -51,6 +55,8 @@ type ConfigUpdateRequest struct {
 	Engine     *config.EngineConfig     `json:"engine,omitempty"`
 	Hotkeys    *config.HotkeyConfig     `json:"hotkeys,omitempty"`
 	UI         *config.UIConfig         `json:"ui,omitempty"`
+	Toolbar    *config.ToolbarConfig    `json:"toolbar,omitempty"`
+	Input      *config.InputConfig      `json:"input,omitempty"`
 }
 
 // ConfigUpdateResponse 配置更新响应
@@ -126,6 +132,28 @@ func (h *ConfigHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 		// 通知 Coordinator 更新 UI 配置
 		if h.services.Coordinator != nil {
 			h.services.Coordinator.UpdateUIConfig(&cfg.UI)
+		}
+	}
+
+	// 更新 Toolbar 配置（可热更新）
+	if req.Toolbar != nil {
+		cfg.Toolbar = *req.Toolbar
+		response.Applied = append(response.Applied, "toolbar")
+
+		// 通知 Coordinator 更新工具栏配置
+		if h.services.Coordinator != nil {
+			h.services.Coordinator.UpdateToolbarConfig(&cfg.Toolbar)
+		}
+	}
+
+	// 更新 Input 配置（可热更新）
+	if req.Input != nil {
+		cfg.Input = *req.Input
+		response.Applied = append(response.Applied, "input")
+
+		// 通知 Coordinator 更新输入配置
+		if h.services.Coordinator != nil {
+			h.services.Coordinator.UpdateInputConfig(&cfg.Input)
 		}
 	}
 
