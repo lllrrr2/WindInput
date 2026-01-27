@@ -43,6 +43,10 @@ type Manager struct {
 	caretX     int
 	caretY     int
 
+	// Sticky position state: once candidate window jumps above caret,
+	// it stays above until input is cleared (new input session)
+	stickyAbove bool
+
 	ready    bool
 	readyCh  chan struct{}
 
@@ -253,6 +257,17 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, caretX, c
 func (m *Manager) doShowCandidates(candidates []Candidate, input string, caretX, caretY, caretHeight, page, totalPages int) {
 	m.logger.Debug("doShowCandidates start", "input", input, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight)
 
+	// Check if this is a new input session (input is shorter than before or empty)
+	// If so, reset the sticky state
+	m.mu.Lock()
+	prevInput := m.input
+	if len(input) < len(prevInput) || input == "" {
+		m.stickyAbove = false
+		m.logger.Debug("Reset sticky state", "prevInput", prevInput, "newInput", input)
+	}
+	currentStickyAbove := m.stickyAbove
+	m.mu.Unlock()
+
 	// Render first to get actual window size
 	m.logger.Debug("Rendering candidates...")
 	img := m.renderer.RenderCandidates(candidates, input, page, totalPages)
@@ -260,10 +275,26 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, caretX,
 	windowHeight := img.Bounds().Dy()
 	m.logger.Debug("Render complete", "width", windowWidth, "height", windowHeight)
 
+	// Determine position preference based on sticky state
+	var preference PositionPreference
+	if currentStickyAbove {
+		preference = PositionAbove
+	} else {
+		preference = PositionAuto
+	}
+
 	// Adjust position to stay within screen bounds
 	// Use LayoutVertical for now (current layout), future can add LayoutHorizontal support
-	windowX, windowY := AdjustCandidatePosition(caretX, caretY, caretHeight, windowWidth, windowHeight, LayoutVertical)
-	m.logger.Debug("Position adjusted", "windowX", windowX, "windowY", windowY)
+	windowX, windowY, showAbove := AdjustCandidatePosition(caretX, caretY, caretHeight, windowWidth, windowHeight, LayoutVertical, preference)
+	m.logger.Debug("Position adjusted", "windowX", windowX, "windowY", windowY, "showAbove", showAbove, "stickyAbove", currentStickyAbove)
+
+	// Update sticky state if we're now showing above
+	if showAbove && !currentStickyAbove {
+		m.mu.Lock()
+		m.stickyAbove = true
+		m.mu.Unlock()
+		m.logger.Debug("Set sticky state to above")
+	}
 
 	// Update window
 	m.logger.Debug("Updating window content...")
@@ -302,6 +333,11 @@ func (m *Manager) Hide() {
 // doHide actually hides the window (called from UI thread)
 func (m *Manager) doHide() {
 	m.window.Hide()
+
+	// Reset sticky state when hiding (input session ended)
+	m.mu.Lock()
+	m.stickyAbove = false
+	m.mu.Unlock()
 }
 
 // UpdatePosition updates the window position

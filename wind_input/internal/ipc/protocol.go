@@ -24,6 +24,8 @@ type ConvertData struct {
 type Response struct {
 	Status     string      `json:"status"`
 	Candidates []Candidate `json:"candidates,omitempty"`
+	Preedit    string      `json:"preedit,omitempty"`     // 预编辑文本 (例如: "wkdi")
+	ShowInline bool        `json:"show_inline,omitempty"` // 是否显示在嵌入式编码行
 	Error      string      `json:"error,omitempty"`
 }
 

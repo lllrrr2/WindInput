@@ -669,27 +669,39 @@ const (
 	LayoutHorizontal                        // Candidates displayed horizontally (future)
 )
 
+// PositionPreference indicates where the candidate window should be displayed
+type PositionPreference int
+
+const (
+	PositionAuto  PositionPreference = iota // Auto-detect based on screen bounds
+	PositionAbove                           // Force display above caret
+	PositionBelow                           // Force display below caret
+)
+
 // AdjustCandidatePosition adjusts the candidate window position to ensure it stays within screen bounds.
 // Parameters:
-//   - caretX, caretY: the caret position (where input is happening)
+//   - caretX, caretY: the caret position (caretY is the BOTTOM of the caret)
 //   - caretHeight: height of the caret/cursor
 //   - windowWidth, windowHeight: size of the candidate window
 //   - layout: the layout direction of the candidate window
+//   - preference: position preference (auto, above, or below)
 //
-// Returns adjusted (x, y) position for the candidate window.
-func AdjustCandidatePosition(caretX, caretY, caretHeight, windowWidth, windowHeight int, layout CandidateLayout) (x, y int) {
+// Returns:
+//   - x, y: adjusted position for the candidate window
+//   - showAbove: true if window is displayed above caret (for sticky state tracking)
+func AdjustCandidatePosition(caretX, caretY, caretHeight, windowWidth, windowHeight int, layout CandidateLayout, preference PositionPreference) (x, y int, showAbove bool) {
 	// Get the work area of the monitor containing the caret
 	workLeft, workTop, workRight, workBottom := GetMonitorWorkAreaFromPoint(caretX, caretY)
 
 	// Small gap between caret and candidate window
-	const gap = 5
+	const gap = 2
 
 	switch layout {
 	case LayoutHorizontal:
 		// Horizontal layout: prefer to show to the right of caret
 		// If not enough space on the right, show on the left
 		x = caretX + gap
-		y = caretY
+		y = caretY - caretHeight // Align with caret top
 
 		// Check right boundary
 		if x+windowWidth > workRight {
@@ -712,23 +724,56 @@ func AdjustCandidatePosition(caretX, caretY, caretHeight, windowWidth, windowHei
 			y = workTop
 		}
 
+		showAbove = false
+
 	case LayoutVertical:
 		fallthrough
 	default:
 		// Vertical layout (default): prefer to show below caret
-		// If not enough space below, show above
+		// Note: caretY is the BOTTOM of the caret, so:
+		//   - Caret top = caretY - caretHeight
+		//   - Caret bottom = caretY
 		x = caretX
-		y = caretY + caretHeight + gap
 
-		// Check bottom boundary
-		if y+windowHeight > workBottom {
-			// Not enough space below, show above the caret
-			y = caretY - windowHeight - gap
+		// Determine if we should show above or below
+		shouldShowAbove := false
+
+		if preference == PositionAbove {
+			// Forced to show above (sticky state)
+			shouldShowAbove = true
+		} else if preference == PositionBelow {
+			// Forced to show below
+			shouldShowAbove = false
+		} else {
+			// Auto-detect: check if there's enough space below
+			yBelow := caretY + gap
+			if yBelow+windowHeight > workBottom {
+				shouldShowAbove = true
+			}
 		}
 
-		// Ensure y is within top boundary (in case window is very tall)
+		if shouldShowAbove {
+			// Show above the caret
+			// Window bottom should be at (caret top - gap)
+			// Caret top = caretY - caretHeight
+			// Window bottom = caretY - caretHeight - gap
+			// Window top (y) = window bottom - windowHeight
+			y = caretY - caretHeight - gap - windowHeight
+			showAbove = true
+		} else {
+			// Show below the caret
+			// Window top should be at (caret bottom + gap)
+			// Caret bottom = caretY
+			y = caretY + gap
+			showAbove = false
+		}
+
+		// Ensure y is within boundaries
 		if y < workTop {
 			y = workTop
+		}
+		if y+windowHeight > workBottom {
+			y = workBottom - windowHeight
 		}
 
 		// Check right boundary for horizontal overflow
@@ -742,5 +787,5 @@ func AdjustCandidatePosition(caretX, caretY, caretHeight, windowWidth, windowHei
 		}
 	}
 
-	return x, y
+	return x, y, showAbove
 }
