@@ -511,6 +511,16 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	}
 
 	c.showUI()
+
+	// Handle Inline Preedit
+	if c.config != nil && c.config.UI.InlinePreedit {
+		return &bridge.KeyEventResult{
+			Type:     bridge.ResponseTypeUpdateComposition,
+			Text:     c.inputBuffer,
+			CaretPos: len(c.inputBuffer),
+		}
+	}
+
 	return nil // Just show candidates, don't insert anything yet
 }
 
@@ -527,6 +537,15 @@ func (c *Coordinator) handleBackspace() *bridge.KeyEventResult {
 
 		c.updateCandidates()
 		c.showUI()
+
+		// Handle Inline Preedit
+		if c.config != nil && c.config.UI.InlinePreedit {
+			return &bridge.KeyEventResult{
+				Type:     bridge.ResponseTypeUpdateComposition,
+				Text:     c.inputBuffer,
+				CaretPos: len(c.inputBuffer),
+			}
+		}
 	} else {
 		// Buffer is already empty - this shouldn't happen normally
 		// Return ClearComposition to reset C++ side's _isComposing state
@@ -870,6 +889,21 @@ func (c *Coordinator) HandleClientDisconnected(activeClients int) {
 func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
 	c.logger.Debug("Focus gained")
 
+	// Clear any pending input state when focus changes
+	// This ensures composition state is consistent
+	c.mu.Lock()
+	if len(c.inputBuffer) > 0 {
+		c.inputBuffer = ""
+		c.candidates = nil
+		c.currentPage = 1
+		c.totalPages = 1
+		c.logger.Debug("Cleared input buffer on focus gained")
+	}
+	c.mu.Unlock()
+
+	// Hide candidate window (will be shown again when user starts typing)
+	c.hideUI()
+
 	// Set IME as activated (this will show toolbar if enabled)
 	c.SetIMEActivated(true)
 
@@ -889,6 +923,21 @@ func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
 // This is called from TSF's Activate method
 func (c *Coordinator) HandleIMEActivated() *bridge.StatusUpdateData {
 	c.logger.Info("IME activated (user switched back to this IME)")
+
+	// Clear any pending input state when IME is reactivated
+	// This ensures composition state is consistent
+	c.mu.Lock()
+	if len(c.inputBuffer) > 0 {
+		c.inputBuffer = ""
+		c.candidates = nil
+		c.currentPage = 1
+		c.totalPages = 1
+		c.logger.Debug("Cleared input buffer on IME activated")
+	}
+	c.mu.Unlock()
+
+	// Hide candidate window (will be shown again when user starts typing)
+	c.hideUI()
 
 	// Set IME as activated (this will show toolbar if enabled)
 	c.SetIMEActivated(true)

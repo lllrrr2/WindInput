@@ -8,10 +8,15 @@ class CKeyEventSink;
 class CIPCClient;
 class CLangBarItemButton;
 class CCaretEditSession;
+class CDisplayAttributeProvider;
 
 class CTextService : public ITfTextInputProcessor,
-                     public ITfThreadMgrEventSink
+                     public ITfThreadMgrEventSink,
+                     public ITfCompositionSink,
+                     public ITfDisplayAttributeProvider
 {
+    friend class CUpdateCompositionEditSession;
+    friend class CEndCompositionEditSession;
 public:
     CTextService();
     ~CTextService();
@@ -32,6 +37,13 @@ public:
     STDMETHODIMP OnPushContext(ITfContext* pContext);
     STDMETHODIMP OnPopContext(ITfContext* pContext);
 
+    // ITfCompositionSink
+    STDMETHODIMP OnCompositionTerminated(TfEditCookie ecWrite, ITfComposition* pComposition);
+
+    // ITfDisplayAttributeProvider
+    STDMETHODIMP EnumDisplayAttributeInfo(IEnumTfDisplayAttributeInfo** ppEnum);
+    STDMETHODIMP GetDisplayAttributeInfo(REFGUID guid, ITfDisplayAttributeInfo** ppInfo);
+
     // Get thread manager
     ITfThreadMgr* GetThreadMgr() { return _pThreadMgr; }
 
@@ -43,6 +55,12 @@ public:
 
     // Insert text into current context
     BOOL InsertText(const std::wstring& text);
+
+    // Update composition text (Inline Composition)
+    BOOL UpdateComposition(const std::wstring& text, int caretPos);
+    
+    // End current composition
+    void EndComposition();
 
     // Get and send caret position to Go Service
     BOOL GetCaretPosition(LONG* px, LONG* py, LONG* pHeight);
@@ -79,6 +97,12 @@ private:
     // Input mode state
     BOOL _bChineseMode;
 
+    // Composition
+    ITfComposition* _pComposition;
+
+    // Display Attribute
+    TfGuidAtom _gaDisplayAttributeInput;
+
     BOOL _InitThreadMgrEventSink();
     void _UninitThreadMgrEventSink();
 
@@ -90,4 +114,11 @@ private:
 
     BOOL _InitLangBarButton();
     void _UninitLangBarButton();
+
+    BOOL _InitDisplayAttribute();
+    void _UninitDisplayAttribute();
+
+public:
+    // Get display attribute GUID atom for composition
+    TfGuidAtom GetDisplayAttributeInputAtom() { return _gaDisplayAttributeInput; }
 };

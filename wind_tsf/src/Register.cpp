@@ -1,4 +1,5 @@
 #include "Register.h"
+#include "DisplayAttributeInfo.h"
 #include <shlwapi.h>
 #include <strsafe.h>
 #include <inputscope.h>
@@ -206,6 +207,24 @@ HRESULT RegisterCategories()
             L"[WindInput] Registered GUID_TFCAT_TIPCAP_UIELEMENTENABLED\n" :
             L"[WindInput] Failed to register GUID_TFCAT_TIPCAP_UIELEMENTENABLED\n");
 
+        // 注册 Display Attribute Provider (用于 Inline Composition 显示下划线)
+        hr2 = pCategoryMgr->RegisterCategory(c_clsidTextService,
+                                              GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
+                                              c_clsidTextService);
+
+        OutputDebugStringW(SUCCEEDED(hr2) ?
+            L"[WindInput] Registered GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER\n" :
+            L"[WindInput] Failed to register GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER\n");
+
+        // 注册 Display Attribute Info (具体的显示属性)
+        hr2 = pCategoryMgr->RegisterCategory(c_clsidTextService,
+                                              GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
+                                              c_guidDisplayAttributeInput);
+
+        OutputDebugStringW(SUCCEEDED(hr2) ?
+            L"[WindInput] Registered display attribute to provider\n" :
+            L"[WindInput] Failed to register display attribute to provider\n");
+
         pCategoryMgr->Release();
     }
 
@@ -236,6 +255,15 @@ HRESULT UnregisterCategories()
         pCategoryMgr->UnregisterCategory(c_clsidTextService,
                                           GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
                                           c_clsidTextService);
+
+        // 卸载 Display Attribute Provider
+        pCategoryMgr->UnregisterCategory(c_clsidTextService,
+                                          GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
+                                          c_clsidTextService);
+
+        pCategoryMgr->UnregisterCategory(c_clsidTextService,
+                                          GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
+                                          c_guidDisplayAttributeInput);
 
         pCategoryMgr->Release();
     }

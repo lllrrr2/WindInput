@@ -73,6 +73,7 @@ type UIConfig struct {
 	FontSize          float64 `yaml:"font_size" json:"font_size"`
 	CandidatesPerPage int     `yaml:"candidates_per_page" json:"candidates_per_page"`
 	FontPath          string  `yaml:"font_path" json:"font_path"`
+	InlinePreedit     bool    `yaml:"inline_preedit" json:"inline_preedit"` // 启用嵌入式编码行
 }
 
 // ToolbarConfig contains toolbar settings
@@ -126,6 +127,7 @@ func DefaultConfig() *Config {
 			FontSize:          18,
 			CandidatesPerPage: 9,
 			FontPath:          "",
+			InlinePreedit:     true, // 默认开启嵌入式编码行
 		},
 		Toolbar: ToolbarConfig{
 			Visible:   false, // 默认不显示工具栏

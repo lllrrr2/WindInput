@@ -3,6 +3,244 @@
 #include "IPCClient.h"
 #include "LangBarItemButton.h"
 #include "CaretEditSession.h"
+#include "DisplayAttributeInfo.h"
+
+// EditSession for ending composition
+class CEndCompositionEditSession : public ITfEditSession
+{
+public:
+    CEndCompositionEditSession(CTextService* pTextService)
+        : _refCount(1), _pTextService(pTextService)
+    {
+        _pTextService->AddRef();
+    }
+
+    ~CEndCompositionEditSession()
+    {
+        _pTextService->Release();
+    }
+
+    // IUnknown
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppvObj)
+    {
+        if (ppvObj == nullptr) return E_INVALIDARG;
+        *ppvObj = nullptr;
+        if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfEditSession))
+        {
+            *ppvObj = (ITfEditSession*)this;
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef()
+    {
+        return InterlockedIncrement(&_refCount);
+    }
+
+    STDMETHODIMP_(ULONG) Release()
+    {
+        LONG cr = InterlockedDecrement(&_refCount);
+        if (cr == 0) delete this;
+        return cr;
+    }
+
+    // ITfEditSession
+    STDMETHODIMP DoEditSession(TfEditCookie ec)
+    {
+        if (_pTextService->_pComposition != nullptr)
+        {
+            // Get the composition range and clear the text before ending
+            // This prevents the composition text from being committed
+            ITfRange* pRange = nullptr;
+            if (SUCCEEDED(_pTextService->_pComposition->GetRange(&pRange)))
+            {
+                // Clear the composition text (set to empty string)
+                pRange->SetText(ec, 0, L"", 0);
+                pRange->Release();
+            }
+
+            _pTextService->_pComposition->EndComposition(ec);
+
+            // Release and clear _pComposition immediately
+            // OnCompositionTerminated may not be called reliably
+            _pTextService->_pComposition->Release();
+            _pTextService->_pComposition = nullptr;
+            OutputDebugStringW(L"[WindInput] DoEditSession: Composition ended and released\n");
+        }
+        return S_OK;
+    }
+
+private:
+    LONG _refCount;
+    CTextService* _pTextService;
+};
+
+// EditSession for updating composition
+class CUpdateCompositionEditSession : public ITfEditSession
+{
+public:
+    CUpdateCompositionEditSession(CTextService* pTextService, ITfContext* pContext, const std::wstring& text)
+        : _refCount(1), _pTextService(pTextService), _pContext(pContext), _text(text)
+    {
+        _pTextService->AddRef();
+        _pContext->AddRef();
+    }
+
+    ~CUpdateCompositionEditSession()
+    {
+        _pTextService->Release();
+        _pContext->Release();
+    }
+
+    // IUnknown
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppvObj)
+    {
+        if (ppvObj == nullptr) return E_INVALIDARG;
+        *ppvObj = nullptr;
+        if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfEditSession))
+        {
+            *ppvObj = (ITfEditSession*)this;
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef()
+    {
+        return InterlockedIncrement(&_refCount);
+    }
+
+    STDMETHODIMP_(ULONG) Release()
+    {
+        LONG cr = InterlockedDecrement(&_refCount);
+        if (cr == 0) delete this;
+        return cr;
+    }
+
+    // ITfEditSession
+    STDMETHODIMP DoEditSession(TfEditCookie ec)
+    {
+        HRESULT hr = S_OK;
+
+        // 1. If no composition exists, start one
+        if (_pTextService->_pComposition == nullptr)
+        {
+            // Get current selection (cursor position) to start composition there
+            TF_SELECTION tfSelection;
+            ULONG cFetched;
+            if (FAILED(_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &cFetched)) || cFetched != 1)
+            {
+                return E_FAIL;
+            }
+
+            ITfContextComposition* pContextComp = nullptr;
+            if (FAILED(_pContext->QueryInterface(IID_ITfContextComposition, (void**)&pContextComp)))
+            {
+                tfSelection.range->Release();
+                return E_FAIL;
+            }
+
+            // Start composition
+            hr = pContextComp->StartComposition(
+                ec,
+                tfSelection.range,
+                (ITfCompositionSink*)_pTextService,
+                &_pTextService->_pComposition);
+
+            pContextComp->Release();
+            tfSelection.range->Release();
+
+            if (FAILED(hr) || _pTextService->_pComposition == nullptr)
+            {
+                OutputDebugStringW(L"[WindInput] StartComposition failed\n");
+                return E_FAIL;
+            }
+            OutputDebugStringW(L"[WindInput] StartComposition succeeded\n");
+        }
+
+        // 2. Get range from composition
+        ITfRange* pRange = nullptr;
+        if (FAILED(_pTextService->_pComposition->GetRange(&pRange)))
+        {
+            return E_FAIL;
+        }
+
+        // 3. Set text
+        hr = pRange->SetText(ec, TF_ST_CORRECTION, _text.c_str(), (LONG)_text.length());
+
+        if (SUCCEEDED(hr))
+        {
+            // 4. Apply display attribute to show underline
+            _SetDisplayAttribute(ec, pRange);
+
+            // 5. Get the range again after SetText (it may have changed)
+            ITfRange* pRangeForSel = nullptr;
+            if (SUCCEEDED(_pTextService->_pComposition->GetRange(&pRangeForSel)))
+            {
+                // Collapse range to end for cursor position
+                pRangeForSel->Collapse(ec, TF_ANCHOR_END);
+
+                // Set selection at end of composition
+                TF_SELECTION sel = {};
+                sel.range = pRangeForSel;
+                sel.style.ase = TF_AE_NONE;
+                sel.style.fInterimChar = FALSE;
+                _pContext->SetSelection(ec, 1, &sel);
+
+                pRangeForSel->Release();
+            }
+        }
+
+        pRange->Release();
+        return hr;
+    }
+
+private:
+    void _SetDisplayAttribute(TfEditCookie ec, ITfRange* pRange)
+    {
+        // Get the display attribute atom from TextService
+        TfGuidAtom gaDisplayAttr = _pTextService->GetDisplayAttributeInputAtom();
+        if (gaDisplayAttr == TF_INVALID_GUIDATOM)
+        {
+            OutputDebugStringW(L"[WindInput] Display attribute not initialized\n");
+            return;
+        }
+
+        // Get ITfProperty for display attribute
+        ITfProperty* pDisplayAttrProp = nullptr;
+        if (FAILED(_pContext->GetProperty(GUID_PROP_ATTRIBUTE, &pDisplayAttrProp)))
+        {
+            OutputDebugStringW(L"[WindInput] Failed to get GUID_PROP_ATTRIBUTE property\n");
+            return;
+        }
+
+        // Set the display attribute on the composition range
+        VARIANT var;
+        var.vt = VT_I4;
+        var.lVal = gaDisplayAttr;
+
+        HRESULT hr = pDisplayAttrProp->SetValue(ec, pRange, &var);
+        if (FAILED(hr))
+        {
+            OutputDebugStringW(L"[WindInput] Failed to set display attribute\n");
+        }
+        else
+        {
+            OutputDebugStringW(L"[WindInput] Display attribute set successfully\n");
+        }
+
+        pDisplayAttrProp->Release();
+    }
+
+private:
+    LONG _refCount;
+    CTextService* _pTextService;
+    ITfContext* _pContext;
+    std::wstring _text;
+};
 
 CTextService::CTextService()
     : _refCount(1)
@@ -13,6 +251,8 @@ CTextService::CTextService()
     , _pIPCClient(nullptr)
     , _pLangBarItemButton(nullptr)
     , _bChineseMode(TRUE)
+    , _pComposition(nullptr)
+    , _gaDisplayAttributeInput(TF_INVALID_GUIDATOM)
 {
     DllAddRef();
 }
@@ -36,6 +276,14 @@ STDAPI CTextService::QueryInterface(REFIID riid, void** ppvObj)
     else if (IsEqualIID(riid, IID_ITfThreadMgrEventSink))
     {
         *ppvObj = (ITfThreadMgrEventSink*)this;
+    }
+    else if (IsEqualIID(riid, IID_ITfCompositionSink))
+    {
+        *ppvObj = (ITfCompositionSink*)this;
+    }
+    else if (IsEqualIID(riid, IID_ITfDisplayAttributeProvider))
+    {
+        *ppvObj = (ITfDisplayAttributeProvider*)this;
     }
 
     if (*ppvObj)
@@ -100,6 +348,17 @@ STDAPI CTextService::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId)
     }
     OutputDebugStringW(L"[WindInput] KeyEventSink initialized\n");
 
+    // Initialize display attribute
+    if (!_InitDisplayAttribute())
+    {
+        OutputDebugStringW(L"[WindInput] _InitDisplayAttribute failed (non-fatal)\n");
+        // Not fatal, continue without display attribute
+    }
+    else
+    {
+        OutputDebugStringW(L"[WindInput] DisplayAttribute initialized\n");
+    }
+
     // Initialize language bar button
     if (!_InitLangBarButton())
     {
@@ -131,8 +390,14 @@ STDAPI CTextService::Deactivate()
 {
     OutputDebugStringW(L"[WindInput] TextService::Deactivate called\n");
 
+    // End any active composition before deactivating
+    EndComposition();
+
     // Release language bar button
     _UninitLangBarButton();
+
+    // Release display attribute
+    _UninitDisplayAttribute();
 
     // Release key event sink
     _UninitKeyEventSink();
@@ -256,6 +521,9 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
     if (pDocMgrFocus == nullptr)
     {
         OutputDebugStringW(L"[WindInput] Focus lost, notifying service\n");
+
+        // End any active composition before sending focus_lost
+        EndComposition();
 
         // Send focus_lost to service
         if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
@@ -875,4 +1143,191 @@ void CTextService::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bCh
     wsprintfW(debug, L"[WindInput] UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d\n",
               bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
     OutputDebugStringW(debug);
+}
+
+// ITfCompositionSink implementation
+STDAPI CTextService::OnCompositionTerminated(TfEditCookie ecWrite, ITfComposition* pComposition)
+{
+    OutputDebugStringW(L"[WindInput] OnCompositionTerminated called\n");
+
+    // Only release if this is the same composition we're tracking
+    // It may have already been released in DoEditSession
+    if (_pComposition != nullptr && _pComposition == pComposition)
+    {
+        OutputDebugStringW(L"[WindInput] OnCompositionTerminated: Releasing composition\n");
+        _pComposition->Release();
+        _pComposition = nullptr;
+    }
+    else if (_pComposition == nullptr)
+    {
+        OutputDebugStringW(L"[WindInput] OnCompositionTerminated: Already released\n");
+    }
+
+    return S_OK;
+}
+
+// Update composition text
+BOOL CTextService::UpdateComposition(const std::wstring& text, int caretPos)
+{
+    WCHAR debug[256];
+    wsprintfW(debug, L"[WindInput] UpdateComposition called, text='%s', _pComposition=%p\n",
+              text.c_str(), _pComposition);
+    OutputDebugStringW(debug);
+
+    // Need a document manager
+    ITfDocumentMgr* pDocMgr = nullptr;
+    if (_pThreadMgr == nullptr || FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || pDocMgr == nullptr)
+    {
+        OutputDebugStringW(L"[WindInput] UpdateComposition: Failed to get DocMgr\n");
+        return FALSE;
+    }
+
+    ITfContext* pContext = nullptr;
+    HRESULT hr = pDocMgr->GetTop(&pContext);
+    pDocMgr->Release();
+
+    if (FAILED(hr) || pContext == nullptr)
+    {
+        OutputDebugStringW(L"[WindInput] UpdateComposition: Failed to get Context\n");
+        return FALSE;
+    }
+
+    CUpdateCompositionEditSession* pEditSession = new CUpdateCompositionEditSession(this, pContext, text);
+
+    HRESULT hrSession;
+    hr = pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hrSession);
+
+    wsprintfW(debug, L"[WindInput] UpdateComposition: RequestEditSession hr=0x%08X, hrSession=0x%08X\n", hr, hrSession);
+    OutputDebugStringW(debug);
+
+    pEditSession->Release();
+    pContext->Release();
+
+    return SUCCEEDED(hr);
+}
+
+// End composition
+void CTextService::EndComposition()
+{
+    // If there's no active composition, nothing to do
+    if (_pComposition == nullptr)
+    {
+        OutputDebugStringW(L"[WindInput] EndComposition: No active composition\n");
+        return;
+    }
+
+    OutputDebugStringW(L"[WindInput] EndComposition: Ending active composition\n");
+
+    // Need a document manager to request edit session
+    ITfDocumentMgr* pDocMgr = nullptr;
+    if (_pThreadMgr == nullptr || FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || pDocMgr == nullptr)
+    {
+        // Can't get document manager, force cleanup
+        OutputDebugStringW(L"[WindInput] EndComposition: Can't get DocMgr, forcing cleanup\n");
+        _pComposition->Release();
+        _pComposition = nullptr;
+        return;
+    }
+
+    ITfContext* pContext = nullptr;
+    HRESULT hr = pDocMgr->GetTop(&pContext);
+    pDocMgr->Release();
+
+    if (FAILED(hr) || pContext == nullptr)
+    {
+        // Can't get context, force cleanup
+        OutputDebugStringW(L"[WindInput] EndComposition: Can't get Context, forcing cleanup\n");
+        _pComposition->Release();
+        _pComposition = nullptr;
+        return;
+    }
+
+    CEndCompositionEditSession* pEditSession = new CEndCompositionEditSession(this);
+
+    HRESULT hrSession;
+    // Use TF_ES_SYNC to ensure composition ends synchronously
+    // This prevents race conditions with subsequent UpdateComposition calls
+    hr = pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_SYNC | TF_ES_READWRITE, &hrSession);
+
+    if (FAILED(hr) || FAILED(hrSession))
+    {
+        // Edit session failed, force cleanup
+        OutputDebugStringW(L"[WindInput] EndComposition: EditSession failed, forcing cleanup\n");
+        if (_pComposition != nullptr)
+        {
+            _pComposition->Release();
+            _pComposition = nullptr;
+        }
+    }
+
+    pEditSession->Release();
+    pContext->Release();
+}
+
+// ============================================================================
+// ITfDisplayAttributeProvider implementation
+// ============================================================================
+
+STDAPI CTextService::EnumDisplayAttributeInfo(IEnumTfDisplayAttributeInfo** ppEnum)
+{
+    if (ppEnum == nullptr)
+        return E_INVALIDARG;
+
+    *ppEnum = new CEnumDisplayAttributeInfo();
+    return (*ppEnum != nullptr) ? S_OK : E_OUTOFMEMORY;
+}
+
+STDAPI CTextService::GetDisplayAttributeInfo(REFGUID guid, ITfDisplayAttributeInfo** ppInfo)
+{
+    if (ppInfo == nullptr)
+        return E_INVALIDARG;
+
+    *ppInfo = nullptr;
+
+    if (IsEqualGUID(guid, c_guidDisplayAttributeInput))
+    {
+        *ppInfo = new CDisplayAttributeInfoInput();
+        return (*ppInfo != nullptr) ? S_OK : E_OUTOFMEMORY;
+    }
+
+    return E_INVALIDARG;
+}
+
+// ============================================================================
+// Display Attribute initialization
+// ============================================================================
+
+BOOL CTextService::_InitDisplayAttribute()
+{
+    // Get category manager
+    ITfCategoryMgr* pCategoryMgr = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_TF_CategoryMgr, nullptr, CLSCTX_INPROC_SERVER,
+                                   IID_ITfCategoryMgr, (void**)&pCategoryMgr);
+    if (FAILED(hr) || pCategoryMgr == nullptr)
+    {
+        OutputDebugStringW(L"[WindInput] Failed to create category manager\n");
+        return FALSE;
+    }
+
+    // Register display attribute GUID
+    hr = pCategoryMgr->RegisterGUID(c_guidDisplayAttributeInput, &_gaDisplayAttributeInput);
+    if (FAILED(hr))
+    {
+        OutputDebugStringW(L"[WindInput] Failed to register display attribute GUID\n");
+        pCategoryMgr->Release();
+        return FALSE;
+    }
+
+    WCHAR debug[128];
+    wsprintfW(debug, L"[WindInput] Display attribute registered, atom=%lu\n", (unsigned long)_gaDisplayAttributeInput);
+    OutputDebugStringW(debug);
+
+    pCategoryMgr->Release();
+    return TRUE;
+}
+
+void CTextService::_UninitDisplayAttribute()
+{
+    // Reset the GUID atom
+    _gaDisplayAttributeInput = TF_INVALID_GUIDATOM;
 }

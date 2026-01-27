@@ -30,6 +30,7 @@ set(SOURCES
     src/IPCClient.cpp
     src/LangBarItemButton.cpp
     src/CaretEditSession.cpp
+    src/DisplayAttributeInfo.cpp
 )
 
 # 创建 DLL

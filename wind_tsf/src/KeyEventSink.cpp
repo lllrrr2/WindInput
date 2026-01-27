@@ -76,6 +76,16 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
 
     // Normal key handling
     *pfEaten = _IsKeyWeShouldHandle(wParam);
+
+    // Debug: log key handling decision for letter keys
+    if (wParam >= 'A' && wParam <= 'Z')
+    {
+        WCHAR debug[128];
+        wsprintfW(debug, L"[WindInput] OnTestKeyDown: key=%c, eaten=%d, composing=%d, chineseMode=%d\n",
+                  (wchar_t)wParam, *pfEaten, _isComposing, _pTextService->IsChineseMode());
+        OutputDebugStringW(debug);
+    }
+
     return S_OK;
 }
 
@@ -539,30 +549,43 @@ void CKeyEventSink::_HandleServiceResponse()
 
     case ResponseType::InsertText:
         {
+            OutputDebugStringW(L"[WindInput] Processing InsertText response\n");
             _isComposing = FALSE;
 
-            // Insert text into application
+            // First, end composition to clear the preedit text
+            // This will remove the underlined composition text
+            _pTextService->EndComposition();
+            OutputDebugStringW(L"[WindInput] EndComposition completed\n");
+
+            // Then insert the final text
             if (!response.text.empty())
             {
+                WCHAR debug[256];
+                wsprintfW(debug, L"[WindInput] Inserting text: %s\n", response.text.c_str());
+                OutputDebugStringW(debug);
                 _pTextService->InsertText(response.text);
+                OutputDebugStringW(L"[WindInput] InsertText completed\n");
             }
         }
         break;
 
     case ResponseType::UpdateComposition:
         OutputDebugStringW(L"[WindInput] Received UpdateComposition from service\n");
-        // TODO: Update composition text display
+        _isComposing = TRUE;  // Ensure composing state is set
+        _pTextService->UpdateComposition(response.composition, response.caretPos);
         break;
 
     case ResponseType::ClearComposition:
         OutputDebugStringW(L"[WindInput] Received ClearComposition from service\n");
         _isComposing = FALSE;
+        _pTextService->EndComposition();
         break;
 
     case ResponseType::ModeChanged:
         OutputDebugStringW(L"[WindInput] Received ModeChanged from service\n");
-        // Clear composing state when mode changes
+        // Clear composing state and end any active composition when mode changes
         _isComposing = FALSE;
+        _pTextService->EndComposition();
         // Update local mode state and language bar icon
         _pTextService->SetInputMode(response.chineseMode);
         break;
