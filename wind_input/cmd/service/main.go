@@ -138,7 +138,7 @@ func main() {
 
 	// Command line overrides config
 	if *logLevel != "" {
-		cfg.General.LogLevel = *logLevel
+		cfg.Advanced.LogLevel = *logLevel
 	}
 	if *dictPath != "" {
 		cfg.Dictionary.SystemDict = *dictPath
@@ -164,7 +164,7 @@ func main() {
 
 	// Setup logging based on config
 	var level slog.Level
-	switch cfg.General.LogLevel {
+	switch cfg.Advanced.LogLevel {
 	case "debug":
 		level = slog.LevelDebug
 	case "info":

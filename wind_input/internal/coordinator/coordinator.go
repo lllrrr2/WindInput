@@ -67,19 +67,35 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		candidatesPerPage = cfg.UI.CandidatesPerPage
 	}
 
+	// 确定初始状态
 	startInChineseMode := true
-	if cfg != nil {
-		startInChineseMode = cfg.General.StartInChineseMode
-	}
-
-	// Load input settings from config
 	fullWidth := false
 	chinesePunctuation := true
 	punctFollowMode := false
 	toolbarVisible := false
+
 	if cfg != nil {
-		fullWidth = cfg.Input.FullWidth
-		chinesePunctuation = cfg.Input.ChinesePunctuation
+		// 检查是否启用"记忆前次状态"
+		if cfg.Startup.RememberLastState {
+			// 从 RuntimeState 加载前次状态
+			state, err := config.LoadRuntimeState()
+			if err != nil {
+				logger.Warn("Failed to load runtime state, using defaults", "error", err)
+				startInChineseMode = cfg.Startup.DefaultChineseMode
+				fullWidth = cfg.Startup.DefaultFullWidth
+				chinesePunctuation = cfg.Startup.DefaultChinesePunct
+			} else {
+				startInChineseMode = state.ChineseMode
+				fullWidth = state.FullWidth
+				chinesePunctuation = state.ChinesePunct
+			}
+		} else {
+			// 使用默认配置
+			startInChineseMode = cfg.Startup.DefaultChineseMode
+			fullWidth = cfg.Startup.DefaultFullWidth
+			chinesePunctuation = cfg.Startup.DefaultChinesePunct
+		}
+
 		punctFollowMode = cfg.Input.PunctFollowMode
 		toolbarVisible = cfg.Toolbar.Visible
 	}
@@ -158,6 +174,9 @@ func (c *Coordinator) handleToolbarToggleMode() {
 	// Reset punctuation converter state
 	c.punctConverter.Reset()
 
+	// Save runtime state if remember_last_state is enabled
+	c.saveRuntimeState()
+
 	// Update toolbar state
 	c.syncToolbarState()
 }
@@ -175,6 +194,9 @@ func (c *Coordinator) handleToolbarToggleWidth() {
 
 	// Save to config
 	c.saveInputConfig()
+
+	// Save runtime state if remember_last_state is enabled
+	c.saveRuntimeState()
 }
 
 // handleToolbarTogglePunct handles punctuation toggle from toolbar click
@@ -193,6 +215,9 @@ func (c *Coordinator) handleToolbarTogglePunct() {
 
 	// Save to config
 	c.saveInputConfig()
+
+	// Save runtime state if remember_last_state is enabled
+	c.saveRuntimeState()
 }
 
 // handleToolbarOpenSettings handles settings button click from toolbar
@@ -251,31 +276,19 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	hasAlt := data.Modifiers&ModAlt != 0
 	hasShift := data.Modifiers&ModShift != 0
 
-	// Handle Ctrl+` for engine switch (VK_OEM_3 = 192)
-	if hasCtrl && data.KeyCode == 192 {
+	// Handle switch engine hotkey
+	if c.config != nil && c.matchHotkey(c.config.Hotkeys.SwitchEngine, hasCtrl, hasShift, hasAlt, data.KeyCode) {
 		return c.handleEngineSwitchKey()
 	}
 
-	// Handle Shift+Space for full-width toggle
-	if hasShift && data.KeyCode == 32 { // VK_SPACE = 32
-		toggleKey := ""
-		if c.config != nil {
-			toggleKey = c.config.Hotkeys.ToggleFullWidth
-		}
-		if toggleKey == "shift+space" {
-			return c.handleToggleFullWidth()
-		}
+	// Handle full-width toggle hotkey
+	if c.config != nil && c.matchHotkey(c.config.Hotkeys.ToggleFullWidth, hasCtrl, hasShift, hasAlt, data.KeyCode) {
+		return c.handleToggleFullWidth()
 	}
 
-	// Handle Ctrl+. for punctuation toggle (VK_OEM_PERIOD = 190)
-	if hasCtrl && data.KeyCode == 190 {
-		toggleKey := ""
-		if c.config != nil {
-			toggleKey = c.config.Hotkeys.TogglePunct
-		}
-		if toggleKey == "ctrl+." {
-			return c.handleTogglePunct()
-		}
+	// Handle punctuation toggle hotkey
+	if c.config != nil && c.matchHotkey(c.config.Hotkeys.TogglePunct, hasCtrl, hasShift, hasAlt, data.KeyCode) {
+		return c.handleTogglePunct()
 	}
 
 	// Other Ctrl/Alt combinations should be passed to the system
@@ -287,42 +300,69 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	// Preserve original key for English mode (uppercase letters should stay uppercase)
 	key := data.Key
 
-	// Handle Shift key for mode toggle
-	if data.KeyCode == 16 { // VK_SHIFT
-		c.chineseMode = !c.chineseMode
-		c.logger.Debug("Mode toggled by Shift", "chineseMode", c.chineseMode)
+	// Handle mode toggle keys (lshift, rshift, lctrl, rctrl, capslock)
+	if toggleKey := c.getToggleModeKey(data.KeyCode); toggleKey != "" {
+		if c.config != nil && c.config.IsToggleModeKey(toggleKey) {
+			// 检查是否需要在切换前上屏已有内容
+			var commitText string
+			if c.config.Hotkeys.CommitOnSwitch && len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
+				// 只在从中文切换到英文时上屏
+				if c.chineseMode {
+					candidate := c.candidates[0]
+					commitText = candidate.Text
+					if c.fullWidth {
+						commitText = transform.ToFullWidth(commitText)
+					}
+				}
+			}
 
-		// Clear any pending input when switching modes
-		if len(c.inputBuffer) > 0 {
-			c.clearState()
-			c.hideUI()
-		}
+			c.chineseMode = !c.chineseMode
+			c.logger.Debug("Mode toggled", "key", toggleKey, "chineseMode", c.chineseMode)
 
-		// Sync punctuation with mode if enabled
-		if c.punctFollowMode {
-			c.chinesePunctuation = c.chineseMode
-		}
+			// Clear any pending input when switching modes
+			if len(c.inputBuffer) > 0 {
+				c.clearState()
+				c.hideUI()
+			}
 
-		// Reset punctuation converter state when switching modes
-		c.punctConverter.Reset()
+			// Sync punctuation with mode if enabled
+			if c.punctFollowMode {
+				c.chinesePunctuation = c.chineseMode
+			}
 
-		// Show mode indicator
-		c.showModeIndicator()
+			// Reset punctuation converter state when switching modes
+			c.punctConverter.Reset()
 
-		// Update toolbar state
-		if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
-			c.uiManager.UpdateToolbarState(ui.ToolbarState{
-				ChineseMode:  c.chineseMode,
-				FullWidth:    c.fullWidth,
-				ChinesePunct: c.chinesePunctuation,
-				CapsLock:     ui.GetCapsLockState(),
-			})
-		}
+			// Save runtime state if remember_last_state is enabled
+			c.saveRuntimeState()
 
-		// Return mode_changed so C++ can update language bar icon
-		return &bridge.KeyEventResult{
-			Type:        bridge.ResponseTypeModeChanged,
-			ChineseMode: c.chineseMode,
+			// Show mode indicator
+			c.showModeIndicator()
+
+			// Update toolbar state
+			if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
+				c.uiManager.UpdateToolbarState(ui.ToolbarState{
+					ChineseMode:  c.chineseMode,
+					FullWidth:    c.fullWidth,
+					ChinesePunct: c.chinesePunctuation,
+					CapsLock:     ui.GetCapsLockState(),
+				})
+			}
+
+			// Return mode_changed with optional commit text
+			if commitText != "" {
+				return &bridge.KeyEventResult{
+					Type:        bridge.ResponseTypeInsertText,
+					Text:        commitText,
+					ModeChanged: true,
+					ChineseMode: c.chineseMode,
+				}
+			}
+
+			return &bridge.KeyEventResult{
+				Type:        bridge.ResponseTypeModeChanged,
+				ChineseMode: c.chineseMode,
+			}
 		}
 	}
 
@@ -395,10 +435,10 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	case data.KeyCode == 32: // Space
 		return c.handleSpace()
 
-	case key == "page_up" || data.KeyCode == 189: // - key (VK_OEM_MINUS = 0xBD = 189)
+	case c.isPageUpKey(key, data.KeyCode):
 		return c.handlePageUp()
 
-	case key == "page_down" || data.KeyCode == 187: // = key (VK_OEM_PLUS = 0xBB = 187)
+	case c.isPageDownKey(key, data.KeyCode):
 		return c.handlePageDown()
 
 	case len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')):
@@ -1299,6 +1339,9 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 		// Reset punctuation converter state when switching modes
 		c.punctConverter.Reset()
 
+		// Save runtime state
+		c.saveRuntimeState()
+
 		// Show mode indicator
 		c.showModeIndicator()
 
@@ -1316,6 +1359,9 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 		// Save to config
 		c.saveInputConfig()
 
+		// Save runtime state
+		c.saveRuntimeState()
+
 	case "toggle_punct":
 		c.chinesePunctuation = !c.chinesePunctuation
 		c.logger.Debug("Chinese punctuation toggled via menu", "chinesePunctuation", c.chinesePunctuation)
@@ -1332,6 +1378,9 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 
 		// Save to config
 		c.saveInputConfig()
+
+		// Save runtime state
+		c.saveRuntimeState()
 
 	case "toggle_toolbar":
 		c.toolbarVisible = !c.toolbarVisible
@@ -1514,17 +1563,27 @@ func (c *Coordinator) isSelectKey2(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
-	switch c.config.Input.SelectKey2 {
-	case "semicolon":
-		return key == ";" || keyCode == 186 // VK_OEM_1
-	case "comma":
-		return key == "," || keyCode == 188 // VK_OEM_COMMA
-	case "lshift":
-		return keyCode == 160 // VK_LSHIFT
-	case "lctrl":
-		return keyCode == 162 // VK_LCONTROL
-	case "none", "":
-		return false
+
+	// 根据选择键组配置检查
+	for _, group := range c.config.Input.SelectKeyGroups {
+		switch group {
+		case "semicolon_quote":
+			if key == ";" || keyCode == 186 { // VK_OEM_1
+				return true
+			}
+		case "comma_period":
+			if key == "," || keyCode == 188 { // VK_OEM_COMMA
+				return true
+			}
+		case "lrshift":
+			if keyCode == 160 { // VK_LSHIFT
+				return true
+			}
+		case "lrctrl":
+			if keyCode == 162 { // VK_LCONTROL
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -1534,17 +1593,27 @@ func (c *Coordinator) isSelectKey3(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
-	switch c.config.Input.SelectKey3 {
-	case "quote":
-		return key == "'" || keyCode == 222 // VK_OEM_7
-	case "period":
-		return key == "." || keyCode == 190 // VK_OEM_PERIOD
-	case "rshift":
-		return keyCode == 161 // VK_RSHIFT
-	case "rctrl":
-		return keyCode == 163 // VK_RCONTROL
-	case "none", "":
-		return false
+
+	// 根据选择键组配置检查
+	for _, group := range c.config.Input.SelectKeyGroups {
+		switch group {
+		case "semicolon_quote":
+			if key == "'" || keyCode == 222 { // VK_OEM_7
+				return true
+			}
+		case "comma_period":
+			if key == "." || keyCode == 190 { // VK_OEM_PERIOD
+				return true
+			}
+		case "lrshift":
+			if keyCode == 161 { // VK_RSHIFT
+				return true
+			}
+		case "lrctrl":
+			if keyCode == 163 { // VK_RCONTROL
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -1654,6 +1723,9 @@ func (c *Coordinator) handleToggleFullWidth() *bridge.KeyEventResult {
 	// Save to config
 	c.saveInputConfig()
 
+	// Save runtime state if remember_last_state is enabled
+	c.saveRuntimeState()
+
 	// Consume the key (don't let it pass through)
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 }
@@ -1679,6 +1751,158 @@ func (c *Coordinator) handleTogglePunct() *bridge.KeyEventResult {
 	// Save to config
 	c.saveInputConfig()
 
+	// Save runtime state if remember_last_state is enabled
+	c.saveRuntimeState()
+
 	// Consume the key (don't let it pass through)
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+}
+
+// getToggleModeKey maps keycode to toggle mode key name
+func (c *Coordinator) getToggleModeKey(keyCode int) string {
+	switch keyCode {
+	case 160: // VK_LSHIFT
+		return "lshift"
+	case 161: // VK_RSHIFT
+		return "rshift"
+	case 16: // VK_SHIFT (generic shift)
+		return "lshift" // 默认作为左Shift处理
+	case 162: // VK_LCONTROL
+		return "lctrl"
+	case 163: // VK_RCONTROL
+		return "rctrl"
+	case 20: // VK_CAPITAL (Caps Lock)
+		return "capslock"
+	}
+	return ""
+}
+
+// saveRuntimeState saves the current state if remember_last_state is enabled
+func (c *Coordinator) saveRuntimeState() {
+	if c.config == nil || !c.config.Startup.RememberLastState {
+		return
+	}
+
+	go func() {
+		state := &config.RuntimeState{
+			ChineseMode:  c.chineseMode,
+			FullWidth:    c.fullWidth,
+			ChinesePunct: c.chinesePunctuation,
+			EngineType:   c.GetCurrentEngineName(),
+		}
+		if err := config.SaveRuntimeState(state); err != nil {
+			c.logger.Error("Failed to save runtime state", "error", err)
+		} else {
+			c.logger.Debug("Runtime state saved", "chineseMode", state.ChineseMode)
+		}
+	}()
+}
+
+// isPageUpKey checks if the key is configured as a page up key
+func (c *Coordinator) isPageUpKey(key string, keyCode int) bool {
+	if c.config == nil {
+		// 默认支持 PageUp 和 - 键
+		return key == "page_up" || keyCode == 33 || keyCode == 189
+	}
+
+	for _, pk := range c.config.Input.PageKeys {
+		switch pk {
+		case "pageupdown":
+			if key == "page_up" || keyCode == 33 { // VK_PRIOR
+				return true
+			}
+		case "minus_equal":
+			if keyCode == 189 { // VK_OEM_MINUS
+				return true
+			}
+		case "brackets":
+			if keyCode == 219 { // VK_OEM_4 ([)
+				return true
+			}
+		case "shift_tab":
+			// Shift+Tab 需要在 HandleKeyEvent 中单独处理
+			// 这里不处理，因为需要检测 Shift 修饰键
+		}
+	}
+	return false
+}
+
+// isPageDownKey checks if the key is configured as a page down key
+func (c *Coordinator) isPageDownKey(key string, keyCode int) bool {
+	if c.config == nil {
+		// 默认支持 PageDown 和 = 键
+		return key == "page_down" || keyCode == 34 || keyCode == 187
+	}
+
+	for _, pk := range c.config.Input.PageKeys {
+		switch pk {
+		case "pageupdown":
+			if key == "page_down" || keyCode == 34 { // VK_NEXT
+				return true
+			}
+		case "minus_equal":
+			if keyCode == 187 { // VK_OEM_PLUS (=)
+				return true
+			}
+		case "brackets":
+			if keyCode == 221 { // VK_OEM_6 (])
+				return true
+			}
+		case "shift_tab":
+			if keyCode == 9 { // VK_TAB (Tab without Shift = page down)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// matchHotkey checks if the current key event matches the configured hotkey string
+// Supported formats: "ctrl+`", "shift+space", "ctrl+.", "ctrl+shift+e", "none", ""
+func (c *Coordinator) matchHotkey(hotkeyStr string, hasCtrl, hasShift, hasAlt bool, keyCode int) bool {
+	if hotkeyStr == "" || hotkeyStr == "none" {
+		return false
+	}
+
+	// Parse the hotkey string
+	needCtrl := false
+	needShift := false
+	needAlt := false
+	var targetKeyCode int
+
+	// Parse modifiers and key
+	switch hotkeyStr {
+	case "ctrl+`":
+		needCtrl = true
+		targetKeyCode = 192 // VK_OEM_3
+	case "ctrl+shift+e":
+		needCtrl = true
+		needShift = true
+		targetKeyCode = 69 // VK_E
+	case "shift+space":
+		needShift = true
+		targetKeyCode = 32 // VK_SPACE
+	case "ctrl+shift+space":
+		needCtrl = true
+		needShift = true
+		targetKeyCode = 32 // VK_SPACE
+	case "ctrl+.":
+		needCtrl = true
+		targetKeyCode = 190 // VK_OEM_PERIOD
+	case "ctrl+,":
+		needCtrl = true
+		targetKeyCode = 188 // VK_OEM_COMMA
+	default:
+		// Unknown hotkey format
+		c.logger.Debug("Unknown hotkey format", "hotkey", hotkeyStr)
+		return false
+	}
+
+	// Check if all modifiers match
+	if needCtrl != hasCtrl || needShift != hasShift || needAlt != hasAlt {
+		return false
+	}
+
+	// Check if the key matches
+	return keyCode == targetKeyCode
 }

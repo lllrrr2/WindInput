@@ -793,7 +793,17 @@ BOOL CIPCClient::_ParseResponse(const std::wstring& json, ServiceResponse& respo
             }
         }
 
-        _LogDebug(L"InsertText: text=%s", response.text.c_str());
+        // Extract mode_changed flag (for CommitOnSwitch feature)
+        response.modeChanged = (json.find(L"\"mode_changed\":true") != std::wstring::npos);
+
+        // Extract chinese_mode if mode was changed
+        if (response.modeChanged)
+        {
+            response.chineseMode = (json.find(L"\"chinese_mode\":true") != std::wstring::npos);
+            _LogDebug(L"InsertText with mode change: chineseMode=%d", response.chineseMode);
+        }
+
+        _LogDebug(L"InsertText: text=%s, modeChanged=%d", response.text.c_str(), response.modeChanged);
     }
     else if (json.find(L"\"type\":\"update_composition\"") != std::wstring::npos)
     {

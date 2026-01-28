@@ -51,7 +51,8 @@ struct ServiceResponse
     std::wstring text;      // For InsertText
     std::wstring composition; // For UpdateComposition
     int caretPos;           // For UpdateComposition
-    BOOL chineseMode;       // For ModeChanged and StatusUpdate
+    BOOL chineseMode;       // For ModeChanged, StatusUpdate, and InsertText (when modeChanged)
+    BOOL modeChanged;       // For InsertText with mode change (CommitOnSwitch)
     BOOL fullWidth;         // For StatusUpdate
     BOOL chinesePunct;      // For StatusUpdate
     BOOL toolbarVisible;    // For StatusUpdate

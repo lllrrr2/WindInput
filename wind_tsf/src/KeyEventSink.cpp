@@ -566,6 +566,13 @@ void CKeyEventSink::_HandleServiceResponse()
                 _pTextService->InsertText(response.text);
                 OutputDebugStringW(L"[WindInput] InsertText completed\n");
             }
+
+            // Handle mode change if present (CommitOnSwitch feature)
+            if (response.modeChanged)
+            {
+                OutputDebugStringW(L"[WindInput] InsertText with mode change - updating language bar\n");
+                _pTextService->SetInputMode(response.chineseMode);
+            }
         }
         break;
 

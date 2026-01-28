@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch, onUnmounted, nextTick } from 'vue';
 import * as api from './api/settings';
 import type { Config, Status, EngineInfo, LogEntry } from './api/settings';
+import { getDefaultConfig } from './api/settings';
 
 // 状态
 const loading = ref(true);
@@ -11,6 +12,7 @@ const activeTab = ref('general');
 const saving = ref(false);
 const saveMessage = ref('');
 const saveMessageType = ref<'success' | 'error'>('success');
+const hotkeyConflicts = ref<string[]>([]);
 
 // 数据
 const config = ref<Config | null>(null);
@@ -18,7 +20,7 @@ const status = ref<Status | null>(null);
 const engines = ref<EngineInfo[]>([]);
 
 // 表单数据（用于编辑）
-const formData = ref<Partial<Config>>({});
+const formData = ref<Config>(getDefaultConfig());
 
 // 测试页面状态
 const testInput = ref('');
@@ -36,21 +38,86 @@ const logTotal = ref(0);
 const logContentRef = ref<HTMLElement | null>(null);
 let logTimer: number | null = null;
 
-// 标签页
+// 重新组织的标签页 - 按用户视角划分
 const tabs = [
-  { id: 'general', label: '常规', icon: '⚙' },
-  { id: 'engine', label: '引擎', icon: '🔧' },
-  { id: 'ui', label: '界面', icon: '🎨' },
-  { id: 'hotkey', label: '快捷键', icon: '⌨' },
+  { id: 'general', label: '常用', icon: '🏠' },
+  { id: 'input', label: '输入', icon: '⌨' },
+  { id: 'appearance', label: '外观', icon: '🎨' },
+  { id: 'dictionary', label: '词库', icon: '📚' },
+  { id: 'hotkey', label: '按键', icon: '🎮' },
   { id: 'test', label: '测试', icon: '🧪' },
-  { id: 'log', label: '日志', icon: '📋' },
+  { id: 'advanced', label: '高级', icon: '🛠' },
   { id: 'about', label: '关于', icon: 'ℹ' },
 ];
 
 // 是否显示底部操作栏
 const showActionBar = computed(() => {
-  return !['about', 'test', 'log'].includes(activeTab.value);
+  return !['about', 'dictionary', 'test'].includes(activeTab.value);
 });
+
+// 检查快捷键冲突
+function checkConflicts() {
+  const conflicts: string[] = [];
+  const usedKeys = new Map<string, string>();
+
+  // 中英切换键
+  for (const key of formData.value.hotkeys.toggle_mode_keys) {
+    if (usedKeys.has(key)) {
+      conflicts.push(`按键 "${getKeyLabel(key)}" 同时用于: ${usedKeys.get(key)} 和 中英切换`);
+    } else {
+      usedKeys.set(key, '中英切换');
+    }
+  }
+
+  // 候选选择键组
+  for (const group of formData.value.input.select_key_groups) {
+    const keys = getGroupKeys(group);
+    for (const key of keys) {
+      if (usedKeys.has(key)) {
+        conflicts.push(`按键 "${getKeyLabel(key)}" 同时用于: ${usedKeys.get(key)} 和 候选选择`);
+      } else {
+        usedKeys.set(key, '候选选择');
+      }
+    }
+  }
+
+  hotkeyConflicts.value = conflicts;
+}
+
+function getGroupKeys(group: string): string[] {
+  switch (group) {
+    case 'semicolon_quote': return ['semicolon', 'quote'];
+    case 'comma_period': return ['comma', 'period'];
+    case 'lrshift': return ['lshift', 'rshift'];
+    case 'lrctrl': return ['lctrl', 'rctrl'];
+    default: return [];
+  }
+}
+
+function getKeyLabel(key: string): string {
+  const labels: Record<string, string> = {
+    'lshift': '左Shift', 'rshift': '右Shift',
+    'lctrl': '左Ctrl', 'rctrl': '右Ctrl',
+    'capslock': 'CapsLock',
+    'semicolon': ';', 'quote': "'",
+    'comma': ',', 'period': '.',
+  };
+  return labels[key] || key;
+}
+
+// 监听配置变化，检查冲突
+watch(() => [formData.value.hotkeys.toggle_mode_keys, formData.value.input.select_key_groups], checkConflicts, { deep: true });
+
+// 切换多选数组中的值
+function toggleArrayValue(arr: string[], value: string) {
+  const idx = arr.indexOf(value);
+  if (idx >= 0) {
+    arr.splice(idx, 1);
+  } else {
+    arr.push(value);
+  }
+  checkConflicts();
+}
 
 // 加载数据
 async function loadData() {
@@ -69,16 +136,10 @@ async function loadData() {
 
     const configRes = await api.getConfig();
     if (configRes.success && configRes.data) {
-      // Ensure toolbar and input fields exist with defaults
-      const cfg = configRes.data;
-      if (!cfg.toolbar) {
-        cfg.toolbar = { visible: false, position_x: 100, position_y: 100 };
-      }
-      if (!cfg.input) {
-        cfg.input = { full_width: false, chinese_punctuation: true };
-      }
+      const cfg = mergeWithDefaults(configRes.data);
       config.value = cfg;
       formData.value = JSON.parse(JSON.stringify(cfg));
+      checkConflicts();
     }
 
     const statusRes = await api.getStatus();
@@ -97,9 +158,34 @@ async function loadData() {
   }
 }
 
+// 合并默认配置
+function mergeWithDefaults(cfg: any): Config {
+  const defaults = getDefaultConfig();
+  return {
+    startup: { ...defaults.startup, ...cfg.startup },
+    dictionary: { ...defaults.dictionary, ...cfg.dictionary },
+    engine: {
+      ...defaults.engine,
+      ...cfg.engine,
+      pinyin: { ...defaults.engine.pinyin, ...cfg.engine?.pinyin },
+      wubi: { ...defaults.engine.wubi, ...cfg.engine?.wubi },
+    },
+    hotkeys: { ...defaults.hotkeys, ...cfg.hotkeys },
+    ui: { ...defaults.ui, ...cfg.ui },
+    toolbar: { ...defaults.toolbar, ...cfg.toolbar },
+    input: { ...defaults.input, ...cfg.input },
+    advanced: { ...defaults.advanced, ...cfg.advanced },
+  };
+}
+
 // 保存配置
 async function saveConfig() {
-  if (!formData.value) return;
+  if (hotkeyConflicts.value.length > 0) {
+    saveMessageType.value = 'error';
+    saveMessage.value = '存在快捷键冲突，请先解决';
+    setTimeout(() => { saveMessage.value = ''; }, 3000);
+    return;
+  }
 
   saving.value = true;
   saveMessage.value = '';
@@ -112,8 +198,7 @@ async function saveConfig() {
       if (res.data.needReload.length > 0) {
         saveMessage.value += '（部分设置需要重载生效）';
       }
-      // Update local config without reloading everything (preserves scroll position)
-      config.value = JSON.parse(JSON.stringify(formData.value)) as Config;
+      config.value = JSON.parse(JSON.stringify(formData.value));
     } else {
       saveMessageType.value = 'error';
       saveMessage.value = res.error || '保存失败';
@@ -132,6 +217,7 @@ async function handleSwitchEngine(type: string) {
   try {
     const res = await api.switchEngine(type);
     if (res.success) {
+      formData.value.engine.type = type;
       await loadData();
     }
   } catch (e) {
@@ -146,19 +232,7 @@ async function handleReload() {
     if (res.success) {
       saveMessageType.value = 'success';
       saveMessage.value = '重载成功';
-      // Only reload config data, not the full page
-      const configRes = await api.getConfig();
-      if (configRes.success && configRes.data) {
-        const cfg = configRes.data;
-        if (!cfg.toolbar) {
-          cfg.toolbar = { visible: false, position_x: 100, position_y: 100 };
-        }
-        if (!cfg.input) {
-          cfg.input = { full_width: false, chinese_punctuation: true };
-        }
-        config.value = cfg;
-        formData.value = JSON.parse(JSON.stringify(cfg));
-      }
+      await loadData();
     } else {
       saveMessageType.value = 'error';
       saveMessage.value = res.error || '重载失败';
@@ -170,7 +244,7 @@ async function handleReload() {
   setTimeout(() => { saveMessage.value = ''; }, 3000);
 }
 
-// 仅刷新状态信息（用于关于页面）
+// 刷新状态
 async function refreshStatus() {
   try {
     const statusRes = await api.getStatus();
@@ -186,6 +260,7 @@ async function refreshStatus() {
 function resetToDefault() {
   if (config.value) {
     formData.value = JSON.parse(JSON.stringify(config.value));
+    checkConflicts();
     saveMessageType.value = 'success';
     saveMessage.value = '已重置为当前配置';
     setTimeout(() => { saveMessage.value = ''; }, 2000);
@@ -212,25 +287,18 @@ async function handleTestInput() {
   }
 }
 
-// 监听测试输入变化
-watch(testInput, () => {
-  handleTestInput();
-});
-
+watch(testInput, handleTestInput);
 watch([testEngine, testFilterMode], () => {
-  if (testInput.value) {
-    handleTestInput();
-  }
+  if (testInput.value) handleTestInput();
 });
 
-// 加载日志
+// 日志相关
 async function loadLogs() {
   try {
     const res = await api.getLogs(logLevel.value, logFilter.value);
     if (res.success && res.data) {
       logs.value = res.data.logs || [];
       logTotal.value = res.data.total || 0;
-      // 自动滚动到底部
       if (logAutoScroll.value) {
         nextTick(() => {
           if (logContentRef.value) {
@@ -244,7 +312,6 @@ async function loadLogs() {
   }
 }
 
-// 清空日志
 async function handleClearLogs() {
   try {
     await api.clearLogs();
@@ -255,20 +322,14 @@ async function handleClearLogs() {
   }
 }
 
-// 监听日志过滤变化
-watch([logLevel, logFilter], () => {
-  loadLogs();
-});
+watch([logLevel, logFilter], loadLogs);
 
-// 监听标签页切换
 watch(activeTab, (tab) => {
-  if (tab === 'log') {
+  if (tab === 'advanced') {
     loadLogs();
-    // 启动定时刷新
     if (logTimer) clearInterval(logTimer);
     logTimer = window.setInterval(loadLogs, 2000);
   } else {
-    // 停止定时刷新
     if (logTimer) {
       clearInterval(logTimer);
       logTimer = null;
@@ -281,9 +342,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (logTimer) {
-    clearInterval(logTimer);
-  }
+  if (logTimer) clearInterval(logTimer);
 });
 </script>
 
@@ -326,54 +385,16 @@ onUnmounted(() => {
       </div>
 
       <div v-else class="content">
-        <!-- 常规设置 -->
+        <!-- ==================== 常用设置 ==================== -->
         <section v-if="activeTab === 'general'" class="section">
           <div class="section-header">
-            <h2>常规设置</h2>
-            <p class="section-desc">基本的输入法行为设置</p>
+            <h2>常用设置</h2>
+            <p class="section-desc">最基本的输入法设置</p>
           </div>
 
+          <!-- 输入模式 -->
           <div class="settings-card">
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>启动模式</label>
-                <p class="setting-hint">启用后，每次激活输入法时默认为中文输入状态</p>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input type="checkbox" v-model="formData.general!.start_in_chinese_mode" />
-                  <span class="slider"></span>
-                </label>
-                <span class="switch-label">{{ formData.general?.start_in_chinese_mode ? '中文' : '英文' }}</span>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>日志级别</label>
-                <p class="setting-hint">更改日志级别需要重启服务才能生效</p>
-              </div>
-              <div class="setting-control">
-                <select v-model="formData.general!.log_level" class="select">
-                  <option value="debug">Debug（调试）</option>
-                  <option value="info">Info（信息）</option>
-                  <option value="warn">Warn（警告）</option>
-                  <option value="error">Error（错误）</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 引擎设置 -->
-        <section v-if="activeTab === 'engine'" class="section">
-          <div class="section-header">
-            <h2>引擎设置</h2>
-            <p class="section-desc">输入法引擎和过滤设置</p>
-          </div>
-
-          <div class="settings-card">
-            <div class="card-title">当前引擎</div>
+            <div class="card-title">输入模式</div>
             <div class="engine-cards">
               <div
                 v-for="engine in engines"
@@ -388,51 +409,150 @@ onUnmounted(() => {
                 </div>
                 <div v-if="engine.isActive" class="engine-check">✓</div>
               </div>
+              <!-- 预留：双拼 -->
+              <div class="engine-card disabled">
+                <div class="engine-icon engine-icon-disabled">双</div>
+                <div class="engine-info">
+                  <div class="engine-name">双拼输入</div>
+                  <div class="engine-desc">开发中...</div>
+                </div>
+              </div>
+              <!-- 预留：混输 -->
+              <div class="engine-card disabled">
+                <div class="engine-icon engine-icon-disabled">混</div>
+                <div class="engine-info">
+                  <div class="engine-name">混合输入</div>
+                  <div class="engine-desc">开发中...</div>
+                </div>
+              </div>
             </div>
           </div>
 
+          <!-- 默认/启动状态 -->
           <div class="settings-card">
-            <div class="card-title">过滤设置</div>
+            <div class="card-title">默认状态</div>
             <div class="setting-item">
               <div class="setting-info">
-                <label>字符过滤模式</label>
-                <p class="setting-hint">控制候选词中显示的字符范围</p>
-              </div>
-              <div class="setting-control">
-                <select v-model="formData.engine!.filter_mode" class="select">
-                  <option value="smart">智能模式（推荐）</option>
-                  <option value="general">仅通用字</option>
-                  <option value="gb18030">全部字符</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="formData.engine?.type === 'pinyin'" class="settings-card">
-            <div class="card-title">拼音设置</div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>五笔编码提示</label>
-                <p class="setting-hint">在候选词旁边显示对应的五笔编码</p>
+                <label>记忆前次状态</label>
+                <p class="setting-hint">启用后将使用上次退出时的状态，忽略以下默认设置</p>
               </div>
               <div class="setting-control">
                 <label class="switch">
-                  <input type="checkbox" v-model="formData.engine!.pinyin.show_wubi_hint" />
+                  <input type="checkbox" v-model="formData.startup.remember_last_state" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting-item" :class="{ 'item-disabled': formData.startup.remember_last_state }">
+              <div class="setting-info">
+                <label>初始语言模式</label>
+                <p class="setting-hint">每次激活输入法时的默认语言</p>
+              </div>
+              <div class="setting-control">
+                <div class="segmented-control">
+                  <button
+                    :class="{ active: formData.startup.default_chinese_mode }"
+                    @click="formData.startup.default_chinese_mode = true"
+                    :disabled="formData.startup.remember_last_state"
+                  >中文</button>
+                  <button
+                    :class="{ active: !formData.startup.default_chinese_mode }"
+                    @click="formData.startup.default_chinese_mode = false"
+                    :disabled="formData.startup.remember_last_state"
+                  >英文</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-item" :class="{ 'item-disabled': formData.startup.remember_last_state }">
+              <div class="setting-info">
+                <label>初始字符宽度</label>
+                <p class="setting-hint">每次激活输入法时的默认字符宽度</p>
+              </div>
+              <div class="setting-control">
+                <div class="segmented-control">
+                  <button
+                    :class="{ active: !formData.startup.default_full_width }"
+                    @click="formData.startup.default_full_width = false"
+                    :disabled="formData.startup.remember_last_state"
+                  >半角</button>
+                  <button
+                    :class="{ active: formData.startup.default_full_width }"
+                    @click="formData.startup.default_full_width = true"
+                    :disabled="formData.startup.remember_last_state"
+                  >全角</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-item" :class="{ 'item-disabled': formData.startup.remember_last_state }">
+              <div class="setting-info">
+                <label>初始标点模式</label>
+                <p class="setting-hint">每次激活输入法时的默认标点类型</p>
+              </div>
+              <div class="setting-control">
+                <div class="segmented-control">
+                  <button
+                    :class="{ active: formData.startup.default_chinese_punct }"
+                    @click="formData.startup.default_chinese_punct = true"
+                    :disabled="formData.startup.remember_last_state"
+                  >中文标点</button>
+                  <button
+                    :class="{ active: !formData.startup.default_chinese_punct }"
+                    @click="formData.startup.default_chinese_punct = false"
+                    :disabled="formData.startup.remember_last_state"
+                  >英文标点</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 输入习惯 ==================== -->
+        <section v-if="activeTab === 'input'" class="section">
+          <div class="section-header">
+            <h2>输入习惯</h2>
+            <p class="section-desc">定制您的打字体验</p>
+          </div>
+
+          <!-- 字符与标点 -->
+          <div class="settings-card">
+            <div class="card-title">字符与标点</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>候选字符范围</label>
+                <p class="setting-hint">控制候选词中显示的字符范围</p>
+              </div>
+              <div class="setting-control">
+                <select v-model="formData.engine.filter_mode" class="select">
+                  <option value="smart">智能模式（推荐）</option>
+                  <option value="general">仅常用字</option>
+                  <option value="gb18030">大字符集</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>标点随中英文切换</label>
+                <p class="setting-hint">切换到英文模式时自动切换英文标点</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.input.punct_follow_mode" />
                   <span class="slider"></span>
                 </label>
               </div>
             </div>
           </div>
 
-          <div v-if="formData.engine?.type === 'wubi'" class="settings-card">
+          <!-- 五笔设置（始终显示） -->
+          <div class="settings-card">
             <div class="card-title">五笔设置</div>
             <div class="setting-item">
               <div class="setting-info">
                 <label>自动上屏</label>
-                <p class="setting-hint">候选词满足条件时自动上屏</p>
+                <p class="setting-hint">满足条件时自动提交首选</p>
               </div>
               <div class="setting-control">
-                <select v-model="formData.engine!.wubi.auto_commit" class="select">
+                <select v-model="formData.engine.wubi.auto_commit" class="select">
                   <option value="none">不自动上屏</option>
                   <option value="unique">候选唯一时</option>
                   <option value="unique_at_4">四码唯一时</option>
@@ -443,10 +563,10 @@ onUnmounted(() => {
             <div class="setting-item">
               <div class="setting-info">
                 <label>空码处理</label>
-                <p class="setting-hint">输入无匹配候选时的处理方式</p>
+                <p class="setting-hint">输入无匹配时的处理方式</p>
               </div>
               <div class="setting-control">
-                <select v-model="formData.engine!.wubi.empty_code" class="select">
+                <select v-model="formData.engine.wubi.empty_code" class="select">
                   <option value="none">继续输入</option>
                   <option value="clear">清空编码</option>
                   <option value="clear_at_4">四码时清空</option>
@@ -461,7 +581,7 @@ onUnmounted(() => {
               </div>
               <div class="setting-control">
                 <label class="switch">
-                  <input type="checkbox" v-model="formData.engine!.wubi.top_code_commit" />
+                  <input type="checkbox" v-model="formData.engine.wubi.top_code_commit" />
                   <span class="slider"></span>
                 </label>
               </div>
@@ -473,7 +593,24 @@ onUnmounted(() => {
               </div>
               <div class="setting-control">
                 <label class="switch">
-                  <input type="checkbox" v-model="formData.engine!.wubi.punct_commit" />
+                  <input type="checkbox" v-model="formData.engine.wubi.punct_commit" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 拼音设置（始终显示） -->
+          <div class="settings-card">
+            <div class="card-title">拼音设置</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>五笔反查提示</label>
+                <p class="setting-hint">在候选词旁显示对应的五笔编码</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.engine.pinyin.show_wubi_hint" />
                   <span class="slider"></span>
                 </label>
               </div>
@@ -481,22 +618,23 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- 界面设置 -->
-        <section v-if="activeTab === 'ui'" class="section">
+        <!-- ==================== 外观设置 ==================== -->
+        <section v-if="activeTab === 'appearance'" class="section">
           <div class="section-header">
-            <h2>界面设置</h2>
-            <p class="section-desc">候选窗口外观设置</p>
+            <h2>外观设置</h2>
+            <p class="section-desc">定制候选框的视觉呈现</p>
           </div>
 
           <div class="settings-card">
+            <div class="card-title">候选窗口</div>
             <div class="setting-item">
               <div class="setting-info">
                 <label>字体大小</label>
-                <p class="setting-hint">候选窗口的字体大小</p>
+                <p class="setting-hint">候选词的显示大小</p>
               </div>
               <div class="setting-control range-control">
-                <input type="range" min="12" max="36" step="1" v-model.number="formData.ui!.font_size" />
-                <span class="range-value">{{ formData.ui?.font_size }}px</span>
+                <input type="range" min="12" max="36" step="1" v-model.number="formData.ui.font_size" />
+                <span class="range-value">{{ formData.ui.font_size }}px</span>
               </div>
             </div>
             <div class="setting-item">
@@ -505,8 +643,8 @@ onUnmounted(() => {
                 <p class="setting-hint">每页显示的候选词数量</p>
               </div>
               <div class="setting-control range-control">
-                <input type="range" min="3" max="9" step="1" v-model.number="formData.ui!.candidates_per_page" />
-                <span class="range-value">{{ formData.ui?.candidates_per_page }}</span>
+                <input type="range" min="3" max="9" step="1" v-model.number="formData.ui.candidates_per_page" />
+                <span class="range-value">{{ formData.ui.candidates_per_page }} 个</span>
               </div>
             </div>
             <div class="setting-item">
@@ -515,49 +653,37 @@ onUnmounted(() => {
                 <p class="setting-hint">留空使用系统默认字体</p>
               </div>
               <div class="setting-control">
-                <input type="text" v-model="formData.ui!.font_path" class="input" placeholder="C:\Windows\Fonts\msyh.ttc" />
+                <input type="text" v-model="formData.ui.font_path" class="input" placeholder="字体文件路径" />
               </div>
             </div>
           </div>
 
           <div class="settings-card">
-            <div class="card-title">工具栏</div>
+            <div class="card-title">编码显示</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>嵌入式编码行</label>
+                <p class="setting-hint">输入码直接显示在光标处，而非候选窗上方</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.ui.inline_preedit" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="card-title">状态栏</div>
             <div class="setting-item">
               <div class="setting-info">
                 <label>显示工具栏</label>
-                <p class="setting-hint">在屏幕上显示可拖动的输入法工具栏</p>
+                <p class="setting-hint">在屏幕上显示可拖动的输入法状态栏</p>
               </div>
               <div class="setting-control">
                 <label class="switch">
-                  <input type="checkbox" v-model="formData.toolbar!.visible" />
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-card">
-            <div class="card-title">输入选项</div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>全角字符</label>
-                <p class="setting-hint">启用后输出全角字符（如：ＡＢＣ１２３）</p>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input type="checkbox" v-model="formData.input!.full_width" />
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>中文标点</label>
-                <p class="setting-hint">启用后输出中文标点符号（如：，。！？）</p>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input type="checkbox" v-model="formData.input!.chinese_punctuation" />
+                  <input type="checkbox" v-model="formData.toolbar.visible" />
                   <span class="slider"></span>
                 </label>
               </div>
@@ -565,42 +691,201 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- 快捷键设置 -->
+        <!-- ==================== 词库管理 ==================== -->
+        <section v-if="activeTab === 'dictionary'" class="section">
+          <div class="section-header">
+            <h2>词库管理</h2>
+            <p class="section-desc">管理您的词库数据</p>
+          </div>
+
+          <div class="settings-card">
+            <div class="card-title">系统词库</div>
+            <div class="dict-info">
+              <div class="dict-item">
+                <span class="dict-label">拼音词库</span>
+                <span class="dict-value">{{ config?.dictionary?.pinyin_dict || '未配置' }}</span>
+              </div>
+              <div class="dict-item">
+                <span class="dict-label">五笔词库</span>
+                <span class="dict-value">dict/wubi/wubi86.txt</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="card-title">用户词库</div>
+            <div class="dict-info">
+              <div class="dict-item">
+                <span class="dict-label">词库路径</span>
+                <span class="dict-value">{{ config?.dictionary?.user_dict || 'user_dict.txt' }}</span>
+              </div>
+            </div>
+            <div class="dict-actions">
+              <button class="btn btn-sm" disabled>导出词库</button>
+              <button class="btn btn-sm" disabled>导入词库</button>
+              <button class="btn btn-sm btn-danger" disabled>清空词库</button>
+            </div>
+            <p class="dict-note">词库管理功能开发中...</p>
+          </div>
+        </section>
+
+        <!-- ==================== 按键设置 ==================== -->
         <section v-if="activeTab === 'hotkey'" class="section">
           <div class="section-header">
-            <h2>快捷键设置</h2>
-            <p class="section-desc">输入法快捷键配置</p>
+            <h2>按键设置</h2>
+            <p class="section-desc">自定义快捷键和候选操作</p>
           </div>
 
+          <!-- 冲突警告 -->
+          <div v-if="hotkeyConflicts.length > 0" class="settings-card warning-card">
+            <div class="warning-content">
+              <span class="warning-icon">⚠</span>
+              <div>
+                <p class="warning-title">快捷键冲突</p>
+                <ul class="warning-list">
+                  <li v-for="(c, i) in hotkeyConflicts" :key="i">{{ c }}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- 中英文切换 -->
           <div class="settings-card">
+            <div class="card-title">中英文切换</div>
             <div class="setting-item">
               <div class="setting-info">
-                <label>切换中英文</label>
-                <p class="setting-hint">在中文和英文模式间切换的快捷键</p>
+                <label>切换按键</label>
+                <p class="setting-hint">可多选，按下任意一个即切换</p>
               </div>
               <div class="setting-control">
-                <select v-model="formData.hotkeys!.toggle_mode" class="select">
-                  <option value="shift">Shift</option>
-                  <option value="ctrl+space">Ctrl + Space</option>
+                <div class="checkbox-group">
+                  <label class="checkbox-item" v-for="key in ['lshift', 'rshift', 'lctrl', 'rctrl', 'capslock']" :key="key">
+                    <input
+                      type="checkbox"
+                      :checked="formData.hotkeys.toggle_mode_keys.includes(key)"
+                      @change="toggleArrayValue(formData.hotkeys.toggle_mode_keys, key)"
+                    />
+                    <span>{{ getKeyLabel(key) }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>切换时编码上屏</label>
+                <p class="setting-hint">中文切换为英文时，将已输入的编码直接上屏</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.hotkeys.commit_on_switch" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 功能快捷键 -->
+          <div class="settings-card">
+            <div class="card-title">功能快捷键</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>切换拼音/五笔</label>
+                <p class="setting-hint">在拼音和五笔引擎间切换</p>
+              </div>
+              <div class="setting-control">
+                <select v-model="formData.hotkeys.switch_engine" class="select">
+                  <option value="ctrl+`">Ctrl + `</option>
+                  <option value="ctrl+shift+e">Ctrl + Shift + E</option>
+                  <option value="none">不使用</option>
                 </select>
               </div>
             </div>
             <div class="setting-item">
               <div class="setting-info">
-                <label>切换引擎</label>
-                <p class="setting-hint">在拼音和五笔引擎间切换的快捷键</p>
+                <label>切换全角/半角</label>
+                <p class="setting-hint">切换字符宽度模式</p>
               </div>
               <div class="setting-control">
-                <select v-model="formData.hotkeys!.switch_engine" class="select">
-                  <option value="ctrl+`">Ctrl + `</option>
-                  <option value="ctrl+shift+e">Ctrl + Shift + E</option>
+                <select v-model="formData.hotkeys.toggle_full_width" class="select">
+                  <option value="shift+space">Shift + Space</option>
+                  <option value="ctrl+shift+space">Ctrl + Shift + Space</option>
+                  <option value="none">不使用</option>
                 </select>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>切换中/英文标点</label>
+                <p class="setting-hint">切换标点符号类型</p>
+              </div>
+              <div class="setting-control">
+                <select v-model="formData.hotkeys.toggle_punct" class="select">
+                  <option value="ctrl+.">Ctrl + .</option>
+                  <option value="ctrl+,">Ctrl + ,</option>
+                  <option value="none">不使用</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 候选操作 -->
+          <div class="settings-card">
+            <div class="card-title">候选选择键</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>2/3候选快捷键组</label>
+                <p class="setting-hint">可多选，同时启用多组快捷键</p>
+              </div>
+              <div class="setting-control">
+                <div class="checkbox-group">
+                  <label class="checkbox-item" v-for="group in [
+                    { value: 'semicolon_quote', label: '; \' 键' },
+                    { value: 'comma_period', label: ', . 键' },
+                    { value: 'lrshift', label: 'L/R Shift' },
+                    { value: 'lrctrl', label: 'L/R Ctrl' },
+                  ]" :key="group.value">
+                    <input
+                      type="checkbox"
+                      :checked="formData.input.select_key_groups.includes(group.value)"
+                      @change="toggleArrayValue(formData.input.select_key_groups, group.value)"
+                    />
+                    <span>{{ group.label }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 翻页键 -->
+          <div class="settings-card">
+            <div class="card-title">翻页键</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>翻页快捷键</label>
+                <p class="setting-hint">可多选，同时启用多组翻页键</p>
+              </div>
+              <div class="setting-control">
+                <div class="checkbox-group">
+                  <label class="checkbox-item" v-for="pk in [
+                    { value: 'pageupdown', label: 'PgUp/PgDn' },
+                    { value: 'minus_equal', label: '- / =' },
+                    { value: 'brackets', label: '[ / ]' },
+                    { value: 'shift_tab', label: 'Shift+Tab / Tab' },
+                  ]" :key="pk.value">
+                    <input
+                      type="checkbox"
+                      :checked="formData.input.page_keys.includes(pk.value)"
+                      @change="toggleArrayValue(formData.input.page_keys, pk.value)"
+                    />
+                    <span>{{ pk.label }}</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- 测试页面 -->
+        <!-- ==================== 测试页面 ==================== -->
         <section v-if="activeTab === 'test'" class="section">
           <div class="section-header">
             <h2>码表测试</h2>
@@ -656,14 +941,33 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- 日志页面 -->
-        <section v-if="activeTab === 'log'" class="section section-full">
+        <!-- ==================== 高级设置 ==================== -->
+        <section v-if="activeTab === 'advanced'" class="section section-full">
           <div class="section-header">
-            <h2>调试日志</h2>
-            <p class="section-desc">查看服务端运行日志（共 {{ logTotal }} 条）</p>
+            <h2>高级设置</h2>
+            <p class="section-desc">故障排查与调试选项</p>
+          </div>
+
+          <div class="settings-card">
+            <div class="card-title">日志设置</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>日志级别</label>
+                <p class="setting-hint">更改日志级别需要重启服务才能生效</p>
+              </div>
+              <div class="setting-control">
+                <select v-model="formData.advanced.log_level" class="select">
+                  <option value="debug">Debug（调试）</option>
+                  <option value="info">Info（信息）</option>
+                  <option value="warn">Warn（警告）</option>
+                  <option value="error">Error（错误）</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div class="settings-card log-card">
+            <div class="card-title">调试日志 <span class="log-count">共 {{ logTotal }} 条</span></div>
             <div class="log-toolbar">
               <select v-model="logLevel" class="select select-sm">
                 <option value="all">全部级别</option>
@@ -691,7 +995,7 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- 关于 -->
+        <!-- ==================== 关于 ==================== -->
         <section v-if="activeTab === 'about'" class="section">
           <div class="section-header">
             <h2>关于</h2>
@@ -730,6 +1034,23 @@ onUnmounted(() => {
             <button class="btn" @click="handleReload">重载配置</button>
             <button class="btn" @click="refreshStatus">刷新状态</button>
           </div>
+
+          <div class="settings-card about-links">
+            <div class="about-link-item">
+              <span class="about-link-icon">📋</span>
+              <div class="about-link-info">
+                <span class="about-link-title">项目主页</span>
+                <span class="about-link-desc">查看源代码和文档</span>
+              </div>
+            </div>
+            <div class="about-link-item">
+              <span class="about-link-icon">🐛</span>
+              <div class="about-link-info">
+                <span class="about-link-title">反馈问题</span>
+                <span class="about-link-desc">报告 Bug 或提出建议</span>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- 底部操作栏 -->
@@ -741,7 +1062,7 @@ onUnmounted(() => {
           </div>
           <div class="action-buttons">
             <button class="btn" @click="resetToDefault">重置</button>
-            <button class="btn btn-primary" @click="saveConfig" :disabled="saving">
+            <button class="btn btn-primary" @click="saveConfig" :disabled="saving || hotkeyConflicts.length > 0">
               {{ saving ? '保存中...' : '保存设置' }}
             </button>
           </div>
@@ -849,6 +1170,7 @@ body {
 }
 .setting-item:last-child { border-bottom: none; padding-bottom: 0; }
 .setting-item:first-child { padding-top: 0; }
+.setting-item.item-disabled { opacity: 0.5; }
 .setting-info { flex: 1; min-width: 0; }
 .setting-info label { font-size: 14px; font-weight: 500; color: #1f2937; display: block; text-align: left; }
 .setting-hint { font-size: 12px; color: #9ca3af; margin-top: 2px; text-align: left; }
@@ -883,6 +1205,32 @@ body {
 .input::placeholder { color: #9ca3af; }
 .input-sm { padding: 6px 10px; font-size: 13px; width: 160px; }
 
+/* Segmented Control */
+.segmented-control {
+  display: inline-flex;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 2px;
+}
+.segmented-control button {
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.segmented-control button:hover:not(:disabled) { color: #374151; }
+.segmented-control button:disabled { cursor: not-allowed; }
+.segmented-control button.active {
+  background: #fff;
+  color: #2563eb;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
 /* Switch */
 .switch {
   position: relative;
@@ -912,7 +1260,31 @@ body {
 }
 input:checked + .slider { background-color: #2563eb; }
 input:checked + .slider:before { transform: translateX(20px); }
-.switch-label { font-size: 13px; color: #6b7280; min-width: 30px; }
+
+/* Checkbox Group */
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.checkbox-group.vertical {
+  flex-direction: column;
+  gap: 10px;
+}
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+}
+.checkbox-item input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2563eb;
+}
 
 /* Range */
 .range-control { flex-direction: column; align-items: flex-end; gap: 4px; }
@@ -934,10 +1306,10 @@ input:checked + .slider:before { transform: translateX(20px); }
 .range-value { font-size: 13px; font-weight: 500; color: #374151; }
 
 /* Engine Cards */
-.engine-cards { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.engine-cards { display: flex; gap: 12px; flex-wrap: wrap; }
 .engine-card {
   flex: 1;
-  min-width: 200px;
+  min-width: 140px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -947,8 +1319,9 @@ input:checked + .slider:before { transform: translateX(20px); }
   cursor: pointer;
   transition: all 0.15s;
 }
-.engine-card:hover { border-color: #93c5fd; }
+.engine-card:hover:not(.disabled) { border-color: #93c5fd; }
 .engine-card.active { border-color: #2563eb; background: #eff6ff; }
+.engine-card.disabled { cursor: not-allowed; opacity: 0.6; }
 .engine-icon {
   width: 40px;
   height: 40px;
@@ -962,10 +1335,34 @@ input:checked + .slider:before { transform: translateX(20px); }
   font-weight: 600;
   flex-shrink: 0;
 }
+.engine-icon-disabled { background: #9ca3af; }
 .engine-info { flex: 1; min-width: 0; text-align: left; }
 .engine-name { font-weight: 500; color: #1f2937; }
 .engine-desc { font-size: 12px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .engine-check { color: #2563eb; font-size: 18px; flex-shrink: 0; }
+
+/* Warning Card */
+.warning-card { background: #fef3c7; border: 1px solid #f59e0b; }
+.warning-content { display: flex; align-items: flex-start; gap: 12px; }
+.warning-icon { font-size: 20px; flex-shrink: 0; }
+.warning-title { font-weight: 500; color: #92400e; margin-bottom: 4px; }
+.warning-list { font-size: 13px; color: #b45309; margin: 0; padding-left: 16px; }
+
+/* Dictionary */
+.dict-info { margin-bottom: 16px; }
+.dict-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+.dict-item:last-child { border-bottom: none; }
+.dict-label { color: #6b7280; }
+.dict-value { font-family: monospace; color: #374151; font-size: 13px; }
+.dict-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.dict-note { font-size: 12px; color: #9ca3af; font-style: italic; }
+.btn-danger { color: #dc2626; border-color: #fecaca; }
+.btn-danger:hover { background: #fee2e2; }
 
 /* Action Bar */
 .action-bar {
@@ -998,7 +1395,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   background: #fff;
   color: #374151;
 }
-.btn:hover { background: #f9fafb; border-color: #9ca3af; }
+.btn:hover:not(:disabled) { background: #f9fafb; border-color: #9ca3af; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: #2563eb; color: #fff; border-color: #2563eb; }
 .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
@@ -1040,11 +1437,12 @@ input:checked + .slider:before { transform: translateX(20px); }
 .test-empty { text-align: center; padding: 32px; color: #9ca3af; }
 
 /* Log Page */
-.log-card { display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 300px; }
+.log-card { display: flex; flex-direction: column; min-height: 300px; }
+.log-count { font-weight: normal; font-size: 12px; color: #9ca3af; margin-left: 8px; text-transform: none; }
 .log-toolbar { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
 .checkbox-inline { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #6b7280; cursor: pointer; white-space: nowrap; }
 .checkbox-inline input { cursor: pointer; }
-.log-content { flex: 1; overflow-y: auto; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px; padding: 12px 0; }
+.log-content { flex: 1; overflow-y: auto; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px; padding: 12px 0; max-height: 400px; }
 .log-line { display: flex; gap: 12px; padding: 4px 0; text-align: left; align-items: flex-start; }
 .log-time { color: #9ca3af; flex-shrink: 0; }
 .log-level { font-weight: 600; min-width: 50px; flex-shrink: 0; }
@@ -1066,7 +1464,23 @@ input:checked + .slider:before { transform: translateX(20px); }
 .stat-item { padding: 12px 16px; background: #f9fafb; border-radius: 8px; text-align: left; }
 .stat-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; }
 .stat-value { font-size: 14px; font-weight: 500; color: #1f2937; }
-.about-actions { display: flex; gap: 12px; margin-top: 16px; }
+.about-actions { display: flex; gap: 12px; margin-bottom: 16px; }
+.about-links { padding: 0; }
+.about-link-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.about-link-item:last-child { border-bottom: none; }
+.about-link-item:hover { background: #f9fafb; }
+.about-link-icon { font-size: 20px; }
+.about-link-info { flex: 1; text-align: left; }
+.about-link-title { display: block; font-weight: 500; color: #1f2937; }
+.about-link-desc { font-size: 12px; color: #9ca3af; }
 
 /* Loading & Error */
 .loading {

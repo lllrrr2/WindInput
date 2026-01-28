@@ -9,22 +9,27 @@ export interface APIResponse<T = any> {
   error?: string;
 }
 
-// 配置类型
-export interface GeneralConfig {
-  start_in_chinese_mode: boolean;
-  log_level: string;
+// 启动/默认状态配置
+export interface StartupConfig {
+  remember_last_state: boolean;
+  default_chinese_mode: boolean;
+  default_full_width: boolean;
+  default_chinese_punct: boolean;
 }
 
+// 词库配置
 export interface DictionaryConfig {
   system_dict: string;
   user_dict: string;
   pinyin_dict: string;
 }
 
+// 拼音配置
 export interface PinyinConfig {
   show_wubi_hint: boolean;
 }
 
+// 五笔配置
 export interface WubiConfig {
   auto_commit: string;
   empty_code: string;
@@ -32,6 +37,7 @@ export interface WubiConfig {
   punct_commit: boolean;
 }
 
+// 引擎配置
 export interface EngineConfig {
   type: string;
   filter_mode: string;
@@ -39,36 +45,54 @@ export interface EngineConfig {
   wubi: WubiConfig;
 }
 
+// 快捷键配置
 export interface HotkeyConfig {
-  toggle_mode: string;
+  toggle_mode_keys: string[];
+  commit_on_switch: boolean;
   switch_engine: string;
+  toggle_full_width: string;
+  toggle_punct: string;
 }
 
+// UI配置
 export interface UIConfig {
   font_size: number;
   candidates_per_page: number;
   font_path: string;
+  inline_preedit: boolean;
 }
 
+// 工具栏配置
 export interface ToolbarConfig {
   visible: boolean;
   position_x: number;
   position_y: number;
 }
 
+// 输入配置
 export interface InputConfig {
   full_width: boolean;
   chinese_punctuation: boolean;
+  punct_follow_mode: boolean;
+  select_key_groups: string[];
+  page_keys: string[];
 }
 
+// 高级配置
+export interface AdvancedConfig {
+  log_level: string;
+}
+
+// 完整配置
 export interface Config {
-  general: GeneralConfig;
+  startup: StartupConfig;
   dictionary: DictionaryConfig;
   engine: EngineConfig;
   hotkeys: HotkeyConfig;
   ui: UIConfig;
   toolbar: ToolbarConfig;
   input: InputConfig;
+  advanced: AdvancedConfig;
 }
 
 // 状态类型
@@ -111,6 +135,7 @@ export interface ConfigUpdateResponse {
   applied: string[];
   needReload: string[];
   needRestart: boolean;
+  conflicts?: string[];
 }
 
 // API 调用函数
@@ -201,4 +226,62 @@ export async function getLogs(level: string = 'all', filter: string = ''): Promi
 // 清空日志
 export async function clearLogs(): Promise<APIResponse> {
   return request('DELETE', '/api/logs');
+}
+
+// 默认配置值（用于前端初始化）
+export function getDefaultConfig(): Config {
+  return {
+    startup: {
+      remember_last_state: false,
+      default_chinese_mode: true,
+      default_full_width: false,
+      default_chinese_punct: true,
+    },
+    dictionary: {
+      system_dict: 'dict/pinyin/pinyin.txt',
+      user_dict: 'user_dict.txt',
+      pinyin_dict: 'dict/pinyin/pinyin.txt',
+    },
+    engine: {
+      type: 'pinyin',
+      filter_mode: 'smart',
+      pinyin: {
+        show_wubi_hint: true,
+      },
+      wubi: {
+        auto_commit: 'unique_at_4',
+        empty_code: 'clear_at_4',
+        top_code_commit: true,
+        punct_commit: true,
+      },
+    },
+    hotkeys: {
+      toggle_mode_keys: ['lshift', 'rshift'],
+      commit_on_switch: true,
+      switch_engine: 'ctrl+`',
+      toggle_full_width: 'shift+space',
+      toggle_punct: 'ctrl+.',
+    },
+    ui: {
+      font_size: 18,
+      candidates_per_page: 9,
+      font_path: '',
+      inline_preedit: true,
+    },
+    toolbar: {
+      visible: false,
+      position_x: 0,
+      position_y: 0,
+    },
+    input: {
+      full_width: false,
+      chinese_punctuation: true,
+      punct_follow_mode: false,
+      select_key_groups: ['semicolon_quote'],
+      page_keys: ['pageupdown', 'minus_equal'],
+    },
+    advanced: {
+      log_level: 'info',
+    },
+  };
 }

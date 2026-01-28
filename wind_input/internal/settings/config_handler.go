@@ -21,13 +21,14 @@ func NewConfigHandler(services *Services) *ConfigHandler {
 
 // ConfigResponse 配置响应
 type ConfigResponse struct {
-	General    config.GeneralConfig    `json:"general"`
+	Startup    config.StartupConfig    `json:"startup"`
 	Dictionary config.DictionaryConfig `json:"dictionary"`
 	Engine     config.EngineConfig     `json:"engine"`
 	Hotkeys    config.HotkeyConfig     `json:"hotkeys"`
 	UI         config.UIConfig         `json:"ui"`
 	Toolbar    config.ToolbarConfig    `json:"toolbar"`
 	Input      config.InputConfig      `json:"input"`
+	Advanced   config.AdvancedConfig   `json:"advanced"`
 }
 
 // GetConfig 获取完整配置
@@ -38,25 +39,27 @@ func (h *ConfigHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteSuccess(w, ConfigResponse{
-		General:    h.services.Config.General,
+		Startup:    h.services.Config.Startup,
 		Dictionary: h.services.Config.Dictionary,
 		Engine:     h.services.Config.Engine,
 		Hotkeys:    h.services.Config.Hotkeys,
 		UI:         h.services.Config.UI,
 		Toolbar:    h.services.Config.Toolbar,
 		Input:      h.services.Config.Input,
+		Advanced:   h.services.Config.Advanced,
 	})
 }
 
 // ConfigUpdateRequest 配置更新请求
 type ConfigUpdateRequest struct {
-	General    *config.GeneralConfig    `json:"general,omitempty"`
+	Startup    *config.StartupConfig    `json:"startup,omitempty"`
 	Dictionary *config.DictionaryConfig `json:"dictionary,omitempty"`
 	Engine     *config.EngineConfig     `json:"engine,omitempty"`
 	Hotkeys    *config.HotkeyConfig     `json:"hotkeys,omitempty"`
 	UI         *config.UIConfig         `json:"ui,omitempty"`
 	Toolbar    *config.ToolbarConfig    `json:"toolbar,omitempty"`
 	Input      *config.InputConfig      `json:"input,omitempty"`
+	Advanced   *config.AdvancedConfig   `json:"advanced,omitempty"`
 }
 
 // ConfigUpdateResponse 配置更新响应
@@ -86,10 +89,10 @@ func (h *ConfigHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 
 	cfg := h.services.Config
 
-	// 更新 General 配置
-	if req.General != nil {
-		cfg.General = *req.General
-		response.Applied = append(response.Applied, "general")
+	// 更新 Startup 配置
+	if req.Startup != nil {
+		cfg.Startup = *req.Startup
+		response.Applied = append(response.Applied, "startup")
 	}
 
 	// 更新 Dictionary 配置
@@ -157,6 +160,13 @@ func (h *ConfigHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 更新 Advanced 配置
+	if req.Advanced != nil {
+		cfg.Advanced = *req.Advanced
+		response.NeedRestart = true // 日志级别更改需要重启
+		response.Applied = append(response.Applied, "advanced")
+	}
+
 	// 保存配置到文件
 	if h.services.OnConfigSave != nil {
 		if err := h.services.OnConfigSave(cfg); err != nil {
@@ -186,9 +196,11 @@ type ConfigMetaResponse struct {
 func (h *ConfigHandler) GetConfigMeta(w http.ResponseWriter, r *http.Request) {
 	meta := ConfigMetaResponse{
 		Fields: map[string][]FieldMeta{
-			"general": {
-				{Name: "start_in_chinese_mode", Type: "bool", Description: "启动时默认中文模式", UpdateMode: "hot", Default: true},
-				{Name: "log_level", Type: "string", Description: "日志级别 (debug/info/warn/error)", UpdateMode: "restart", Default: "info"},
+			"startup": {
+				{Name: "remember_last_state", Type: "bool", Description: "记忆前次状态", UpdateMode: "hot", Default: false},
+				{Name: "default_chinese_mode", Type: "bool", Description: "默认中文模式", UpdateMode: "hot", Default: true},
+				{Name: "default_full_width", Type: "bool", Description: "默认全角模式", UpdateMode: "hot", Default: false},
+				{Name: "default_chinese_punct", Type: "bool", Description: "默认中文标点", UpdateMode: "hot", Default: true},
 			},
 			"dictionary": {
 				{Name: "system_dict", Type: "string", Description: "系统词库路径", UpdateMode: "reload"},
@@ -209,13 +221,25 @@ func (h *ConfigHandler) GetConfigMeta(w http.ResponseWriter, r *http.Request) {
 				{Name: "punct_commit", Type: "bool", Description: "标点顶字上屏", UpdateMode: "reload", Default: true},
 			},
 			"hotkeys": {
-				{Name: "toggle_mode", Type: "string", Description: "切换中英文模式热键", UpdateMode: "hot", Default: "shift"},
+				{Name: "toggle_mode_keys", Type: "[]string", Description: "中英切换键（多选）", UpdateMode: "hot", Default: []string{"lshift", "rshift"}},
+				{Name: "commit_on_switch", Type: "bool", Description: "切换时已有编码上屏", UpdateMode: "hot", Default: true},
 				{Name: "switch_engine", Type: "string", Description: "切换引擎热键", UpdateMode: "hot", Default: "ctrl+`"},
+				{Name: "toggle_full_width", Type: "string", Description: "全角/半角切换热键", UpdateMode: "hot", Default: "shift+space"},
+				{Name: "toggle_punct", Type: "string", Description: "中英标点切换热键", UpdateMode: "hot", Default: "ctrl+."},
 			},
 			"ui": {
 				{Name: "font_size", Type: "float64", Description: "字体大小", UpdateMode: "hot", Default: 18.0},
 				{Name: "candidates_per_page", Type: "int", Description: "每页候选数", UpdateMode: "hot", Default: 9},
 				{Name: "font_path", Type: "string", Description: "自定义字体路径", UpdateMode: "hot"},
+				{Name: "inline_preedit", Type: "bool", Description: "启用嵌入式编码行", UpdateMode: "hot", Default: true},
+			},
+			"input": {
+				{Name: "select_key_groups", Type: "[]string", Description: "候选选择键组（多选）", UpdateMode: "hot", Default: []string{"semicolon_quote"}},
+				{Name: "page_keys", Type: "[]string", Description: "翻页键（多选）", UpdateMode: "hot", Default: []string{"pageupdown", "minus_equal"}},
+				{Name: "punct_follow_mode", Type: "bool", Description: "标点随中英文切换", UpdateMode: "hot", Default: false},
+			},
+			"advanced": {
+				{Name: "log_level", Type: "string", Description: "日志级别 (debug/info/warn/error)", UpdateMode: "restart", Default: "info"},
 			},
 		},
 	}

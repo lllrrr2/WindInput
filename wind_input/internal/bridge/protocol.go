@@ -69,7 +69,9 @@ type Response struct {
 
 // InsertTextData for inserting final text
 type InsertTextData struct {
-	Text string `json:"text"`
+	Text        string `json:"text"`
+	ModeChanged bool   `json:"mode_changed,omitempty"` // 是否同时切换了模式
+	ChineseMode bool   `json:"chinese_mode,omitempty"` // 切换后的模式（仅当 ModeChanged 为 true 时有效）
 }
 
 // CompositionData for updating composition text (pinyin display)
