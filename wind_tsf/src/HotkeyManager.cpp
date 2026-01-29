@@ -141,12 +141,31 @@ BOOL CHotkeyManager::IsToggleModeKey(WPARAM vk)
     case VK_RSHIFT:
         return (_toggleModeKeys & TOGGLE_KEY_RSHIFT) != 0;
     case VK_SHIFT:
-        // Generic shift - check if either left or right is configured
-        return (_toggleModeKeys & (TOGGLE_KEY_LSHIFT | TOGGLE_KEY_RSHIFT)) != 0;
+        // Generic shift - determine which specific shift is pressed
+        if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+        {
+            return (_toggleModeKeys & TOGGLE_KEY_LSHIFT) != 0;
+        }
+        else if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+        {
+            return (_toggleModeKeys & TOGGLE_KEY_RSHIFT) != 0;
+        }
+        return FALSE;
     case VK_LCONTROL:
         return (_toggleModeKeys & TOGGLE_KEY_LCTRL) != 0;
     case VK_RCONTROL:
         return (_toggleModeKeys & TOGGLE_KEY_RCTRL) != 0;
+    case VK_CONTROL:
+        // Generic control - determine which specific ctrl is pressed
+        if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+        {
+            return (_toggleModeKeys & TOGGLE_KEY_LCTRL) != 0;
+        }
+        else if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+        {
+            return (_toggleModeKeys & TOGGLE_KEY_RCTRL) != 0;
+        }
+        return FALSE;
     case VK_CAPITAL:
         return (_toggleModeKeys & TOGGLE_KEY_CAPSLOCK) != 0;
     default:
@@ -169,6 +188,20 @@ BOOL CHotkeyManager::_IsSelectKey2(WPARAM vk, int modifiers)
     if ((_selectKeyGroups & SELECT_GROUP_LRCTRL) && vk == VK_LCONTROL)
         return TRUE;
 
+    // Handle generic VK_SHIFT/VK_CONTROL
+    if ((_selectKeyGroups & SELECT_GROUP_LRSHIFT) && vk == VK_SHIFT)
+    {
+        // Check if left shift is pressed
+        if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+            return TRUE;
+    }
+    if ((_selectKeyGroups & SELECT_GROUP_LRCTRL) && vk == VK_CONTROL)
+    {
+        // Check if left ctrl is pressed
+        if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+            return TRUE;
+    }
+
     return FALSE;
 }
 
@@ -185,6 +218,20 @@ BOOL CHotkeyManager::_IsSelectKey3(WPARAM vk, int modifiers)
         return TRUE;
     if ((_selectKeyGroups & SELECT_GROUP_LRCTRL) && vk == VK_RCONTROL)
         return TRUE;
+
+    // Handle generic VK_SHIFT/VK_CONTROL
+    if ((_selectKeyGroups & SELECT_GROUP_LRSHIFT) && vk == VK_SHIFT)
+    {
+        // Check if right shift is pressed
+        if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+            return TRUE;
+    }
+    if ((_selectKeyGroups & SELECT_GROUP_LRCTRL) && vk == VK_CONTROL)
+    {
+        // Check if right ctrl is pressed
+        if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+            return TRUE;
+    }
 
     return FALSE;
 }

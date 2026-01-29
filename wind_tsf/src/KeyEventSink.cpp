@@ -146,8 +146,30 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         }
 
         // Mark toggle key as pending (will toggle mode on release if no other key pressed)
+        // Resolve generic VK_SHIFT/VK_CONTROL to specific left/right
         _shiftPending = TRUE;
-        _pendingToggleKey = wParam;
+        if (wParam == VK_SHIFT)
+        {
+            if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+                _pendingToggleKey = VK_LSHIFT;
+            else if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+                _pendingToggleKey = VK_RSHIFT;
+            else
+                _pendingToggleKey = wParam;
+        }
+        else if (wParam == VK_CONTROL)
+        {
+            if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+                _pendingToggleKey = VK_LCONTROL;
+            else if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+                _pendingToggleKey = VK_RCONTROL;
+            else
+                _pendingToggleKey = wParam;
+        }
+        else
+        {
+            _pendingToggleKey = wParam;
+        }
         *pfEaten = TRUE;
         return S_OK;
     }
