@@ -100,7 +100,22 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     int modifiers = _GetModifierState();
 
     // Check if this is a toggle mode key (Shift, Ctrl, CapsLock depending on config)
-    if (pHotkeyMgr != nullptr && pHotkeyMgr->IsToggleModeKey(wParam))
+    // But skip if we have candidates and the key is also configured as a select key
+    BOOL isToggleModeKey = (pHotkeyMgr != nullptr && pHotkeyMgr->IsToggleModeKey(wParam));
+    BOOL useAsSelectKey = FALSE;
+
+    // When candidates are shown, Shift/Ctrl might be used for selection instead of toggle
+    if (isToggleModeKey && _hasCandidates && pHotkeyMgr != nullptr)
+    {
+        HotkeyType type = pHotkeyMgr->GetHotkeyType(wParam, modifiers, _isComposing, _hasCandidates, _pTextService->IsChineseMode());
+        if (type == HotkeyType::SelectCandidate2 || type == HotkeyType::SelectCandidate3)
+        {
+            useAsSelectKey = TRUE;
+            isToggleModeKey = FALSE;  // Use as select key, not toggle mode
+        }
+    }
+
+    if (isToggleModeKey)
     {
         // Check if this is a key repeat (bit 30 of lParam)
         if (lParam & 0x40000000)
@@ -499,7 +514,22 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
     }
     else if (wParam == VK_SHIFT)
     {
-        key = L"shift";
+        // Determine which specific shift was pressed
+        // Use GetAsyncKeyState to check which shift is actually down
+        if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+        {
+            key = L"select_2";
+            keyCode = VK_LSHIFT;  // Override to specific shift
+        }
+        else if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+        {
+            key = L"select_3";
+            keyCode = VK_RSHIFT;  // Override to specific shift
+        }
+        else
+        {
+            key = L"shift";
+        }
     }
     else if (wParam == VK_OEM_3)  // ` key (backtick/tilde)
     {
@@ -512,6 +542,60 @@ BOOL CKeyEventSink::_SendKeyToService(WPARAM wParam)
     else if (wParam == VK_OEM_PLUS)  // = key for page down
     {
         key = L"page_down";
+    }
+    else if (wParam == VK_PRIOR)  // Page Up key
+    {
+        key = L"page_up";
+    }
+    else if (wParam == VK_NEXT)  // Page Down key
+    {
+        key = L"page_down";
+    }
+    else if (wParam == VK_TAB)  // Tab key
+    {
+        // Tab without Shift = page down, Shift+Tab = page up
+        if (shiftPressed)
+        {
+            key = L"page_up";
+        }
+        else
+        {
+            key = L"page_down";
+        }
+    }
+    else if (wParam == VK_LSHIFT)  // Left Shift (for candidate selection)
+    {
+        key = L"select_2";
+    }
+    else if (wParam == VK_RSHIFT)  // Right Shift (for candidate selection)
+    {
+        key = L"select_3";
+    }
+    else if (wParam == VK_LCONTROL)  // Left Ctrl (for candidate selection)
+    {
+        key = L"select_2";
+    }
+    else if (wParam == VK_RCONTROL)  // Right Ctrl (for candidate selection)
+    {
+        key = L"select_3";
+    }
+    else if (wParam == VK_CONTROL)  // Generic Ctrl (determine which one)
+    {
+        // Determine which specific ctrl was pressed
+        if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+        {
+            key = L"select_2";
+            keyCode = VK_LCONTROL;
+        }
+        else if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+        {
+            key = L"select_3";
+            keyCode = VK_RCONTROL;
+        }
+        else
+        {
+            return FALSE;  // Neither specific key pressed
+        }
     }
     else if (_IsPunctuationKey(wParam))
     {

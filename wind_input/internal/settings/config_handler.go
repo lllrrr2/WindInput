@@ -105,6 +105,7 @@ func (h *ConfigHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if req.Engine != nil {
 		oldType := cfg.Engine.Type
 		oldFilterMode := cfg.Engine.FilterMode
+		oldPinyinConfig := cfg.Engine.Pinyin
 		oldWubiConfig := cfg.Engine.Wubi
 		cfg.Engine = *req.Engine
 
@@ -119,6 +120,14 @@ func (h *ConfigHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 		if cfg.Engine.FilterMode != oldFilterMode && h.services.EngineMgr != nil {
 			h.services.EngineMgr.UpdateFilterMode(cfg.Engine.FilterMode)
 			h.services.Logger.Info("Filter mode updated", "mode", cfg.Engine.FilterMode)
+		}
+
+		// 如果拼音配置改变，立即更新引擎
+		if h.services.EngineMgr != nil &&
+			cfg.Engine.Pinyin.ShowWubiHint != oldPinyinConfig.ShowWubiHint {
+			h.services.EngineMgr.UpdatePinyinOptions(cfg.Engine.Pinyin.ShowWubiHint)
+			h.services.Logger.Info("Pinyin config updated",
+				"showWubiHint", cfg.Engine.Pinyin.ShowWubiHint)
 		}
 
 		// 如果五笔配置改变，立即更新引擎

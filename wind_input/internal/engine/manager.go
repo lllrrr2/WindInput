@@ -520,3 +520,37 @@ func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommi
 	log.Printf("[EngineManager] 更新五笔选项: autoCommitAt4=%v, clearOnEmptyAt4=%v, topCodeCommit=%v, punctCommit=%v",
 		autoCommitAt4, clearOnEmptyAt4, topCodeCommit, punctCommit)
 }
+
+// UpdatePinyinOptions 更新拼音引擎的选项（热更新）
+func (m *Manager) UpdatePinyinOptions(showWubiHint bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 更新保存的配置
+	if m.pinyinConfig != nil {
+		m.pinyinConfig.ShowWubiHint = showWubiHint
+	}
+
+	// 更新所有已注册的拼音引擎的配置
+	for _, engine := range m.engines {
+		if pinyinEngine, ok := engine.(*pinyin.Engine); ok {
+			if cfg := pinyinEngine.GetConfig(); cfg != nil {
+				cfg.ShowWubiHint = showWubiHint
+			}
+			// 如果开启反查但五笔码表未加载，则加载
+			if showWubiHint && m.wubiDictPath != "" {
+				wubiFullPath := m.wubiDictPath
+				if m.exeDir != "" && !isAbsPath(m.wubiDictPath) {
+					wubiFullPath = m.exeDir + "/" + m.wubiDictPath
+				}
+				if err := pinyinEngine.LoadWubiTable(wubiFullPath); err != nil {
+					log.Printf("[EngineManager] 加载五笔反查码表失败: %v", err)
+				} else {
+					log.Printf("[EngineManager] 五笔反查码表加载成功")
+				}
+			}
+		}
+	}
+
+	log.Printf("[EngineManager] 更新拼音选项: showWubiHint=%v", showWubiHint)
+}
