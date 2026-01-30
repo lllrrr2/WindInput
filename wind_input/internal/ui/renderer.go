@@ -4,18 +4,22 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"os"
+	"sync"
 
+	"github.com/golang/freetype/truetype"
 	"github.com/fogleman/gg"
+	"golang.org/x/image/font"
 )
 
 // RenderConfig contains rendering configuration
 type RenderConfig struct {
-	FontPath       string
-	FontSize       float64
-	IndexFontSize  float64
-	Padding        float64
-	ItemHeight     float64
-	CornerRadius   float64
+	FontPath        string
+	FontSize        float64
+	IndexFontSize   float64
+	Padding         float64
+	ItemHeight      float64
+	CornerRadius    float64
 	BackgroundColor color.Color
 	TextColor       color.Color
 	IndexColor      color.Color
@@ -31,7 +35,7 @@ func DefaultRenderConfig() RenderConfig {
 	scale := GetDPIScale()
 
 	return RenderConfig{
-		FontPath:        "",  // Will use system font
+		FontPath:        "", // Will use system font
 		FontSize:        18 * scale,
 		IndexFontSize:   14 * scale,
 		Padding:         10 * scale,
@@ -47,22 +51,90 @@ func DefaultRenderConfig() RenderConfig {
 	}
 }
 
+// fontCache caches loaded fonts and font faces
+type fontCache struct {
+	mu       sync.RWMutex
+	font     *truetype.Font
+	fontPath string
+	faces    map[float64]font.Face // Cache font faces by size
+}
+
+func newFontCache() *fontCache {
+	return &fontCache{
+		faces: make(map[float64]font.Face),
+	}
+}
+
+// loadFont loads a TTF font from the given path
+func (fc *fontCache) loadFont(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	f, err := truetype.Parse(data)
+	if err != nil {
+		return err
+	}
+	fc.font = f
+	fc.fontPath = path
+	fc.faces = make(map[float64]font.Face) // Clear cached faces
+	return nil
+}
+
+// getFace returns a cached font face for the given size
+func (fc *fontCache) getFace(size float64) font.Face {
+	fc.mu.RLock()
+	if face, ok := fc.faces[size]; ok {
+		fc.mu.RUnlock()
+		return face
+	}
+	fc.mu.RUnlock()
+
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+
+	// Double-check
+	if face, ok := fc.faces[size]; ok {
+		return face
+	}
+
+	if fc.font == nil {
+		return nil
+	}
+
+	face := truetype.NewFace(fc.font, &truetype.Options{
+		Size:    size,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	fc.faces[size] = face
+	return face
+}
+
 // Renderer renders candidate window content
 type Renderer struct {
-	config   RenderConfig
-	fontPath string
+	config    RenderConfig
+	fontPath  string
+	fontCache *fontCache
+	fontReady bool
 }
 
 // NewRenderer creates a new renderer
 func NewRenderer(config RenderConfig) *Renderer {
-	return &Renderer{
-		config: config,
+	r := &Renderer{
+		config:    config,
+		fontCache: newFontCache(),
 	}
+	// Pre-load font on creation
+	r.ensureFontLoaded()
+	return r
 }
 
 // SetFontPath sets the font path
 func (r *Renderer) SetFontPath(path string) {
 	r.fontPath = path
+	r.fontReady = false
+	r.ensureFontLoaded()
 }
 
 // UpdateFont updates font settings
@@ -74,12 +146,49 @@ func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
 		r.config.IndexFontSize = (fontSize - 4) * scale
 	}
 
-	if fontPath != "" {
+	if fontPath != "" && fontPath != r.fontPath {
 		r.fontPath = fontPath
+		r.fontReady = false
+		r.ensureFontLoaded()
+	}
+}
+
+// ensureFontLoaded loads the font if not already cached
+func (r *Renderer) ensureFontLoaded() {
+	if r.fontReady && r.fontCache.font != nil {
+		return
+	}
+
+	r.fontCache.mu.Lock()
+	defer r.fontCache.mu.Unlock()
+
+	// Try user-specified font first
+	if r.fontPath != "" {
+		if err := r.fontCache.loadFont(r.fontPath); err == nil {
+			r.fontReady = true
+			return
+		}
+	}
+
+	// Try common Windows fonts (prefer .ttf over .ttc)
+	fonts := []string{
+		"C:/Windows/Fonts/simhei.ttf",  // SimHei
+		"C:/Windows/Fonts/simsun.ttf",  // SimSun (ttf version)
+		"C:/Windows/Fonts/msyh.ttf",    // Microsoft YaHei (ttf version)
+		"C:/Windows/Fonts/arial.ttf",   // Arial fallback
+		"C:/Windows/Fonts/segoeui.ttf", // Segoe UI
+	}
+	for _, path := range fonts {
+		if err := r.fontCache.loadFont(path); err == nil {
+			r.fontPath = path
+			r.fontReady = true
+			return
+		}
 	}
 }
 
 // RenderCandidates renders candidates to an image
+// Optimized to minimize font loading operations
 func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, totalPages int) *image.RGBA {
 	cfg := r.config
 	scale := GetDPIScale()
@@ -97,112 +206,111 @@ func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, 
 	if totalPages > 1 {
 		pageInfoHeight = 24.0 * scale
 	}
-	height := cfg.Padding*2 + inputHeight + contentHeight + pageInfoHeight + 4*scale // gaps scaled
+	height := cfg.Padding*2 + inputHeight + contentHeight + pageInfoHeight + 4*scale
 
 	// Create context
 	dc := gg.NewContext(int(width), int(height))
 
-	// Draw rounded rectangle background with shadow effect
-	r.drawRoundedRectWithShadow(dc, 0, 0, width, height, cfg.CornerRadius)
+	// Draw shadow (simplified - just 1 layer instead of 4)
+	dc.SetColor(color.RGBA{0, 0, 0, 15})
+	r.drawRoundedRect(dc, 2, 2, width, height, cfg.CornerRadius)
+	dc.Fill()
 
 	// Draw background
 	dc.SetColor(cfg.BackgroundColor)
-	r.drawRoundedRect(dc, 2, 2, width-4, height-4, cfg.CornerRadius-1)
+	r.drawRoundedRect(dc, 0, 0, width-2, height-2, cfg.CornerRadius)
 	dc.Fill()
 
 	// Draw border
 	dc.SetColor(cfg.BorderColor)
 	dc.SetLineWidth(1)
-	r.drawRoundedRect(dc, 1, 1, width-2, height-2, cfg.CornerRadius)
+	r.drawRoundedRect(dc, 0.5, 0.5, width-3, height-3, cfg.CornerRadius)
 	dc.Stroke()
 
-	// Load font - avoid .ttc files as they can cause issues with gg library
-	fontLoaded := false
-	if r.fontPath != "" {
-		if err := dc.LoadFontFace(r.fontPath, cfg.FontSize); err == nil {
-			fontLoaded = true
-		}
-	}
-	if !fontLoaded {
-		// Try common Windows fonts (prefer .ttf over .ttc)
-		fonts := []string{
-			"C:/Windows/Fonts/simhei.ttf",  // SimHei
-			"C:/Windows/Fonts/simsun.ttf",  // SimSun (ttf version)
-			"C:/Windows/Fonts/msyh.ttf",    // Microsoft YaHei (ttf version)
-			"C:/Windows/Fonts/arial.ttf",   // Arial fallback
-			"C:/Windows/Fonts/segoeui.ttf", // Segoe UI
-		}
-		for _, f := range fonts {
-			if err := dc.LoadFontFace(f, cfg.FontSize); err == nil {
-				fontLoaded = true
-				r.fontPath = f
-				break
-			}
-		}
-	}
+	// Get cached font faces
+	mainFace := r.fontCache.getFace(cfg.FontSize)
+	smallFace := r.fontCache.getFace(cfg.IndexFontSize)
+	pageFace := r.fontCache.getFace(12 * scale)
 
 	y := cfg.Padding
 
 	// Draw input area
 	dc.SetColor(cfg.InputBgColor)
-	r.drawRoundedRect(dc, cfg.Padding, y, width-cfg.Padding*2, inputHeight, 4*scale)
+	r.drawRoundedRect(dc, cfg.Padding, y, width-cfg.Padding*2-2, inputHeight, 4*scale)
 	dc.Fill()
 
-	dc.SetColor(cfg.InputTextColor)
-	if fontLoaded {
+	// Draw input text
+	if mainFace != nil {
+		dc.SetFontFace(mainFace)
+		dc.SetColor(cfg.InputTextColor)
 		dc.DrawString(input, cfg.Padding+8*scale, y+inputHeight/2+cfg.FontSize/3)
 	}
 	y += inputHeight + 4*scale
 
-	// Draw candidates
-	for i, cand := range candidates {
+	// First pass: draw all index circles (no font needed)
+	for i := range candidates {
 		itemY := y + float64(i)*cfg.ItemHeight
-
-		// Draw index circle
 		indexX := cfg.Padding + 14*scale
 		indexY := itemY + cfg.ItemHeight/2
 		dc.SetColor(cfg.IndexBgColor)
 		dc.DrawCircle(indexX, indexY, 11*scale)
 		dc.Fill()
+	}
 
-		// Draw index number
+	// Second pass: draw all index numbers (small font)
+	if smallFace != nil {
+		dc.SetFontFace(smallFace)
 		dc.SetColor(cfg.IndexColor)
-		if fontLoaded {
-			dc.LoadFontFace(r.fontPath, cfg.IndexFontSize)
+		for i, cand := range candidates {
+			itemY := y + float64(i)*cfg.ItemHeight
+			indexX := cfg.Padding + 14*scale
+			indexY := itemY + cfg.ItemHeight/2
+			indexStr := string(rune('0' + cand.Index))
+			tw, _ := dc.MeasureString(indexStr)
+			dc.DrawString(indexStr, indexX-tw/2, indexY+cfg.IndexFontSize/3)
 		}
-		indexStr := string(rune('0' + cand.Index))
-		tw, _ := dc.MeasureString(indexStr)
-		dc.DrawString(indexStr, indexX-tw/2, indexY+cfg.IndexFontSize/3)
+	}
 
-		// Draw candidate text
+	// Third pass: draw all candidate texts (main font)
+	type commentInfo struct {
+		text string
+		x    float64
+		y    float64
+	}
+	var comments []commentInfo
+
+	if mainFace != nil {
+		dc.SetFontFace(mainFace)
 		dc.SetColor(cfg.TextColor)
-		if fontLoaded {
-			dc.LoadFontFace(r.fontPath, cfg.FontSize)
-		}
-		dc.DrawString(cand.Text, cfg.Padding+32*scale, itemY+cfg.ItemHeight/2+cfg.FontSize/3)
+		for i, cand := range candidates {
+			itemY := y + float64(i)*cfg.ItemHeight
+			dc.DrawString(cand.Text, cfg.Padding+32*scale, itemY+cfg.ItemHeight/2+cfg.FontSize/3)
 
-		// Draw comment/hint (e.g., wubi code) if present
-		if cand.Comment != "" {
-			// Measure candidate text width to position comment after it
-			candWidth, _ := dc.MeasureString(cand.Text)
-			commentX := cfg.Padding + 32*scale + candWidth + 8*scale
-
-			// Draw comment in a lighter color
-			dc.SetColor(color.RGBA{150, 150, 150, 255})
-			if fontLoaded {
-				dc.LoadFontFace(r.fontPath, cfg.IndexFontSize) // Use smaller font for comment
+			if cand.Comment != "" {
+				candWidth, _ := dc.MeasureString(cand.Text)
+				comments = append(comments, commentInfo{
+					text: cand.Comment,
+					x:    cfg.Padding + 32*scale + candWidth + 8*scale,
+					y:    itemY + cfg.ItemHeight/2 + cfg.IndexFontSize/3,
+				})
 			}
-			dc.DrawString(cand.Comment, commentX, itemY+cfg.ItemHeight/2+cfg.IndexFontSize/3)
+		}
+	}
+
+	// Fourth pass: draw all comments (small font)
+	if len(comments) > 0 && smallFace != nil {
+		dc.SetFontFace(smallFace)
+		dc.SetColor(color.RGBA{150, 150, 150, 255})
+		for _, c := range comments {
+			dc.DrawString(c.text, c.x, c.y)
 		}
 	}
 
 	// Draw page info
-	if totalPages > 1 {
+	if totalPages > 1 && pageFace != nil {
 		pageY := y + float64(len(candidates))*cfg.ItemHeight + 4*scale
+		dc.SetFontFace(pageFace)
 		dc.SetColor(cfg.InputTextColor)
-		if fontLoaded {
-			dc.LoadFontFace(r.fontPath, 12*scale)
-		}
 		pageText := fmt.Sprintf("%d / %d  (← →)", page, totalPages)
 		tw, _ := dc.MeasureString(pageText)
 		dc.DrawString(pageText, width/2-tw/2, pageY+16*scale)
@@ -225,17 +333,6 @@ func (r *Renderer) drawRoundedRect(dc *gg.Context, x, y, w, h, radius float64) {
 	dc.ClosePath()
 }
 
-func (r *Renderer) drawRoundedRectWithShadow(dc *gg.Context, x, y, w, h, radius float64) {
-	// Draw shadow layers
-	for i := 3; i >= 0; i-- {
-		offset := float64(i)
-		alpha := uint8(20 - i*5)
-		dc.SetColor(color.RGBA{0, 0, 0, alpha})
-		r.drawRoundedRect(dc, x+offset, y+offset, w, h, radius)
-		dc.Fill()
-	}
-}
-
 // RenderModeIndicator renders a mode indicator (中/En)
 func (r *Renderer) RenderModeIndicator(mode string) *image.RGBA {
 	scale := GetDPIScale()
@@ -251,26 +348,10 @@ func (r *Renderer) RenderModeIndicator(mode string) *image.RGBA {
 	r.drawRoundedRect(dc, 2*scale, 2*scale, width-4*scale, height-4*scale, 6*scale)
 	dc.Fill()
 
-	// Load font - avoid .ttc files as they can cause issues with gg library
-	fontLoaded := false
-	if r.fontPath != "" {
-		if err := dc.LoadFontFace(r.fontPath, fontSize); err == nil {
-			fontLoaded = true
-		}
-	}
-	if !fontLoaded {
-		fonts := []string{
-			"C:/Windows/Fonts/simhei.ttf",  // SimHei
-			"C:/Windows/Fonts/msyh.ttf",    // Microsoft YaHei (ttf version)
-			"C:/Windows/Fonts/arial.ttf",   // Arial fallback
-			"C:/Windows/Fonts/segoeui.ttf", // Segoe UI
-		}
-		for _, f := range fonts {
-			if err := dc.LoadFontFace(f, fontSize); err == nil {
-				r.fontPath = f
-				break
-			}
-		}
+	// Use cached font face
+	face := r.fontCache.getFace(fontSize)
+	if face != nil {
+		dc.SetFontFace(face)
 	}
 
 	// Draw mode text
