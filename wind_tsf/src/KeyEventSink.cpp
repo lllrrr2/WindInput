@@ -245,8 +245,12 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     BOOL isKeyDownHotkey = (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyDownHotkey(normalizedKeyHash));
 
     // Check for basic input keys
+    // IMPORTANT: In Chinese mode, we must intercept letter/number/punctuation keys
+    // even if _isComposing and _hasCandidates are both FALSE (which can happen
+    // after a commit, before the next key arrives)
     BOOL isInputKey = FALSE;
-    if (_isComposing || _hasCandidates || _pTextService->IsChineseMode())
+    BOOL isChineseMode = _pTextService->IsChineseMode();
+    if (_isComposing || _hasCandidates || isChineseMode)
     {
         HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
         isInputKey = (keyType != HotkeyType::None);
@@ -254,6 +258,24 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
 
     if (!isKeyDownHotkey && !isInputKey)
     {
+        // CRITICAL FIX: If OnTestKeyDown decided to eat this key (based on the state
+        // at that time), but now the state has changed (e.g., _isComposing became FALSE
+        // after a commit), we STILL need to consume the key to maintain consistency.
+        // Otherwise, the key will be passed to the application unexpectedly.
+        //
+        // This can happen during fast typing: "d<space>d" where:
+        // 1. OnTestKeyDown('d') sees _isComposing=TRUE, returns pfEaten=TRUE
+        // 2. Space key IPC returns, sets _isComposing=FALSE
+        // 3. OnKeyDown('d') now sees _isComposing=FALSE, but must still consume 'd'
+        //
+        // We detect this by checking if we're in Chinese mode and this is a letter key.
+        if (isChineseMode && wParam >= 'A' && wParam <= 'Z' && !(modifiers & (KEYMOD_CTRL | KEYMOD_ALT)))
+        {
+            // This is a letter key in Chinese mode that should have been intercepted.
+            // Log a warning and consume it to prevent leaking to the application.
+            OutputDebugStringW(L"[WindInput] WARNING: Letter key slipped through due to state change, consuming anyway\n");
+            *pfEaten = TRUE;
+        }
         return S_OK;
     }
 
@@ -615,4 +637,21 @@ BOOL CKeyEventSink::_IsContextReadOnly(ITfContext* pContext)
     }
 
     return FALSE;
+}
+
+// Called when composition is unexpectedly terminated by the application
+// This typically happens during fast typing when a new composition starts
+// before the previous InsertText operation completes
+void CKeyEventSink::OnCompositionUnexpectedlyTerminated()
+{
+    OutputDebugStringW(L"[WindInput] OnCompositionUnexpectedlyTerminated: Resetting state\n");
+
+    // Reset local state
+    _isComposing = FALSE;
+    _hasCandidates = FALSE;
+
+    // TODO: Consider sending a message to Go service to clear input buffer
+    // For now, the Go service will receive the next key event and handle accordingly
+    // The key issue (composition text leaking) is already fixed by clearing the text
+    // in OnCompositionTerminated before this method is called
 }

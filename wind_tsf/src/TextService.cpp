@@ -1280,9 +1280,41 @@ STDAPI CTextService::OnCompositionTerminated(TfEditCookie ecWrite, ITfCompositio
     // It may have already been released in DoEditSession
     if (_pComposition != nullptr && _pComposition == pComposition)
     {
+        // CRITICAL: This is an unexpected termination (we didn't call EndComposition)
+        // This can happen when:
+        // 1. Fast typing: new composition starts before previous InsertText completes
+        // 2. Application forcefully terminates composition
+        //
+        // We MUST clear the composition text to prevent it from leaking to the document
+        // as plain text (which would cause the "d being committed directly" bug)
+        ITfRange* pRange = nullptr;
+        if (SUCCEEDED(pComposition->GetRange(&pRange)) && pRange != nullptr)
+        {
+            // Clear the composition text by setting it to empty
+            HRESULT hr = pRange->SetText(ecWrite, 0, L"", 0);
+            if (SUCCEEDED(hr))
+            {
+                OutputDebugStringW(L"[WindInput] OnCompositionTerminated: Cleared composition text (unexpected termination)\n");
+            }
+            else
+            {
+                WCHAR debug[128];
+                wsprintfW(debug, L"[WindInput] OnCompositionTerminated: SetText failed hr=0x%08X\n", hr);
+                OutputDebugStringW(debug);
+            }
+            pRange->Release();
+        }
+
         OutputDebugStringW(L"[WindInput] OnCompositionTerminated: Releasing composition\n");
         _pComposition->Release();
         _pComposition = nullptr;
+
+        // Notify KeyEventSink that composition was unexpectedly terminated
+        // This ensures _isComposing and _hasCandidates flags are properly reset
+        if (_pKeyEventSink != nullptr)
+        {
+            _pKeyEventSink->OnCompositionUnexpectedlyTerminated();
+        }
     }
     else if (_pComposition == nullptr)
     {

@@ -32,6 +32,10 @@ public:
     // Reset composing state (called when focus is lost or input field changes)
     void ResetComposingState() { _isComposing = FALSE; _hasCandidates = FALSE; }
 
+    // Called when composition is unexpectedly terminated by the application
+    // This resets state and notifies Go service to clear input buffer
+    void OnCompositionUnexpectedlyTerminated();
+
 private:
     LONG _refCount;
     CTextService* _pTextService;

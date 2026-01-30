@@ -24,6 +24,8 @@ type UICommand struct {
 	ToolbarState *ToolbarState
 	ToolbarX     int
 	ToolbarY     int
+	// Input session version for preventing stale show commands
+	InputSession uint64
 }
 
 // Manager manages the candidate window UI
@@ -46,6 +48,11 @@ type Manager struct {
 	// Sticky position state: once candidate window jumps above caret,
 	// it stays above until input is cleared (new input session)
 	stickyAbove bool
+
+	// Input session version: incremented on each commit/hide to prevent
+	// stale show commands from reappearing the candidate window
+	inputSession        uint64
+	currentInputSession uint64 // The session being displayed (for UI thread)
 
 	ready    bool
 	readyCh  chan struct{}
@@ -179,8 +186,21 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 
 	switch cmd.Type {
 	case "show":
+		// Check if this show command is from the current input session
+		// If the session has been incremented (by a hide command), ignore stale show commands
+		m.mu.Lock()
+		currentSession := m.inputSession
+		m.mu.Unlock()
+
+		if cmd.InputSession < currentSession {
+			m.logger.Debug("Ignoring stale show command", "cmdSession", cmd.InputSession, "currentSession", currentSession)
+			return
+		}
+		m.currentInputSession = cmd.InputSession
 		m.doShowCandidates(cmd.Candidates, cmd.Input, cmd.X, cmd.Y, cmd.CaretHeight, cmd.Page, cmd.TotalPages)
 	case "hide":
+		// Update current session to the hide command's session
+		m.currentInputSession = cmd.InputSession
 		m.doHide()
 	case "mode":
 		m.doShowModeIndicator(cmd.ModeText, cmd.X, cmd.Y)
@@ -225,21 +245,24 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, caretX, c
 	m.totalPages = totalPages
 	m.caretX = caretX
 	m.caretY = caretY
+	// Capture current input session for this show command
+	currentSession := m.inputSession
 	m.mu.Unlock()
 
-	m.logger.Debug("Queuing ShowCandidates", "input", input, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight)
+	m.logger.Debug("Queuing ShowCandidates", "input", input, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight, "session", currentSession)
 
 	// Send command to UI thread (non-blocking due to buffered channel)
 	select {
 	case m.cmdCh <- UICommand{
-		Type:        "show",
-		Candidates:  candidates,
-		Input:       input,
-		X:           caretX,
-		Y:           caretY,
-		CaretHeight: caretHeight,
-		Page:        page,
-		TotalPages:  totalPages,
+		Type:         "show",
+		Candidates:   candidates,
+		Input:        input,
+		X:            caretX,
+		Y:            caretY,
+		CaretHeight:  caretHeight,
+		Page:         page,
+		TotalPages:   totalPages,
+		InputSession: currentSession,
 	}:
 		// Signal the event to wake up the message loop
 		if m.cmdEvent != 0 {
@@ -311,15 +334,23 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, caretX,
 }
 
 // Hide hides the candidate window (async, non-blocking)
+// This also increments the input session to invalidate any pending show commands
 func (m *Manager) Hide() {
-	// Skip if window is already hidden (avoid flooding channel with hide commands)
-	if !m.window.IsVisible() {
-		return
-	}
+	// Increment input session FIRST to invalidate any pending show commands
+	// This ensures that show commands queued before this hide will be ignored
+	m.mu.Lock()
+	m.inputSession++
+	newSession := m.inputSession
+	m.mu.Unlock()
+
+	m.logger.Debug("Hide called, new session", "session", newSession)
 
 	// Send command to UI thread (non-blocking)
+	// Note: We always send hide command even if window appears hidden,
+	// because the window visibility check is not thread-safe and there might
+	// be pending show commands in the channel
 	select {
-	case m.cmdCh <- UICommand{Type: "hide"}:
+	case m.cmdCh <- UICommand{Type: "hide", InputSession: newSession}:
 		// Signal the event to wake up the message loop
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
