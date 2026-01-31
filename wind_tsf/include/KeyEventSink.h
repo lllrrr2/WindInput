@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Globals.h"
+#include "IPCClient.h"
 #include <string>
 #include <cstdint>
 
@@ -47,7 +48,46 @@ private:
     uint32_t _pendingKeyUpKey;   // Key code of pending KeyUp toggle key
     uint32_t _pendingKeyUpModifiers; // Modifiers when KeyDown was pressed
 
+    // ========================================================================
+    // Modifier key state machine (replaces GetAsyncKeyState for consistency)
+    // ========================================================================
+    uint32_t _modsState;         // Current modifier state (maintained by KeyDown/KeyUp)
+    uint16_t _eventSeq;          // Monotonic event sequence number
+
+    // State machine update methods
+    void _UpdateModsOnKeyDown(WPARAM vk);
+    void _UpdateModsOnKeyUp(WPARAM vk);
+    uint32_t _GetModsSnapshot() const { return _modsState; }
+    uint8_t _GetTogglesSnapshot() const;
+    uint16_t _GetNextEventSeq() { return _eventSeq++; }
+
+    // Sync state from Go response
+    void _SyncStateFromResponse(uint32_t statusFlags);
+
+    // ========================================================================
+    // Barrier mechanism for async commit requests
+    // ========================================================================
+    struct PendingBarrier
+    {
+        uint16_t barrierSeq;
+        std::wstring composition;  // Composition at request time
+        DWORD requestTime;         // GetTickCount() at request
+        bool waiting;
+    };
+
+    uint16_t _nextBarrierSeq;
+    PendingBarrier _pendingCommit;
+
+    // Barrier timeout (if Go doesn't respond, fallback handling)
+    static constexpr DWORD BARRIER_TIMEOUT_MS = 500;
+
+    BOOL _SendCommitRequest(uint16_t barrierSeq, uint16_t triggerKey, uint32_t mods, const std::string& inputBuffer);
+    void _HandleCommitResult(uint16_t barrierSeq, const std::wstring& text, const std::wstring& newComp, bool modeChanged, bool chineseMode);
+    void _CheckBarrierTimeout();
+
+    // ========================================================================
     // Helper methods
+    // ========================================================================
     BOOL _IsMatchingKeyUp(WPARAM wParam, uint32_t pendingKey);
     BOOL _SendKeyToService(uint32_t keyCode, uint32_t modifiers, uint8_t eventType);
     BOOL _HandleServiceResponse(); // Returns TRUE if key was handled, FALSE to pass through

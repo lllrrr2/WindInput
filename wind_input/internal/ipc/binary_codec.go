@@ -86,6 +86,36 @@ func (c *BinaryCodec) DecodeKeyPayload(buf []byte) (*KeyPayload, error) {
 		ScanCode:  binary.LittleEndian.Uint32(buf[4:8]),
 		Modifiers: binary.LittleEndian.Uint32(buf[8:12]),
 		EventType: buf[12],
+		Toggles:   buf[13],
+		EventSeq:  binary.LittleEndian.Uint16(buf[14:16]),
+	}, nil
+}
+
+// DecodeCommitRequestPayload decodes a commit request payload (barrier mechanism)
+func (c *BinaryCodec) DecodeCommitRequestPayload(buf []byte) (*CommitRequestPayload, error) {
+	if len(buf) < 12 {
+		return nil, fmt.Errorf("commit request payload too short: %d bytes", len(buf))
+	}
+
+	barrierSeq := binary.LittleEndian.Uint16(buf[0:2])
+	triggerKey := binary.LittleEndian.Uint16(buf[2:4])
+	modifiers := binary.LittleEndian.Uint32(buf[4:8])
+	inputLength := binary.LittleEndian.Uint32(buf[8:12])
+
+	// Extract input buffer content
+	var inputBuffer string
+	if inputLength > 0 {
+		if len(buf) < int(12+inputLength) {
+			return nil, fmt.Errorf("commit request payload incomplete: need %d bytes, got %d", 12+inputLength, len(buf))
+		}
+		inputBuffer = string(buf[12 : 12+inputLength])
+	}
+
+	return &CommitRequestPayload{
+		BarrierSeq:  barrierSeq,
+		TriggerKey:  triggerKey,
+		Modifiers:   modifiers,
+		InputBuffer: inputBuffer,
 	}, nil
 }
 
@@ -124,6 +154,47 @@ func (c *BinaryCodec) EncodeConsumed() []byte {
 // EncodeClearComposition encodes a clear composition response
 func (c *BinaryCodec) EncodeClearComposition() []byte {
 	return c.EncodeHeader(CmdClearComposition, 0)
+}
+
+// EncodeCommitResult encodes a commit result response (barrier mechanism)
+// Format: CommitResultPayload header (12 bytes) + UTF-8 text + optional UTF-8 new composition
+func (c *BinaryCodec) EncodeCommitResult(barrierSeq uint16, text, newComposition string, modeChanged, chineseMode bool) []byte {
+	textBytes := []byte(text)
+	compBytes := []byte(newComposition)
+
+	// Build flags
+	var flags uint16
+	if modeChanged {
+		flags |= uint16(CommitFlagModeChanged)
+	}
+	if len(compBytes) > 0 {
+		flags |= uint16(CommitFlagHasNewComposition)
+	}
+	if chineseMode {
+		flags |= uint16(CommitFlagChineseMode)
+	}
+
+	// Calculate payload size: header(12) + text + composition
+	payloadLen := uint32(12 + len(textBytes) + len(compBytes))
+
+	// Encode header
+	header := c.EncodeHeader(CmdCommitResult, payloadLen)
+
+	// Encode commit result header
+	resultHeader := make([]byte, 12)
+	binary.LittleEndian.PutUint16(resultHeader[0:2], barrierSeq)
+	binary.LittleEndian.PutUint16(resultHeader[2:4], flags)
+	binary.LittleEndian.PutUint32(resultHeader[4:8], uint32(len(textBytes)))
+	binary.LittleEndian.PutUint32(resultHeader[8:12], uint32(len(compBytes)))
+
+	// Combine all parts
+	result := make([]byte, 0, HeaderSize+payloadLen)
+	result = append(result, header...)
+	result = append(result, resultHeader...)
+	result = append(result, textBytes...)
+	result = append(result, compBytes...)
+
+	return result
 }
 
 // EncodeCommitText encodes a commit text response

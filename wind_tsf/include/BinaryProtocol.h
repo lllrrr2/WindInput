@@ -5,7 +5,7 @@
 #include <string>
 
 // Protocol version (major.minor: high 4 bits = major, low 12 bits = minor)
-constexpr uint16_t PROTOCOL_VERSION = 0x1000; // v1.0
+constexpr uint16_t PROTOCOL_VERSION = 0x1001; // v1.1 - Added barrier mechanism and state machine support
 
 // Async flag (used in version field's high bit to mark async requests)
 constexpr uint16_t ASYNC_FLAG = 0x8000; // Async request flag - no response expected
@@ -14,10 +14,12 @@ constexpr uint16_t ASYNC_FLAG = 0x8000; // Async request flag - no response expe
 // Upstream commands (C++ -> Go)
 // ============================================================================
 constexpr uint16_t CMD_KEY_EVENT        = 0x0101; // Key event (down/up)
+constexpr uint16_t CMD_COMMIT_REQUEST   = 0x0104; // Commit request with barrier (Space/Enter/number select)
 constexpr uint16_t CMD_FOCUS_GAINED     = 0x0201; // Focus gained
 constexpr uint16_t CMD_FOCUS_LOST       = 0x0202; // Focus lost
 constexpr uint16_t CMD_IME_ACTIVATED    = 0x0203; // IME activated
 constexpr uint16_t CMD_IME_DEACTIVATED  = 0x0204; // IME deactivated
+constexpr uint16_t CMD_MODE_NOTIFY      = 0x0205; // Mode changed notification (TSF local toggle, async)
 constexpr uint16_t CMD_CARET_UPDATE     = 0x0301; // Caret position update
 constexpr uint16_t CMD_BATCH_EVENTS     = 0x0F01; // Batch events container
 
@@ -29,8 +31,10 @@ constexpr uint16_t CMD_PASS_THROUGH       = 0x0002; // Key not handled, pass to 
 constexpr uint16_t CMD_COMMIT_TEXT        = 0x0101; // Commit text
 constexpr uint16_t CMD_UPDATE_COMPOSITION = 0x0102; // Update composition
 constexpr uint16_t CMD_CLEAR_COMPOSITION  = 0x0103; // Clear composition
+constexpr uint16_t CMD_COMMIT_RESULT      = 0x0105; // Commit result (response to COMMIT_REQUEST)
 constexpr uint16_t CMD_MODE_CHANGED       = 0x0201; // Mode changed
 constexpr uint16_t CMD_STATUS_UPDATE      = 0x0202; // Full status update
+constexpr uint16_t CMD_STATE_PUSH         = 0x0206; // State push (broadcast to all clients)
 constexpr uint16_t CMD_SYNC_HOTKEYS       = 0x0301; // Sync hotkey whitelist
 constexpr uint16_t CMD_CONSUMED           = 0x0401; // Key consumed
 constexpr uint16_t CMD_BATCH_RESPONSE     = 0x0F02; // Batch response container
@@ -40,6 +44,13 @@ constexpr uint16_t CMD_BATCH_RESPONSE     = 0x0F02; // Batch response container
 // ============================================================================
 constexpr uint8_t KEY_EVENT_DOWN = 0;
 constexpr uint8_t KEY_EVENT_UP   = 1;
+
+// ============================================================================
+// Toggle key state flags (for KeyPayload.toggles)
+// ============================================================================
+constexpr uint8_t TOGGLE_CAPSLOCK   = 0x01; // CapsLock is on
+constexpr uint8_t TOGGLE_NUMLOCK    = 0x02; // NumLock is on
+constexpr uint8_t TOGGLE_SCROLLLOCK = 0x04; // ScrollLock is on
 
 // ============================================================================
 // Modifier flags for KeyHash encoding (high 16 bits)
@@ -92,9 +103,10 @@ struct KeyPayload
 {
     uint32_t keyCode;     // Virtual key code
     uint32_t scanCode;    // Scan code
-    uint32_t modifiers;   // Modifier flags
+    uint32_t modifiers;   // Modifier flags (snapshot at event time, from state machine)
     uint8_t  eventType;   // 0=KeyDown, 1=KeyUp
-    uint8_t  reserved[3]; // Alignment padding
+    uint8_t  toggles;     // Toggle key states (CapsLock/NumLock/ScrollLock)
+    uint16_t eventSeq;    // Monotonic event sequence number
 };
 static_assert(sizeof(KeyPayload) == 16, "KeyPayload must be 16 bytes");
 
@@ -139,6 +151,35 @@ static_assert(sizeof(CommitTextHeader) == 12, "CommitTextHeader must be 12 bytes
 constexpr uint32_t COMMIT_FLAG_MODE_CHANGED       = 0x0001;
 constexpr uint32_t COMMIT_FLAG_HAS_NEW_COMPOSITION = 0x0002;
 constexpr uint32_t COMMIT_FLAG_CHINESE_MODE       = 0x0004;
+
+// Commit request payload (for barrier mechanism)
+// Sent from C++ to Go when Space/Enter/number key is pressed during composition
+struct CommitRequestPayload
+{
+    uint16_t barrierSeq;     // Barrier sequence number (for matching response)
+    uint16_t triggerKey;     // VK code that triggered commit (VK_SPACE/VK_RETURN/0x31-0x39)
+    uint32_t modifiers;      // Modifier state at trigger time
+    uint32_t inputLength;    // Length of input buffer (UTF-8)
+    // Followed by UTF-8 input buffer content
+};
+static_assert(sizeof(CommitRequestPayload) == 12, "CommitRequestPayload must be 12 bytes");
+
+// Commit result payload (for barrier mechanism)
+// Sent from Go to C++ as response to COMMIT_REQUEST
+struct CommitResultPayload
+{
+    uint16_t barrierSeq;        // Matching barrier sequence
+    uint16_t flags;             // bit0: modeChanged, bit1: hasNewComposition, bit2: chineseMode
+    uint32_t textLength;        // Length of commit text (UTF-8)
+    uint32_t compositionLength; // Length of new composition (UTF-8, 0 if none)
+    // Followed by UTF-8 commit text, then optional new composition
+};
+static_assert(sizeof(CommitResultPayload) == 12, "CommitResultPayload must be 12 bytes");
+
+// Commit result flags (reuse COMMIT_FLAG_* for consistency)
+// COMMIT_FLAG_MODE_CHANGED       = 0x0001
+// COMMIT_FLAG_HAS_NEW_COMPOSITION = 0x0002
+// COMMIT_FLAG_CHINESE_MODE       = 0x0004
 
 #pragma pack(pop)
 

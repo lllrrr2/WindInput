@@ -54,6 +54,29 @@ type KeyEventResult struct {
 	NewComposition string // New composition after commit (for top code scenarios)
 }
 
+// CommitRequestData contains commit request information (barrier mechanism)
+type CommitRequestData struct {
+	BarrierSeq  uint16 // Barrier sequence number for matching response
+	TriggerKey  uint16 // VK code that triggered commit (Space/Enter/1-9)
+	Modifiers   uint32 // Modifier state at trigger time
+	InputBuffer string // Current input buffer content
+}
+
+// CommitResultData contains commit result information (barrier mechanism)
+type CommitResultData struct {
+	BarrierSeq     uint16 // Matching barrier sequence
+	Text           string // Text to commit
+	NewComposition string // Optional new composition after commit
+	ModeChanged    bool   // Whether mode was changed
+	ChineseMode    bool   // New mode (if ModeChanged is true)
+}
+
+// ModeNotifyData contains mode notification from TSF (local toggle)
+type ModeNotifyData struct {
+	ChineseMode bool // New mode after toggle
+	ClearInput  bool // Whether input buffer should be cleared
+}
+
 // MessageHandler handles messages from C++ Bridge
 type MessageHandler interface {
 	HandleKeyEvent(data KeyEventData) *KeyEventResult
@@ -66,4 +89,8 @@ type MessageHandler interface {
 	HandleCapsLockState(on bool)
 	HandleMenuCommand(command string) *StatusUpdateData
 	HandleClientDisconnected(activeClients int)
+	// Barrier mechanism for async commit
+	HandleCommitRequest(data CommitRequestData) *CommitResultData
+	// Mode notification from TSF (local toggle)
+	HandleModeNotify(data ModeNotifyData)
 }

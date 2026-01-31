@@ -3,6 +3,7 @@ package bridge
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,9 @@ import (
 
 const (
 	BridgePipeName = `\\.\pipe\wind_input`
+
+	// Buffer size for named pipe (64KB like Weasel)
+	PipeBufferSize = 64 * 1024
 
 	// Timeout for processing a single request
 	RequestProcessTimeout = 200 * time.Millisecond
@@ -71,10 +75,11 @@ func (s *Server) Start() error {
 		handle, err := windows.CreateNamedPipe(
 			pipePath,
 			windows.PIPE_ACCESS_DUPLEX,
-			windows.PIPE_TYPE_BYTE|windows.PIPE_READMODE_BYTE|windows.PIPE_WAIT,
+			// Use MESSAGE mode like Weasel for more reliable message boundaries
+			windows.PIPE_TYPE_MESSAGE|windows.PIPE_READMODE_MESSAGE|windows.PIPE_WAIT,
 			windows.PIPE_UNLIMITED_INSTANCES,
-			4096,
-			4096,
+			PipeBufferSize, // 64KB like Weasel
+			PipeBufferSize,
 			0,
 			sa,
 		)
@@ -169,20 +174,67 @@ func (s *Server) handleClient(handle windows.Handle, clientID int) {
 }
 
 // pipeReader wraps windows.Handle for io.Reader
+// In MESSAGE mode, each ReadFile returns a complete message
 type pipeReader struct {
-	handle windows.Handle
+	handle    windows.Handle
+	msgBuffer []byte // Buffer for current message
+	msgOffset int    // Current read offset in msgBuffer
 }
 
 func (r *pipeReader) Read(p []byte) (int, error) {
+	// If we have buffered data from a previous message read, return that first
+	if r.msgOffset < len(r.msgBuffer) {
+		n := copy(p, r.msgBuffer[r.msgOffset:])
+		r.msgOffset += n
+		return n, nil
+	}
+
+	// Read a new message from the pipe
+	// In MESSAGE mode, we need a buffer large enough for the entire message
+	readBuf := make([]byte, PipeBufferSize)
 	var bytesRead uint32
-	err := windows.ReadFile(r.handle, p, &bytesRead, nil)
+
+	err := windows.ReadFile(r.handle, readBuf, &bytesRead, nil)
 	if err != nil {
+		// Handle ERROR_MORE_DATA - message is larger than buffer
+		if err == windows.ERROR_MORE_DATA {
+			// This shouldn't happen with our 64KB buffer, but handle it anyway
+			r.msgBuffer = make([]byte, bytesRead)
+			copy(r.msgBuffer, readBuf[:bytesRead])
+			r.msgOffset = 0
+
+			// Read remaining data
+			for {
+				err = windows.ReadFile(r.handle, readBuf, &bytesRead, nil)
+				if err == nil {
+					r.msgBuffer = append(r.msgBuffer, readBuf[:bytesRead]...)
+					break
+				} else if err == windows.ERROR_MORE_DATA {
+					r.msgBuffer = append(r.msgBuffer, readBuf[:bytesRead]...)
+					continue
+				} else {
+					return 0, err
+				}
+			}
+
+			n := copy(p, r.msgBuffer[r.msgOffset:])
+			r.msgOffset += n
+			return n, nil
+		}
 		return 0, err
 	}
+
 	if bytesRead == 0 {
 		return 0, io.EOF
 	}
-	return int(bytesRead), nil
+
+	// Store the message in buffer for subsequent reads
+	r.msgBuffer = readBuf[:bytesRead]
+	r.msgOffset = 0
+
+	n := copy(p, r.msgBuffer)
+	r.msgOffset = n
+	return n, nil
 }
 
 // pipeWriter wraps windows.Handle for io.Writer
@@ -227,6 +279,9 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 	case ipc.CmdKeyEvent:
 		return s.handleKeyEvent(payload, clientID)
 
+	case ipc.CmdCommitRequest:
+		return s.handleCommitRequest(payload, clientID)
+
 	case ipc.CmdFocusGained:
 		return s.handleFocusGained(payload, clientID)
 
@@ -246,6 +301,9 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 		s.logger.Info("IME deactivated (user switched to another IME)", "clientID", clientID)
 		s.handler.HandleIMEDeactivated()
 		return s.codec.EncodeAck()
+
+	case ipc.CmdModeNotify:
+		return s.handleModeNotify(payload, clientID)
 
 	case ipc.CmdCaretUpdate:
 		return s.handleCaretUpdate(payload, clientID)
@@ -348,6 +406,66 @@ func (s *Server) handleCaretUpdate(payload []byte, clientID int) []byte {
 		X:      int(caretPayload.X),
 		Y:      int(caretPayload.Y),
 		Height: int(caretPayload.Height),
+	})
+
+	return s.codec.EncodeAck()
+}
+
+func (s *Server) handleCommitRequest(payload []byte, clientID int) []byte {
+	commitReq, err := s.codec.DecodeCommitRequestPayload(payload)
+	if err != nil {
+		s.logger.Error("Failed to decode commit request payload", "clientID", clientID, "error", err)
+		return s.codec.EncodeAck()
+	}
+
+	s.logger.Debug("Commit request", "clientID", clientID,
+		"barrierSeq", commitReq.BarrierSeq,
+		"triggerKey", fmt.Sprintf("0x%04X", commitReq.TriggerKey),
+		"inputBuffer", commitReq.InputBuffer)
+
+	// Convert to CommitRequestData
+	reqData := CommitRequestData{
+		BarrierSeq:  commitReq.BarrierSeq,
+		TriggerKey:  commitReq.TriggerKey,
+		Modifiers:   commitReq.Modifiers,
+		InputBuffer: commitReq.InputBuffer,
+	}
+
+	// Handle the commit request
+	result := s.handler.HandleCommitRequest(reqData)
+	if result == nil {
+		// No result, return ACK
+		return s.codec.EncodeAck()
+	}
+
+	// Encode and return commit result
+	return s.codec.EncodeCommitResult(
+		result.BarrierSeq,
+		result.Text,
+		result.NewComposition,
+		result.ModeChanged,
+		result.ChineseMode,
+	)
+}
+
+func (s *Server) handleModeNotify(payload []byte, clientID int) []byte {
+	if len(payload) < 4 {
+		s.logger.Error("Mode notify payload too short", "clientID", clientID)
+		return s.codec.EncodeAck()
+	}
+
+	// Parse flags (same format as StatusFlags)
+	flags := binary.LittleEndian.Uint32(payload[0:4])
+	chineseMode := (flags & ipc.StatusChineseMode) != 0
+	clearInput := (flags & ipc.StatusModeChanged) != 0
+
+	s.logger.Info("Mode notify from TSF", "clientID", clientID,
+		"chineseMode", chineseMode, "clearInput", clearInput)
+
+	// Notify handler (async, no response needed)
+	s.handler.HandleModeNotify(ModeNotifyData{
+		ChineseMode: chineseMode,
+		ClearInput:  clearInput,
 	})
 
 	return s.codec.EncodeAck()

@@ -27,6 +27,7 @@ CIPCClient::CIPCClient()
 CIPCClient::~CIPCClient()
 {
     Disconnect();
+
     if (_hEvent != NULL)
     {
         CloseHandle(_hEvent);
@@ -36,10 +37,16 @@ CIPCClient::~CIPCClient()
 
 // ============================================================================
 // Logging helpers
+// Note: Debug and Info logs are controlled by WIND_DEBUG_LOG macro
+// Error logs are always enabled (critical errors only)
 // ============================================================================
 
 void CIPCClient::_Log(IPCLogLevel level, const wchar_t* format, ...)
 {
+#ifndef WIND_DEBUG_LOG
+    if (level != IPCLogLevel::Error)
+        return;
+#endif
     if (static_cast<int>(level) > static_cast<int>(s_logLevel))
         return;
 
@@ -54,6 +61,7 @@ void CIPCClient::_Log(IPCLogLevel level, const wchar_t* format, ...)
 
 void CIPCClient::_LogError(const wchar_t* format, ...)
 {
+    // Error logs are always enabled
     if (s_logLevel < IPCLogLevel::Error)
         return;
 
@@ -70,6 +78,9 @@ void CIPCClient::_LogError(const wchar_t* format, ...)
 
 void CIPCClient::_LogInfo(const wchar_t* format, ...)
 {
+#ifndef WIND_DEBUG_LOG
+    return;  // Info logs disabled when WIND_DEBUG_LOG is not defined
+#endif
     if (s_logLevel < IPCLogLevel::Info)
         return;
 
@@ -86,6 +97,9 @@ void CIPCClient::_LogInfo(const wchar_t* format, ...)
 
 void CIPCClient::_LogDebug(const wchar_t* format, ...)
 {
+#ifndef WIND_DEBUG_LOG
+    return;  // Debug logs disabled when WIND_DEBUG_LOG is not defined
+#endif
     if (s_logLevel < IPCLogLevel::Debug)
         return;
 
@@ -403,12 +417,14 @@ BOOL CIPCClient::Connect()
 
         if (_hPipe != INVALID_HANDLE_VALUE)
         {
-            DWORD mode = PIPE_READMODE_BYTE;
+            // Use MESSAGE mode like Weasel for reliable message boundaries
+            DWORD mode = PIPE_READMODE_MESSAGE;
             SetNamedPipeHandleState(_hPipe, &mode, nullptr, nullptr);
 
             _LogInfo(L"Connected to Go Service (binary protocol v%d.%d)",
                      PROTOCOL_VERSION >> 12, PROTOCOL_VERSION & 0xFFF);
             _RecordSuccess();
+
             return TRUE;
         }
 
@@ -452,25 +468,22 @@ BOOL CIPCClient::_SendBinaryMessage(uint16_t command, const void* payload, uint3
     header.command = command;
     header.length = payloadSize;
 
-    // Write header
-    if (!_WriteWithTimeout(&header, sizeof(header), IPCConfig::WRITE_TIMEOUT_MS))
+    // In MESSAGE mode, we must write header + payload as a single message
+    // Combine into a single buffer for atomic write
+    std::vector<uint8_t> buffer(sizeof(header) + payloadSize);
+    memcpy(buffer.data(), &header, sizeof(header));
+    if (payloadSize > 0 && payload != nullptr)
     {
-        _LogError(L"Failed to write message header");
+        memcpy(buffer.data() + sizeof(header), payload, payloadSize);
+    }
+
+    // Write complete message in one call
+    if (!_WriteWithTimeout(buffer.data(), static_cast<DWORD>(buffer.size()), IPCConfig::WRITE_TIMEOUT_MS))
+    {
+        _LogError(L"Failed to write message");
         _RecordFailure();
         Disconnect();
         return FALSE;
-    }
-
-    // Write payload if any
-    if (payloadSize > 0 && payload != nullptr)
-    {
-        if (!_WriteWithTimeout(payload, payloadSize, IPCConfig::WRITE_TIMEOUT_MS))
-        {
-            _LogError(L"Failed to write message payload");
-            _RecordFailure();
-            Disconnect();
-            return FALSE;
-        }
     }
 
     _RecordSuccess();
@@ -481,7 +494,8 @@ BOOL CIPCClient::_SendBinaryMessage(uint16_t command, const void* payload, uint3
 // Message sending
 // ============================================================================
 
-BOOL CIPCClient::SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modifiers, uint8_t eventType)
+BOOL CIPCClient::SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modifiers, uint8_t eventType,
+                              uint8_t toggles, uint16_t eventSeq)
 {
     if (!_ShouldAttemptOperation())
     {
@@ -499,11 +513,31 @@ BOOL CIPCClient::SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modi
     payload.scanCode = scanCode;
     payload.modifiers = modifiers;
     payload.eventType = eventType;
-    memset(payload.reserved, 0, sizeof(payload.reserved));
+    payload.toggles = toggles;
+    payload.eventSeq = eventSeq;
 
-    _LogDebug(L"Sending key event: keyCode=0x%X, mods=0x%X, type=%d", keyCode, modifiers, eventType);
+    _LogDebug(L"Sending key event: keyCode=0x%X, mods=0x%X, type=%d, toggles=0x%X, seq=%d",
+              keyCode, modifiers, eventType, toggles, eventSeq);
 
     return _SendBinaryMessage(CMD_KEY_EVENT, &payload, sizeof(payload));
+}
+
+BOOL CIPCClient::SendCommitRequest(const uint8_t* payload, uint32_t payloadSize)
+{
+    if (!_ShouldAttemptOperation())
+    {
+        _LogDebug(L"Circuit open, skipping commit request");
+        return FALSE;
+    }
+
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
+    _LogDebug(L"Sending commit request: payloadSize=%d", payloadSize);
+
+    return _SendBinaryMessage(CMD_COMMIT_REQUEST, payload, payloadSize);
 }
 
 BOOL CIPCClient::SendCaretUpdate(int x, int y, int height)
@@ -591,29 +625,58 @@ BOOL CIPCClient::SendIMEActivated()
     return _SendBinaryMessage(CMD_IME_ACTIVATED, nullptr, 0);
 }
 
+BOOL CIPCClient::SendModeNotify(bool chineseMode, bool clearInput)
+{
+    if (!_ShouldAttemptOperation())
+    {
+        return FALSE;
+    }
+
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
+    // Build status flags
+    uint32_t flags = 0;
+    if (chineseMode) flags |= STATUS_CHINESE_MODE;
+    if (clearInput) flags |= STATUS_MODE_CHANGED; // Reuse this flag to indicate input should be cleared
+
+    _LogInfo(L"Sending mode_notify (async): chineseMode=%d, clearInput=%d", chineseMode, clearInput);
+
+    // Send async - no response needed for mode notification
+    return _SendBinaryMessage(CMD_MODE_NOTIFY, &flags, sizeof(flags), true /* async */);
+}
+
 // ============================================================================
 // Message receiving
 // ============================================================================
 
 BOOL CIPCClient::_ReceiveBinaryMessage(IpcHeader& header, std::vector<uint8_t>& payload)
 {
-    // Read header
+    // In MESSAGE mode, read the complete message at once
+    std::vector<uint8_t> messageBuffer(IPCConfig::PIPE_BUFFER_SIZE);
     DWORD bytesRead;
-    if (!_ReadWithTimeout(&header, sizeof(header), &bytesRead, IPCConfig::READ_TIMEOUT_MS))
+
+    if (!_ReadWithTimeout(messageBuffer.data(), static_cast<DWORD>(messageBuffer.size()), &bytesRead, IPCConfig::READ_TIMEOUT_MS))
     {
-        _LogError(L"Failed to read message header");
+        _LogError(L"Failed to read message");
         _RecordFailure();
         Disconnect();
         return FALSE;
     }
 
-    if (bytesRead != sizeof(header))
+    // Check if we have enough data for a header
+    if (bytesRead < sizeof(IpcHeader))
     {
-        _LogError(L"Incomplete header read: got %d bytes", bytesRead);
+        _LogError(L"Message too short: got %d bytes", bytesRead);
         _RecordFailure();
         Disconnect();
         return FALSE;
     }
+
+    // Parse header from the message buffer
+    memcpy(&header, messageBuffer.data(), sizeof(IpcHeader));
 
     // Validate header
     if ((header.version >> 12) != (PROTOCOL_VERSION >> 12))
@@ -632,33 +695,21 @@ BOOL CIPCClient::_ReceiveBinaryMessage(IpcHeader& header, std::vector<uint8_t>& 
 
     _LogDebug(L"Received header: cmd=0x%04X, len=%d", header.command, header.length);
 
-    // Read payload if any
+    // Check if the message contains the expected payload
+    DWORD expectedSize = sizeof(IpcHeader) + header.length;
+    if (bytesRead < expectedSize)
+    {
+        _LogError(L"Incomplete message: got %d bytes, expected %d", bytesRead, expectedSize);
+        _RecordFailure();
+        Disconnect();
+        return FALSE;
+    }
+
+    // Extract payload from the message buffer
     if (header.length > 0)
     {
-        payload.resize(header.length);
-        DWORD totalRead = 0;
-
-        while (totalRead < header.length)
-        {
-            DWORD chunkRead;
-            if (!_ReadWithTimeout(payload.data() + totalRead, header.length - totalRead, &chunkRead, IPCConfig::READ_TIMEOUT_MS))
-            {
-                _LogError(L"Failed to read payload");
-                _RecordFailure();
-                Disconnect();
-                return FALSE;
-            }
-
-            if (chunkRead == 0)
-            {
-                _LogError(L"Incomplete payload read: expected %d, got %d", header.length, totalRead);
-                _RecordFailure();
-                Disconnect();
-                return FALSE;
-            }
-
-            totalRead += chunkRead;
-        }
+        payload.assign(messageBuffer.begin() + sizeof(IpcHeader),
+                      messageBuffer.begin() + sizeof(IpcHeader) + header.length);
     }
     else
     {
@@ -865,6 +916,50 @@ BOOL CIPCClient::_ParseResponse(const IpcHeader& header, const std::vector<uint8
 
             _LogInfo(L"Response: SyncHotkeys keyDown=%d, keyUp=%d",
                      (int)response.keyDownHotkeys.size(), (int)response.keyUpHotkeys.size());
+        }
+        break;
+
+    case CMD_COMMIT_RESULT:
+        {
+            // CommitResult uses same format as CommitText, but includes barrierSeq
+            response.type = ResponseType::CommitText; // Treat as CommitText for handling
+
+            if (payload.size() < sizeof(CommitResultPayload))
+            {
+                _LogError(L"CommitResult payload too short");
+                return FALSE;
+            }
+
+            const CommitResultPayload* resultPayload = reinterpret_cast<const CommitResultPayload*>(payload.data());
+            response.modeChanged = (resultPayload->flags & COMMIT_FLAG_MODE_CHANGED) != 0;
+            response.chineseMode = (resultPayload->flags & COMMIT_FLAG_CHINESE_MODE) != 0;
+
+            // Extract text
+            if (resultPayload->textLength > 0)
+            {
+                size_t textOffset = sizeof(CommitResultPayload);
+                if (textOffset + resultPayload->textLength <= payload.size())
+                {
+                    response.text = _Utf8ToWide(
+                        reinterpret_cast<const char*>(payload.data() + textOffset),
+                        resultPayload->textLength);
+                }
+            }
+
+            // Extract new composition
+            if ((resultPayload->flags & COMMIT_FLAG_HAS_NEW_COMPOSITION) && resultPayload->compositionLength > 0)
+            {
+                size_t compOffset = sizeof(CommitResultPayload) + resultPayload->textLength;
+                if (compOffset + resultPayload->compositionLength <= payload.size())
+                {
+                    response.newComposition = _Utf8ToWide(
+                        reinterpret_cast<const char*>(payload.data() + compOffset),
+                        resultPayload->compositionLength);
+                }
+            }
+
+            _LogDebug(L"Response: CommitResult barrierSeq=%d, text='%s', modeChanged=%d",
+                      resultPayload->barrierSeq, response.text.c_str(), response.modeChanged);
         }
         break;
 

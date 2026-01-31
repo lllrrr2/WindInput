@@ -2,7 +2,7 @@
 package ipc
 
 // Protocol version (major.minor: high 4 bits = major, low 12 bits = minor)
-const ProtocolVersion uint16 = 0x1000 // v1.0
+const ProtocolVersion uint16 = 0x1001 // v1.1 - Added barrier mechanism and state machine support
 
 // Async flag (used in version field's high bit to mark async requests)
 const AsyncFlag uint16 = 0x8000 // Async request flag - no response expected
@@ -10,10 +10,12 @@ const AsyncFlag uint16 = 0x8000 // Async request flag - no response expected
 // Upstream commands (C++ -> Go)
 const (
 	CmdKeyEvent       uint16 = 0x0101 // Key event (down/up)
+	CmdCommitRequest  uint16 = 0x0104 // Commit request with barrier (Space/Enter/number select)
 	CmdFocusGained    uint16 = 0x0201 // Focus gained
 	CmdFocusLost      uint16 = 0x0202 // Focus lost
 	CmdIMEActivated   uint16 = 0x0203 // IME activated (user switched to this IME)
 	CmdIMEDeactivated uint16 = 0x0204 // IME deactivated (user switched to another IME)
+	CmdModeNotify     uint16 = 0x0205 // Mode changed notification (TSF local toggle, async)
 	CmdCaretUpdate    uint16 = 0x0301 // Caret position update
 	CmdBatchEvents    uint16 = 0x0F01 // Batch events container
 )
@@ -25,8 +27,10 @@ const (
 	CmdCommitText        uint16 = 0x0101 // Commit text to application
 	CmdUpdateComposition uint16 = 0x0102 // Update composition (preedit)
 	CmdClearComposition  uint16 = 0x0103 // Clear composition
+	CmdCommitResult      uint16 = 0x0105 // Commit result (response to COMMIT_REQUEST)
 	CmdModeChanged       uint16 = 0x0201 // Mode changed
 	CmdStatusUpdate      uint16 = 0x0202 // Full status update
+	CmdStatePush         uint16 = 0x0206 // State push (broadcast to all clients)
 	CmdSyncHotkeys       uint16 = 0x0301 // Sync hotkey whitelist
 	CmdConsumed          uint16 = 0x0401 // Key consumed (no output)
 	CmdBatchResponse     uint16 = 0x0F02 // Batch response container
@@ -36,6 +40,13 @@ const (
 const (
 	KeyEventDown uint8 = 0
 	KeyEventUp   uint8 = 1
+)
+
+// Toggle key state flags (for KeyPayload.Toggles)
+const (
+	ToggleCapsLock   uint8 = 0x01 // CapsLock is on
+	ToggleNumLock    uint8 = 0x02 // NumLock is on
+	ToggleScrollLock uint8 = 0x04 // ScrollLock is on
 )
 
 // Modifier flags for KeyHash encoding (high 16 bits)
@@ -114,9 +125,10 @@ type BatchHeader struct {
 type KeyPayload struct {
 	KeyCode   uint32 // Virtual key code
 	ScanCode  uint32 // Scan code
-	Modifiers uint32 // Modifier flags
+	Modifiers uint32 // Modifier flags (snapshot at event time, from state machine)
 	EventType uint8  // 0=KeyDown, 1=KeyUp
-	Reserved  [3]uint8
+	Toggles   uint8  // Toggle key states (CapsLock/NumLock/ScrollLock)
+	EventSeq  uint16 // Monotonic event sequence number
 }
 
 // CaretPayload represents caret position (12 bytes, matches C++ struct)
@@ -147,6 +159,32 @@ type CommitTextPayload struct {
 	ModeChanged    bool   // Whether mode was changed
 	ChineseMode    bool   // New mode (if ModeChanged is true)
 }
+
+// CommitRequestPayload for commit_request (barrier mechanism)
+// Sent from C++ to Go when Space/Enter/number key is pressed during composition
+type CommitRequestPayload struct {
+	BarrierSeq  uint16 // Barrier sequence number (for matching response)
+	TriggerKey  uint16 // VK code that triggered commit (VK_SPACE/VK_RETURN/0x31-0x39)
+	Modifiers   uint32 // Modifier state at trigger time
+	InputBuffer string // Input buffer content (UTF-8)
+}
+
+// CommitResultPayload for commit_result response (barrier mechanism)
+// Sent from Go to C++ as response to COMMIT_REQUEST
+type CommitResultPayload struct {
+	BarrierSeq     uint16 // Matching barrier sequence
+	Text           string // UTF-8 encoded, text to commit
+	NewComposition string // Optional: new composition after commit
+	ModeChanged    bool   // Whether mode was changed
+	ChineseMode    bool   // New mode (if ModeChanged is true)
+}
+
+// Commit flags (for CommitTextPayload and CommitResultPayload wire format)
+const (
+	CommitFlagModeChanged       uint16 = 0x0001
+	CommitFlagHasNewComposition uint16 = 0x0002
+	CommitFlagChineseMode       uint16 = 0x0004
+)
 
 // CalcKeyHash computes the key hash for hotkey matching
 // Format: (modifiers << 16) | keyCode

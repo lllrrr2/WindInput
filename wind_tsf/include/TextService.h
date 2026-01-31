@@ -82,6 +82,13 @@ public:
     void SetInputMode(BOOL bChineseMode);  // Set mode from service response (no IPC)
     BOOL IsChineseMode() { return _bChineseMode; }
 
+    // Check if there's an active composition
+    BOOL HasActiveComposition() { return _pComposition != nullptr; }
+
+    // Check if last edit session was async (Weasel optimization)
+    BOOL IsAsyncEdit() { return _asyncEdit; }
+    void ClearAsyncEdit() { _asyncEdit = FALSE; }
+
     // Update language bar Caps Lock state
     void UpdateCapsLockState(BOOL bCapsLock);
 
@@ -108,6 +115,8 @@ private:
 
     // Composition
     ITfComposition* _pComposition;
+    std::wstring _lastCompositionText;  // Cache to skip redundant updates
+    BOOL _asyncEdit;  // Track if last RequestEditSession returned TF_S_ASYNC (Weasel optimization)
 
     // Display Attribute
     TfGuidAtom _gaDisplayAttributeInput;

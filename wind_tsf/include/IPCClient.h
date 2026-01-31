@@ -5,8 +5,6 @@
 #include <string>
 #include <vector>
 #include <functional>
-#include <atomic>
-#include <unordered_set>
 
 // IPC Configuration
 namespace IPCConfig
@@ -20,8 +18,8 @@ namespace IPCConfig
     constexpr int MAX_CONSECUTIVE_FAILURES = 3;    // Failures before circuit opens
     constexpr DWORD CIRCUIT_RESET_INTERVAL_MS = 3000; // Time before retry after circuit opens
 
-    // Buffer sizes
-    constexpr DWORD PIPE_BUFFER_SIZE = 4096;
+    // Buffer sizes (64KB like Weasel)
+    constexpr DWORD PIPE_BUFFER_SIZE = 64 * 1024;
     constexpr DWORD MAX_MESSAGE_SIZE = 1024 * 1024; // 1MB max message
 }
 
@@ -76,9 +74,6 @@ enum class CircuitState
     HalfOpen    // Testing if service recovered
 };
 
-// Callback for receiving responses
-using ResponseCallback = std::function<void(const ServiceResponse&)>;
-
 class CIPCClient
 {
 public:
@@ -88,14 +83,20 @@ public:
     // Connect to named pipe server (with timeout)
     BOOL Connect();
 
-    // Disconnect
+    // Disconnect from named pipe
     void Disconnect();
 
     // Check if service is available (considers circuit breaker)
     BOOL IsServiceAvailable();
 
     // Send key event to Go Service (binary protocol)
-    BOOL SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modifiers, uint8_t eventType);
+    // Uses state machine snapshot for modifiers/toggles
+    BOOL SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modifiers, uint8_t eventType,
+                      uint8_t toggles = 0, uint16_t eventSeq = 0);
+
+    // Send commit request (barrier mechanism for Space/Enter/number selection)
+    // Returns TRUE if request was sent successfully
+    BOOL SendCommitRequest(const uint8_t* payload, uint32_t payloadSize);
 
     // Send caret position update to Go Service
     BOOL SendCaretUpdate(int x, int y, int height);
@@ -111,6 +112,10 @@ public:
 
     // Send IME activated notification (when user switches back to this IME)
     BOOL SendIMEActivated();
+
+    // Send mode change notification (async, for local mode toggle)
+    // This notifies Go that TSF has locally toggled the mode
+    BOOL SendModeNotify(bool chineseMode, bool clearInput);
 
     // Check if connected
     BOOL IsConnected() const { return _hPipe != INVALID_HANDLE_VALUE; }

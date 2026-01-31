@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/config"
@@ -275,11 +276,14 @@ func (c *Coordinator) saveToolbarPosition(x, y int) {
 // HandleKeyEvent handles key events from C++ Bridge
 // Returns a result indicating what action to take
 func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventResult {
+	startTime := time.Now()
+
 	c.mu.Lock()
+	lockTime := time.Since(startTime)
 	defer c.mu.Unlock()
 
 	// Use Debug for high-frequency key events to reduce log noise
-	c.logger.Debug("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode)
+	c.logger.Debug("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode, "lockWait", lockTime.String())
 
 	// Check for Ctrl or Alt modifiers
 	hasCtrl := data.Modifiers&ModCtrl != 0
@@ -507,6 +511,7 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 }
 
 func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
+	startTime := time.Now()
 	c.inputBuffer += key
 	c.logger.Debug("Input buffer updated", "buffer", c.inputBuffer)
 
@@ -543,7 +548,9 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	}
 
 	// 更新候选词
+	updateStart := time.Now()
 	result := c.updateCandidatesEx()
+	updateElapsed := time.Since(updateStart)
 
 	// 检查自动上屏
 	if result != nil && result.ShouldCommit {
@@ -582,7 +589,12 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 		}
 	}
 
+	showStart := time.Now()
 	c.showUI()
+	showElapsed := time.Since(showStart)
+
+	totalElapsed := time.Since(startTime)
+	c.logger.Debug("handleAlphaKey timing", "total", totalElapsed.String(), "updateCandidates", updateElapsed.String(), "showUI", showElapsed.String())
 
 	// Handle Inline Preedit
 	if c.config != nil && c.config.UI.InlinePreedit {
@@ -1050,6 +1062,180 @@ func (c *Coordinator) HandleIMEActivated() *bridge.StatusUpdateData {
 		KeyDownHotkeys:     keyDownHotkeys,
 		KeyUpHotkeys:       keyUpHotkeys,
 	}
+}
+
+// HandleCommitRequest handles a commit request from TSF (barrier mechanism)
+// This is called when Space/Enter/number key is pressed during composition
+func (c *Coordinator) HandleCommitRequest(data bridge.CommitRequestData) *bridge.CommitResultData {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.logger.Debug("Handling commit request",
+		"barrierSeq", data.BarrierSeq,
+		"triggerKey", data.TriggerKey,
+		"inputBuffer", data.InputBuffer)
+
+	var text string
+	var newComposition string
+	var modeChanged bool
+
+	// Determine action based on trigger key
+	switch data.TriggerKey {
+	case 0x20: // VK_SPACE
+		result := c.handleSpaceInternal()
+		if result != nil {
+			text = result.Text
+			modeChanged = result.ModeChanged
+			newComposition = result.NewComposition
+		}
+
+	case 0x0D: // VK_RETURN
+		result := c.handleEnterInternal()
+		if result != nil {
+			text = result.Text
+		}
+
+	default:
+		// Number keys 1-9 (VK codes 0x31-0x39)
+		if data.TriggerKey >= 0x31 && data.TriggerKey <= 0x39 {
+			num := int(data.TriggerKey - 0x30) // Convert VK code to number 1-9
+			result := c.handleNumberKeyInternal(num)
+			if result != nil {
+				text = result.Text
+			}
+		}
+	}
+
+	return &bridge.CommitResultData{
+		BarrierSeq:     data.BarrierSeq,
+		Text:           text,
+		NewComposition: newComposition,
+		ModeChanged:    modeChanged,
+		ChineseMode:    c.chineseMode,
+	}
+}
+
+// handleSpaceInternal is the internal implementation of handleSpace (without lock)
+func (c *Coordinator) handleSpaceInternal() *bridge.KeyEventResult {
+	// Select first candidate of current page
+	if len(c.candidates) > 0 {
+		// Calculate index of first candidate on current page
+		index := (c.currentPage - 1) * c.candidatesPerPage
+		if index < len(c.candidates) {
+			return c.selectCandidateInternal(index)
+		}
+	} else if len(c.inputBuffer) > 0 {
+		// No candidates, commit raw input
+		text := c.inputBuffer
+
+		// Apply full-width conversion if enabled
+		if c.fullWidth {
+			text = transform.ToFullWidth(text)
+		}
+
+		c.clearState()
+		c.hideUI()
+		return &bridge.KeyEventResult{
+			Type: bridge.ResponseTypeInsertText,
+			Text: text,
+		}
+	}
+	return nil
+}
+
+// handleEnterInternal is the internal implementation of handleEnter (without lock)
+func (c *Coordinator) handleEnterInternal() *bridge.KeyEventResult {
+	if len(c.inputBuffer) > 0 {
+		text := c.inputBuffer
+
+		// Apply full-width conversion if enabled
+		if c.fullWidth {
+			text = transform.ToFullWidth(text)
+		}
+
+		c.clearState()
+		c.hideUI()
+		return &bridge.KeyEventResult{
+			Type: bridge.ResponseTypeInsertText,
+			Text: text,
+		}
+	}
+	return nil
+}
+
+// handleNumberKeyInternal is the internal implementation of handleNumberKey (without lock)
+func (c *Coordinator) handleNumberKeyInternal(num int) *bridge.KeyEventResult {
+	// num is 1-9, convert to 0-based index within current page
+	index := (c.currentPage-1)*c.candidatesPerPage + (num - 1)
+	if index < len(c.candidates) {
+		return c.selectCandidateInternal(index)
+	}
+	return nil
+}
+
+// selectCandidateInternal is the internal implementation of selectCandidate (without lock)
+func (c *Coordinator) selectCandidateInternal(index int) *bridge.KeyEventResult {
+	if index < 0 || index >= len(c.candidates) {
+		return nil
+	}
+
+	candidate := c.candidates[index]
+	c.logger.Debug("Candidate selected (internal)", "index", index, "text", candidate.Text)
+
+	text := candidate.Text
+
+	// Apply full-width conversion if enabled
+	if c.fullWidth {
+		text = transform.ToFullWidth(text)
+	}
+
+	c.clearState()
+	c.hideUI()
+
+	return &bridge.KeyEventResult{
+		Type: bridge.ResponseTypeInsertText,
+		Text: text,
+	}
+}
+
+// HandleModeNotify handles mode change notification from TSF (local toggle)
+// This is called when TSF has already toggled the mode locally and is notifying Go
+func (c *Coordinator) HandleModeNotify(data bridge.ModeNotifyData) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.logger.Info("Mode notify from TSF", "chineseMode", data.ChineseMode, "clearInput", data.ClearInput)
+
+	// Sync mode state from TSF
+	c.chineseMode = data.ChineseMode
+
+	// Clear input buffer if requested
+	if data.ClearInput {
+		c.clearState()
+		c.hideUI()
+	}
+
+	// Sync punctuation with mode if enabled
+	if c.punctFollowMode {
+		c.chinesePunctuation = c.chineseMode
+		c.punctConverter.Reset()
+	}
+
+	// Show mode indicator
+	c.showModeIndicator()
+
+	// Update toolbar state
+	if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
+		c.uiManager.UpdateToolbarState(ui.ToolbarState{
+			ChineseMode:  c.chineseMode,
+			FullWidth:    c.fullWidth,
+			ChinesePunct: c.chinesePunctuation,
+			CapsLock:     ui.GetCapsLockState(),
+		})
+	}
+
+	// Save runtime state if remember_last_state is enabled
+	c.saveRuntimeState()
 }
 
 // HandleToggleMode toggles the input mode and returns the new state

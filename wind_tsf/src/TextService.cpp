@@ -7,18 +7,30 @@
 #include "HotkeyManager.h"
 
 // EditSession for ending composition
+// NOTE: This class takes ownership of the composition pointer passed to it.
+// The composition will be ended and released when DoEditSession is called,
+// or in the destructor if the edit session request fails.
 class CEndCompositionEditSession : public ITfEditSession
 {
 public:
-    CEndCompositionEditSession(CTextService* pTextService)
-        : _refCount(1), _pTextService(pTextService)
+    // pComposition ownership is transferred to this object
+    CEndCompositionEditSession(CTextService* pTextService, ITfComposition* pComposition)
+        : _refCount(1), _pTextService(pTextService), _pComposition(pComposition)
     {
         _pTextService->AddRef();
+        // Note: pComposition ownership is transferred, no AddRef needed
     }
 
     ~CEndCompositionEditSession()
     {
         _pTextService->Release();
+        // If DoEditSession was never called (request failed), release the composition
+        if (_pComposition != nullptr)
+        {
+            WIND_LOG(L"[WindInput] ~CEndCompositionEditSession: Releasing orphaned composition\n");
+            _pComposition->Release();
+            _pComposition = nullptr;
+        }
     }
 
     // IUnknown
@@ -50,25 +62,24 @@ public:
     // ITfEditSession
     STDMETHODIMP DoEditSession(TfEditCookie ec)
     {
-        if (_pTextService->_pComposition != nullptr)
+        if (_pComposition != nullptr)
         {
             // Get the composition range and clear the text before ending
             // This prevents the composition text from being committed
             ITfRange* pRange = nullptr;
-            if (SUCCEEDED(_pTextService->_pComposition->GetRange(&pRange)))
+            if (SUCCEEDED(_pComposition->GetRange(&pRange)))
             {
                 // Clear the composition text (set to empty string)
                 pRange->SetText(ec, 0, L"", 0);
                 pRange->Release();
             }
 
-            _pTextService->_pComposition->EndComposition(ec);
+            _pComposition->EndComposition(ec);
 
-            // Release and clear _pComposition immediately
-            // OnCompositionTerminated may not be called reliably
-            _pTextService->_pComposition->Release();
-            _pTextService->_pComposition = nullptr;
-            OutputDebugStringW(L"[WindInput] DoEditSession: Composition ended and released\n");
+            // Release the composition
+            _pComposition->Release();
+            _pComposition = nullptr;
+            WIND_LOG(L"[WindInput] DoEditSession: Composition ended and released\n");
         }
         return S_OK;
     }
@@ -76,6 +87,7 @@ public:
 private:
     LONG _refCount;
     CTextService* _pTextService;
+    ITfComposition* _pComposition;  // Owned composition pointer
 };
 
 // EditSession for updating composition
@@ -156,10 +168,10 @@ public:
 
             if (FAILED(hr) || _pTextService->_pComposition == nullptr)
             {
-                OutputDebugStringW(L"[WindInput] StartComposition failed\n");
+                WIND_LOG(L"[WindInput] StartComposition failed\n");
                 return E_FAIL;
             }
-            OutputDebugStringW(L"[WindInput] StartComposition succeeded\n");
+            WIND_LOG(L"[WindInput] StartComposition succeeded\n");
         }
 
         // 2. Get range from composition
@@ -206,7 +218,7 @@ private:
         TfGuidAtom gaDisplayAttr = _pTextService->GetDisplayAttributeInputAtom();
         if (gaDisplayAttr == TF_INVALID_GUIDATOM)
         {
-            OutputDebugStringW(L"[WindInput] Display attribute not initialized\n");
+            WIND_LOG(L"[WindInput] Display attribute not initialized\n");
             return;
         }
 
@@ -214,7 +226,7 @@ private:
         ITfProperty* pDisplayAttrProp = nullptr;
         if (FAILED(_pContext->GetProperty(GUID_PROP_ATTRIBUTE, &pDisplayAttrProp)))
         {
-            OutputDebugStringW(L"[WindInput] Failed to get GUID_PROP_ATTRIBUTE property\n");
+            WIND_LOG(L"[WindInput] Failed to get GUID_PROP_ATTRIBUTE property\n");
             return;
         }
 
@@ -226,11 +238,11 @@ private:
         HRESULT hr = pDisplayAttrProp->SetValue(ec, pRange, &var);
         if (FAILED(hr))
         {
-            OutputDebugStringW(L"[WindInput] Failed to set display attribute\n");
+            WIND_LOG(L"[WindInput] Failed to set display attribute\n");
         }
         else
         {
-            OutputDebugStringW(L"[WindInput] Display attribute set successfully\n");
+            WIND_LOG(L"[WindInput] Display attribute set successfully\n");
         }
 
         pDisplayAttrProp->Release();
@@ -289,17 +301,15 @@ public:
     {
         HRESULT hr = S_OK;
 
-        WCHAR debug[512];
-        wsprintfW(debug, L"[WindInput] InsertAndCompose: insert='%s', newComp='%s'\n",
-                  _insertText.c_str(), _newComposition.c_str());
-        OutputDebugStringW(debug);
+        WIND_LOG_FMT(L"[WindInput] InsertAndCompose: insert='%s', newComp='%s'\n",
+                     _insertText.c_str(), _newComposition.c_str());
 
         // 1. Get current selection to insert text there
         TF_SELECTION tfSelection;
         ULONG cFetched;
         if (FAILED(_pContext->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &tfSelection, &cFetched)) || cFetched != 1)
         {
-            OutputDebugStringW(L"[WindInput] InsertAndCompose: Failed to get selection\n");
+            WIND_LOG(L"[WindInput] InsertAndCompose: Failed to get selection\n");
             return E_FAIL;
         }
 
@@ -309,11 +319,11 @@ public:
             hr = tfSelection.range->SetText(ec, 0, _insertText.c_str(), (LONG)_insertText.length());
             if (FAILED(hr))
             {
-                OutputDebugStringW(L"[WindInput] InsertAndCompose: Failed to insert text\n");
+                WIND_LOG(L"[WindInput] InsertAndCompose: Failed to insert text\n");
                 tfSelection.range->Release();
                 return hr;
             }
-            OutputDebugStringW(L"[WindInput] InsertAndCompose: Text inserted successfully\n");
+            WIND_LOG(L"[WindInput] InsertAndCompose: Text inserted successfully\n");
 
             // Collapse range to end (after inserted text)
             tfSelection.range->Collapse(ec, TF_ANCHOR_END);
@@ -325,7 +335,7 @@ public:
             ITfContextComposition* pContextComp = nullptr;
             if (FAILED(_pContext->QueryInterface(IID_ITfContextComposition, (void**)&pContextComp)))
             {
-                OutputDebugStringW(L"[WindInput] InsertAndCompose: Failed to get ITfContextComposition\n");
+                WIND_LOG(L"[WindInput] InsertAndCompose: Failed to get ITfContextComposition\n");
                 tfSelection.range->Release();
                 return E_FAIL;
             }
@@ -341,12 +351,12 @@ public:
 
             if (FAILED(hr) || _pTextService->_pComposition == nullptr)
             {
-                OutputDebugStringW(L"[WindInput] InsertAndCompose: Failed to start new composition\n");
+                WIND_LOG(L"[WindInput] InsertAndCompose: Failed to start new composition\n");
                 tfSelection.range->Release();
                 return E_FAIL;
             }
 
-            OutputDebugStringW(L"[WindInput] InsertAndCompose: New composition started\n");
+            WIND_LOG(L"[WindInput] InsertAndCompose: New composition started\n");
 
             // 4. Set the composition text
             ITfRange* pCompRange = nullptr;
@@ -370,7 +380,7 @@ public:
                         _pContext->SetSelection(ec, 1, &sel);
                         pRangeForSel->Release();
                     }
-                    OutputDebugStringW(L"[WindInput] InsertAndCompose: Composition text set\n");
+                    WIND_LOG(L"[WindInput] InsertAndCompose: Composition text set\n");
                 }
                 pCompRange->Release();
             }
@@ -477,7 +487,7 @@ STDAPI_(ULONG) CTextService::Release()
 
 STDAPI CTextService::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId)
 {
-    OutputDebugStringW(L"[WindInput] TextService::Activate called\n");
+    WIND_LOG(L"[WindInput] TextService::Activate called\n");
 
     _pThreadMgr = pThreadMgr;
     _pThreadMgr->AddRef();
@@ -487,66 +497,66 @@ STDAPI CTextService::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId)
     // Initialize thread manager event sink
     if (!_InitThreadMgrEventSink())
     {
-        OutputDebugStringW(L"[WindInput] _InitThreadMgrEventSink failed\n");
+        WIND_LOG(L"[WindInput] _InitThreadMgrEventSink failed\n");
         Deactivate();
         return E_FAIL;
     }
-    OutputDebugStringW(L"[WindInput] ThreadMgrEventSink initialized\n");
+    WIND_LOG(L"[WindInput] ThreadMgrEventSink initialized\n");
 
     // Initialize IPC client
     if (!_InitIPCClient())
     {
-        OutputDebugStringW(L"[WindInput] _InitIPCClient failed\n");
+        WIND_LOG(L"[WindInput] _InitIPCClient failed\n");
         Deactivate();
         return E_FAIL;
     }
-    OutputDebugStringW(L"[WindInput] IPCClient initialized\n");
+    WIND_LOG(L"[WindInput] IPCClient initialized\n");
 
     // Initialize hotkey manager with default config
     _pHotkeyManager = new CHotkeyManager();
-    OutputDebugStringW(L"[WindInput] HotkeyManager initialized\n");
+    WIND_LOG(L"[WindInput] HotkeyManager initialized\n");
 
     // Initialize key event sink
     if (!_InitKeyEventSink())
     {
-        OutputDebugStringW(L"[WindInput] _InitKeyEventSink failed\n");
+        WIND_LOG(L"[WindInput] _InitKeyEventSink failed\n");
         Deactivate();
         return E_FAIL;
     }
-    OutputDebugStringW(L"[WindInput] KeyEventSink initialized\n");
+    WIND_LOG(L"[WindInput] KeyEventSink initialized\n");
 
     // Initialize display attribute
     if (!_InitDisplayAttribute())
     {
-        OutputDebugStringW(L"[WindInput] _InitDisplayAttribute failed (non-fatal)\n");
+        WIND_LOG(L"[WindInput] _InitDisplayAttribute failed (non-fatal)\n");
         // Not fatal, continue without display attribute
     }
     else
     {
-        OutputDebugStringW(L"[WindInput] DisplayAttribute initialized\n");
+        WIND_LOG(L"[WindInput] DisplayAttribute initialized\n");
     }
 
     // Initialize language bar button
     if (!_InitLangBarButton())
     {
-        OutputDebugStringW(L"[WindInput] _InitLangBarButton failed (non-fatal)\n");
+        WIND_LOG(L"[WindInput] _InitLangBarButton failed (non-fatal)\n");
         // Not fatal, continue without language bar button
     }
     else
     {
-        OutputDebugStringW(L"[WindInput] LangBarButton initialized\n");
+        WIND_LOG(L"[WindInput] LangBarButton initialized\n");
     }
 
     // Notify Go service that IME is activated (so it can show toolbar)
     if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
     {
-        OutputDebugStringW(L"[WindInput] Sending ime_activated to service\n");
+        WIND_LOG(L"[WindInput] Sending ime_activated to service\n");
         if (_pIPCClient->SendIMEActivated())
         {
             ServiceResponse response;
             if (_pIPCClient->ReceiveResponse(response))
             {
-                OutputDebugStringW(L"[WindInput] ime_activated response received\n");
+                WIND_LOG(L"[WindInput] ime_activated response received\n");
 
                 // If we got a status update, sync state and hotkeys
                 if (response.type == ResponseType::StatusUpdate)
@@ -556,7 +566,7 @@ STDAPI CTextService::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId)
                     // Update hotkey whitelist if present
                     if (response.HasHotkeys() && _pHotkeyManager != nullptr)
                     {
-                        OutputDebugStringW(L"[WindInput] Updating hotkey whitelist from ime_activated\n");
+                        WIND_LOG(L"[WindInput] Updating hotkey whitelist from ime_activated\n");
                         _pHotkeyManager->UpdateHotkeys(
                             response.keyDownHotkeys,
                             response.keyUpHotkeys
@@ -567,13 +577,17 @@ STDAPI CTextService::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId)
         }
     }
 
-    OutputDebugStringW(L"[WindInput] TextService::Activate completed successfully\n");
+    // NOTE: Using synchronous IPC mode (no reader thread)
+    // Reference: Weasel uses sync IPC with librime and it works well
+    // The reader thread is not started - responses are received synchronously in OnKeyDown
+
+    WIND_LOG(L"[WindInput] TextService::Activate completed successfully (sync IPC mode)\n");
     return S_OK;
 }
 
 STDAPI CTextService::Deactivate()
 {
-    OutputDebugStringW(L"[WindInput] TextService::Deactivate called\n");
+    WIND_LOG(L"[WindInput] TextService::Deactivate called\n");
 
     // End any active composition before deactivating
     EndComposition();
@@ -591,7 +605,7 @@ STDAPI CTextService::Deactivate()
     // This allows the service to hide the toolbar immediately
     if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
     {
-        OutputDebugStringW(L"[WindInput] Sending ime_deactivated to service\n");
+        WIND_LOG(L"[WindInput] Sending ime_deactivated to service\n");
         // SendIMEDeactivated is async (fire-and-forget), no response expected
         _pIPCClient->SendIMEDeactivated();
     }
@@ -614,7 +628,7 @@ STDAPI CTextService::Deactivate()
 
     _tfClientId = TF_CLIENTID_NULL;
 
-    OutputDebugStringW(L"[WindInput] TextService::Deactivate completed\n");
+    WIND_LOG(L"[WindInput] TextService::Deactivate completed\n");
     return S_OK;
 }
 
@@ -661,12 +675,12 @@ STDAPI CTextService::OnUninitDocumentMgr(ITfDocumentMgr* pDocMgr)
 
 STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pDocMgrPrevFocus)
 {
-    OutputDebugStringW(L"[WindInput] OnSetFocus called\n");
+    WIND_LOG(L"[WindInput] OnSetFocus called\n");
 
     // If gaining focus (pDocMgrFocus is not null)
     if (pDocMgrFocus != nullptr)
     {
-        OutputDebugStringW(L"[WindInput] Focus gained\n");
+        WIND_LOG(L"[WindInput] Focus gained\n");
 
         // Force refresh the language bar button to ensure it's visible
         if (_pLangBarItemButton != nullptr)
@@ -679,46 +693,19 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
         GetCaretPosition(&caretX, &caretY, &caretHeight);
 
         // Send focus_gained to service (for toolbar display)
-        // Will try to connect if not already connected
+        // ASYNC: Don't wait for response - reader thread will receive StatusUpdate via callback
+        // This avoids race condition with the reader thread
         if (_pIPCClient != nullptr)
         {
-            if (_pIPCClient->SendFocusGained(caretX, caretY, caretHeight))
-            {
-                // Receive response - may be StatusUpdate with current state
-                ServiceResponse response;
-                if (_pIPCClient->ReceiveResponse(response))
-                {
-                    // If we got a status update, sync our state with the service
-                    if (response.type == ResponseType::StatusUpdate)
-                    {
-                        _bChineseMode = response.IsChineseMode();
-                        OutputDebugStringW(L"[WindInput] Synced state from focus_gained response\n");
-
-                        // Update language bar button
-                        if (_pLangBarItemButton != nullptr)
-                        {
-                            _pLangBarItemButton->UpdateLangBarButton(_bChineseMode);
-                        }
-
-                        // Update hotkey whitelist if present
-                        if (response.HasHotkeys() && _pHotkeyManager != nullptr)
-                        {
-                            OutputDebugStringW(L"[WindInput] Updating hotkey whitelist from focus_gained\n");
-                            _pHotkeyManager->UpdateHotkeys(
-                                response.keyDownHotkeys,
-                                response.keyUpHotkeys
-                            );
-                        }
-                    }
-                }
-            }
+            _pIPCClient->SendFocusGained(caretX, caretY, caretHeight);
+            // Response will be handled by OnStatusUpdate callback
         }
     }
 
     // If losing focus (pDocMgrFocus is null)
     if (pDocMgrFocus == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] Focus lost, notifying service\n");
+        WIND_LOG(L"[WindInput] Focus lost, notifying service\n");
 
         // End any active composition before sending focus_lost
         EndComposition();
@@ -775,9 +762,10 @@ BOOL CTextService::_InitIPCClient()
         return FALSE;
 
     // Try to connect to Go Service (failure is OK, will retry later)
-    if (!_pIPCClient->Connect())
+    // Pass false to disable reader thread - using sync IPC mode
+    if (!_pIPCClient->Connect(false))
     {
-        OutputDebugStringW(L"[WindInput] Failed to connect to Go Service, will retry later\n");
+        WIND_LOG(L"[WindInput] Failed to connect to Go Service, will retry later\n");
     }
 
     return TRUE;
@@ -797,7 +785,7 @@ BOOL CTextService::InsertText(const std::wstring& text)
 {
     if (_pThreadMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] ThreadMgr is null\n");
+        WIND_LOG(L"[WindInput] ThreadMgr is null\n");
         return FALSE;
     }
 
@@ -806,7 +794,7 @@ BOOL CTextService::InsertText(const std::wstring& text)
     HRESULT hr = _pThreadMgr->GetFocus(&pDocMgr);
     if (FAILED(hr) || pDocMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] Failed to get focus document manager\n");
+        WIND_LOG(L"[WindInput] Failed to get focus document manager\n");
         return FALSE;
     }
 
@@ -817,7 +805,7 @@ BOOL CTextService::InsertText(const std::wstring& text)
 
     if (FAILED(hr) || pContext == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] Failed to get top context\n");
+        WIND_LOG(L"[WindInput] Failed to get top context\n");
         return FALSE;
     }
 
@@ -904,7 +892,7 @@ BOOL CTextService::GetCaretPositionFromTSF(LONG* px, LONG* py, LONG* pHeight)
         s_lastCaretHeight = *pHeight;
         s_hasLastCaretPos = TRUE;
 
-        OutputDebugStringW(L"[WindInput] GetCaretPositionFromTSF: Success\n");
+        WIND_LOG(L"[WindInput] GetCaretPositionFromTSF: Success\n");
         return TRUE;
     }
 
@@ -984,7 +972,7 @@ static BOOL GetConsoleCaretPosition(HWND hwndConsole, LONG* px, LONG* py, LONG* 
             *py = caretPos.y;
             *pHeight = max(guiInfo.rcCaret.bottom - guiInfo.rcCaret.top, 16);
 
-            OutputDebugStringW(L"[WindInput] GetConsoleCaretPosition: Got caret from GUITHREADINFO\n");
+            WIND_LOG(L"[WindInput] GetConsoleCaretPosition: Got caret from GUITHREADINFO\n");
             return TRUE;
         }
     }
@@ -1003,9 +991,7 @@ static BOOL GetConsoleCaretPosition(HWND hwndConsole, LONG* px, LONG* py, LONG* 
     *py = clientOrigin.y + (clientHeight * 80 / 100);
     *pHeight = 16;  // Standard console line height approximation
 
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] GetConsoleCaretPosition: Using console fallback position (%ld, %ld)\n", *px, *py);
-    OutputDebugStringW(debug);
+    WIND_LOG_FMT(L"[WindInput] GetConsoleCaretPosition: Using console fallback position (%ld, %ld)\n", *px, *py);
 
     return TRUE;
 }
@@ -1018,7 +1004,7 @@ BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
 
     if (isConsole)
     {
-        OutputDebugStringW(L"[WindInput] GetCaretPosition: Detected console window\n");
+        WIND_LOG(L"[WindInput] GetCaretPosition: Detected console window\n");
     }
 
     // Method 1: Try TSF APIs first - this is the most reliable for browsers and modern apps
@@ -1132,7 +1118,7 @@ BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
             *py = rc.top + (rc.bottom - rc.top) / 2;  // Vertical center
             *pHeight = 20;
 
-            OutputDebugStringW(L"[WindInput] GetCaretPosition: Using window position fallback\n");
+            WIND_LOG(L"[WindInput] GetCaretPosition: Using window position fallback\n");
             return TRUE;
         }
     }
@@ -1143,11 +1129,11 @@ BOOL CTextService::GetCaretPosition(LONG* px, LONG* py, LONG* pHeight)
         *px = s_lastCaretX;
         *py = s_lastCaretY;
         *pHeight = s_lastCaretHeight;
-        OutputDebugStringW(L"[WindInput] GetCaretPosition: Using last known position\n");
+        WIND_LOG(L"[WindInput] GetCaretPosition: Using last known position\n");
         return TRUE;
     }
 
-    OutputDebugStringW(L"[WindInput] GetCaretPosition: Failed to get caret position\n");
+    WIND_LOG(L"[WindInput] GetCaretPosition: Failed to get caret position\n");
     return FALSE;
 }
 
@@ -1192,16 +1178,14 @@ void CTextService::_UninitLangBarButton()
 
 void CTextService::ToggleInputMode()
 {
-    OutputDebugStringW(L"[WindInput] ToggleInputMode called (local fallback)\n");
+    WIND_LOG(L"[WindInput] ToggleInputMode called (local fallback)\n");
 
     // Toggle mode locally (this is used as a fallback when Go service is unavailable)
     // The actual mode toggle is handled via KeyUp event -> Go service -> ModeChanged response
     EndComposition();
     _bChineseMode = !_bChineseMode;
 
-    OutputDebugStringW(_bChineseMode ?
-        L"[WindInput] Switched to Chinese mode\n" :
-        L"[WindInput] Switched to English mode\n");
+    WIND_LOG_FMT(L"[WindInput] Switched to %s mode\n", _bChineseMode ? L"Chinese" : L"English");
 
     // Update language bar button
     if (_pLangBarItemButton != nullptr)
@@ -1215,9 +1199,7 @@ void CTextService::SetInputMode(BOOL bChineseMode)
     // Set mode directly from service response (no IPC call)
     _bChineseMode = bChineseMode;
 
-    OutputDebugStringW(_bChineseMode ?
-        L"[WindInput] Mode set to Chinese (from service)\n" :
-        L"[WindInput] Mode set to English (from service)\n");
+    WIND_LOG_FMT(L"[WindInput] Mode set to %s (from service)\n", _bChineseMode ? L"Chinese" : L"English");
 
     // Update language bar button
     if (_pLangBarItemButton != nullptr)
@@ -1236,13 +1218,11 @@ void CTextService::UpdateCapsLockState(BOOL bCapsLock)
 
 void CTextService::SendMenuCommand(const char* command)
 {
-    OutputDebugStringW(L"[WindInput] SendMenuCommand called\n");
+    WIND_LOG(L"[WindInput] SendMenuCommand called\n");
 
     // TODO: Menu commands will be implemented in a future version
     // For now, just log the command
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] SendMenuCommand: command=%hs (not implemented in binary protocol)\n", command);
-    OutputDebugStringW(debug);
+    WIND_LOG_FMT(L"[WindInput] SendMenuCommand: command=%hs (not implemented in binary protocol)\n", command);
 }
 
 void CTextService::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
@@ -1254,16 +1234,17 @@ void CTextService::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bCh
         _pLangBarItemButton->UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
     }
 
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d\n",
-              bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
-    OutputDebugStringW(debug);
+    WIND_LOG_FMT(L"[WindInput] UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d\n",
+                 bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
 }
 
 // ITfCompositionSink implementation
 STDAPI CTextService::OnCompositionTerminated(TfEditCookie ecWrite, ITfComposition* pComposition)
 {
-    OutputDebugStringW(L"[WindInput] OnCompositionTerminated called\n");
+    WIND_LOG(L"[WindInput] OnCompositionTerminated called\n");
+
+    // Clear composition text cache
+    _lastCompositionText.clear();
 
     // Only release if this is the same composition we're tracking
     // It may have already been released in DoEditSession
@@ -1283,18 +1264,16 @@ STDAPI CTextService::OnCompositionTerminated(TfEditCookie ecWrite, ITfCompositio
             HRESULT hr = pRange->SetText(ecWrite, 0, L"", 0);
             if (SUCCEEDED(hr))
             {
-                OutputDebugStringW(L"[WindInput] OnCompositionTerminated: Cleared composition text (unexpected termination)\n");
+                WIND_LOG(L"[WindInput] OnCompositionTerminated: Cleared composition text (unexpected termination)\n");
             }
             else
             {
-                WCHAR debug[128];
-                wsprintfW(debug, L"[WindInput] OnCompositionTerminated: SetText failed hr=0x%08X\n", hr);
-                OutputDebugStringW(debug);
+                WIND_LOG_ERROR_FMT(L"OnCompositionTerminated: SetText failed hr=0x%08X\n", hr);
             }
             pRange->Release();
         }
 
-        OutputDebugStringW(L"[WindInput] OnCompositionTerminated: Releasing composition\n");
+        WIND_LOG(L"[WindInput] OnCompositionTerminated: Releasing composition\n");
         _pComposition->Release();
         _pComposition = nullptr;
 
@@ -1307,7 +1286,7 @@ STDAPI CTextService::OnCompositionTerminated(TfEditCookie ecWrite, ITfCompositio
     }
     else if (_pComposition == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] OnCompositionTerminated: Already released\n");
+        WIND_LOG(L"[WindInput] OnCompositionTerminated: Already released\n");
     }
 
     return S_OK;
@@ -1316,16 +1295,22 @@ STDAPI CTextService::OnCompositionTerminated(TfEditCookie ecWrite, ITfCompositio
 // Update composition text
 BOOL CTextService::UpdateComposition(const std::wstring& text, int caretPos)
 {
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] UpdateComposition called, text='%s', _pComposition=%p\n",
-              text.c_str(), _pComposition);
-    OutputDebugStringW(debug);
+    WIND_LOG_FMT(L"[WindInput] UpdateComposition called, text='%s', _pComposition=%p\n",
+                 text.c_str(), _pComposition);
+
+    // OPTIMIZATION: Skip if the composition text is the same as last time
+    // This avoids unnecessary TSF RequestEditSession calls which can be slow in some apps
+    if (text == _lastCompositionText && _pComposition != nullptr)
+    {
+        WIND_LOG(L"[WindInput] UpdateComposition: Skipping duplicate (same as last)\n");
+        return TRUE;
+    }
 
     // Need a document manager
     ITfDocumentMgr* pDocMgr = nullptr;
     if (_pThreadMgr == nullptr || FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || pDocMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] UpdateComposition: Failed to get DocMgr\n");
+        WIND_LOG(L"[WindInput] UpdateComposition: Failed to get DocMgr\n");
         return FALSE;
     }
 
@@ -1335,44 +1320,75 @@ BOOL CTextService::UpdateComposition(const std::wstring& text, int caretPos)
 
     if (FAILED(hr) || pContext == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] UpdateComposition: Failed to get Context\n");
+        WIND_LOG(L"[WindInput] UpdateComposition: Failed to get Context\n");
         return FALSE;
     }
 
     CUpdateCompositionEditSession* pEditSession = new CUpdateCompositionEditSession(this, pContext, text);
 
+    // Timing: measure RequestEditSession duration
+    LARGE_INTEGER startTime, endTime, freq;
+    QueryPerformanceCounter(&startTime);
+    QueryPerformanceFrequency(&freq);
+
     HRESULT hrSession;
     hr = pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hrSession);
 
-    wsprintfW(debug, L"[WindInput] UpdateComposition: RequestEditSession hr=0x%08X, hrSession=0x%08X\n", hr, hrSession);
-    OutputDebugStringW(debug);
+    QueryPerformanceCounter(&endTime);
+    int durationMs = (int)((endTime.QuadPart - startTime.QuadPart) * 1000 / freq.QuadPart);
+
+    // Track if this was async (Weasel optimization pattern)
+    _asyncEdit = (hrSession == TF_S_ASYNC);
+
+    WIND_LOG_FMT(L"[WindInput] UpdateComposition: RequestEditSession hr=0x%08X, hrSession=0x%08X, async=%d, duration=%dms\n",
+                 hr, hrSession, _asyncEdit ? 1 : 0, durationMs);
 
     pEditSession->Release();
     pContext->Release();
+
+    // Update cache on success
+    if (SUCCEEDED(hr))
+    {
+        _lastCompositionText = text;
+    }
 
     return SUCCEEDED(hr);
 }
 
 // End composition
+// NOTE: This method is now ASYNC - it returns immediately without waiting for
+// the composition to actually end. The _pComposition pointer is cleared immediately
+// so that HasActiveComposition() returns FALSE and new compositions can start.
 void CTextService::EndComposition()
 {
+    LARGE_INTEGER startTime, endTime, freq;
+    QueryPerformanceCounter(&startTime);
+    QueryPerformanceFrequency(&freq);
+
+    // Clear composition text cache
+    _lastCompositionText.clear();
+
     // If there's no active composition, nothing to do
     if (_pComposition == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] EndComposition: No active composition\n");
+        WIND_LOG(L"[WindInput] EndComposition: No active composition\n");
         return;
     }
 
-    OutputDebugStringW(L"[WindInput] EndComposition: Ending active composition\n");
+    WIND_LOG(L"[WindInput] EndComposition: Ending active composition\n");
+
+    // CRITICAL: Transfer ownership of _pComposition immediately
+    // This allows new compositions to start while the old one is being ended async
+    ITfComposition* pCompToEnd = _pComposition;
+    _pComposition = nullptr;  // Clear immediately - HasActiveComposition() now returns FALSE
 
     // Need a document manager to request edit session
     ITfDocumentMgr* pDocMgr = nullptr;
     if (_pThreadMgr == nullptr || FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || pDocMgr == nullptr)
     {
         // Can't get document manager, force cleanup
-        OutputDebugStringW(L"[WindInput] EndComposition: Can't get DocMgr, forcing cleanup\n");
-        _pComposition->Release();
-        _pComposition = nullptr;
+        WIND_LOG(L"[WindInput] EndComposition: Can't get DocMgr, forcing cleanup\n");
+        pCompToEnd->Release();
         return;
     }
 
@@ -1383,28 +1399,29 @@ void CTextService::EndComposition()
     if (FAILED(hr) || pContext == nullptr)
     {
         // Can't get context, force cleanup
-        OutputDebugStringW(L"[WindInput] EndComposition: Can't get Context, forcing cleanup\n");
-        _pComposition->Release();
-        _pComposition = nullptr;
+        WIND_LOG(L"[WindInput] EndComposition: Can't get Context, forcing cleanup\n");
+        pCompToEnd->Release();
         return;
     }
 
-    CEndCompositionEditSession* pEditSession = new CEndCompositionEditSession(this);
+    // Create edit session with ownership transfer of pCompToEnd
+    CEndCompositionEditSession* pEditSession = new CEndCompositionEditSession(this, pCompToEnd);
 
     HRESULT hrSession;
-    // Use TF_ES_SYNC to ensure composition ends synchronously
-    // This prevents race conditions with subsequent UpdateComposition calls
-    hr = pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_SYNC | TF_ES_READWRITE, &hrSession);
+    // Use TF_ES_ASYNCDONTCARE for non-blocking operation
+    // The edit session will complete asynchronously, and pCompToEnd will be
+    // released in DoEditSession or in ~CEndCompositionEditSession if the request fails
+    hr = pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, &hrSession);
 
-    if (FAILED(hr) || FAILED(hrSession))
+    QueryPerformanceCounter(&endTime);
+    int durationMs = (int)((endTime.QuadPart - startTime.QuadPart) * 1000 / freq.QuadPart);
+    WIND_LOG_FMT(L"[WindInput] EndComposition: RequestEditSession hr=0x%08X, hrSession=0x%08X, duration=%dms\n",
+                 hr, hrSession, durationMs);
+
+    if (FAILED(hr))
     {
-        // Edit session failed, force cleanup
-        OutputDebugStringW(L"[WindInput] EndComposition: EditSession failed, forcing cleanup\n");
-        if (_pComposition != nullptr)
-        {
-            _pComposition->Release();
-            _pComposition = nullptr;
-        }
+        // Request failed - pEditSession destructor will release pCompToEnd
+        WIND_LOG(L"[WindInput] EndComposition: RequestEditSession failed\n");
     }
 
     pEditSession->Release();
@@ -1414,10 +1431,8 @@ void CTextService::EndComposition()
 // Insert text and start new composition (for top code commit)
 BOOL CTextService::InsertTextAndStartComposition(const std::wstring& insertText, const std::wstring& newComposition)
 {
-    WCHAR debug[512];
-    wsprintfW(debug, L"[WindInput] InsertTextAndStartComposition: insert='%s', newComp='%s', _pComposition=%p\n",
-              insertText.c_str(), newComposition.c_str(), _pComposition);
-    OutputDebugStringW(debug);
+    WIND_LOG_FMT(L"[WindInput] InsertTextAndStartComposition: insert='%s', newComp='%s', _pComposition=%p\n",
+                 insertText.c_str(), newComposition.c_str(), _pComposition);
 
     // First, end any existing composition
     if (_pComposition != nullptr)
@@ -1429,7 +1444,7 @@ BOOL CTextService::InsertTextAndStartComposition(const std::wstring& insertText,
     ITfDocumentMgr* pDocMgr = nullptr;
     if (_pThreadMgr == nullptr || FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || pDocMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] InsertTextAndStartComposition: Failed to get DocMgr\n");
+        WIND_LOG(L"[WindInput] InsertTextAndStartComposition: Failed to get DocMgr\n");
         return FALSE;
     }
 
@@ -1439,7 +1454,7 @@ BOOL CTextService::InsertTextAndStartComposition(const std::wstring& insertText,
 
     if (FAILED(hr) || pContext == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] InsertTextAndStartComposition: Failed to get Context\n");
+        WIND_LOG(L"[WindInput] InsertTextAndStartComposition: Failed to get Context\n");
         return FALSE;
     }
 
@@ -1449,8 +1464,7 @@ BOOL CTextService::InsertTextAndStartComposition(const std::wstring& insertText,
     // Use TF_ES_SYNC to ensure synchronous execution
     hr = pContext->RequestEditSession(_tfClientId, pEditSession, TF_ES_SYNC | TF_ES_READWRITE, &hrSession);
 
-    wsprintfW(debug, L"[WindInput] InsertTextAndStartComposition: RequestEditSession hr=0x%08X, hrSession=0x%08X\n", hr, hrSession);
-    OutputDebugStringW(debug);
+    WIND_LOG_FMT(L"[WindInput] InsertTextAndStartComposition: RequestEditSession hr=0x%08X, hrSession=0x%08X\n", hr, hrSession);
 
     pEditSession->Release();
     pContext->Release();
@@ -1499,7 +1513,7 @@ BOOL CTextService::_InitDisplayAttribute()
                                    IID_ITfCategoryMgr, (void**)&pCategoryMgr);
     if (FAILED(hr) || pCategoryMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] Failed to create category manager\n");
+        WIND_LOG(L"[WindInput] Failed to create category manager\n");
         return FALSE;
     }
 
@@ -1507,14 +1521,12 @@ BOOL CTextService::_InitDisplayAttribute()
     hr = pCategoryMgr->RegisterGUID(c_guidDisplayAttributeInput, &_gaDisplayAttributeInput);
     if (FAILED(hr))
     {
-        OutputDebugStringW(L"[WindInput] Failed to register display attribute GUID\n");
+        WIND_LOG(L"[WindInput] Failed to register display attribute GUID\n");
         pCategoryMgr->Release();
         return FALSE;
     }
 
-    WCHAR debug[128];
-    wsprintfW(debug, L"[WindInput] Display attribute registered, atom=%lu\n", (unsigned long)_gaDisplayAttributeInput);
-    OutputDebugStringW(debug);
+    WIND_LOG_FMT(L"[WindInput] Display attribute registered, atom=%lu\n", (unsigned long)_gaDisplayAttributeInput);
 
     pCategoryMgr->Release();
     return TRUE;

@@ -4,6 +4,7 @@
 #include "HotkeyManager.h"
 #include "BinaryProtocol.h"
 #include <cctype>
+#include <cstdio>  // for swprintf
 
 CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     : _refCount(1)
@@ -13,8 +14,16 @@ CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     , _hasCandidates(FALSE)
     , _pendingKeyUpKey(0)
     , _pendingKeyUpModifiers(0)
+    , _modsState(0)
+    , _eventSeq(0)
+    , _nextBarrierSeq(1)
+    , _pendingCommit{0, L"", 0, false}
 {
     _pTextService->AddRef();
+
+    // Initialize modifier state from current keyboard state
+    // This ensures consistency if IME starts while keys are held
+    _modsState = GetCurrentModifiers();
 }
 
 CKeyEventSink::~CKeyEventSink()
@@ -62,7 +71,7 @@ STDAPI_(ULONG) CKeyEventSink::Release()
 
 STDAPI CKeyEventSink::OnSetFocus(BOOL fForeground)
 {
-    OutputDebugStringW(L"[WindInput] KeyEventSink::OnSetFocus\n");
+    WIND_LOG(L"[WindInput] KeyEventSink::OnSetFocus\n");
     return S_OK;
 }
 
@@ -70,12 +79,8 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
 {
     *pfEaten = FALSE;
 
-    // Debug: Log ALL key presses to see what TSF sends us (v2 - with version marker)
-    {
-        WCHAR debug[128];
-        wsprintfW(debug, L"[WindInput-v2] OnTestKeyDown: wParam=0x%02X\n", (uint32_t)wParam);
-        OutputDebugStringW(debug);
-    }
+    // Debug: Log ALL key presses (only when WIND_DEBUG_LOG is enabled)
+    WIND_LOG_FMT(L"[WindInput] OnTestKeyDown: wParam=0x%02X\n", (uint32_t)wParam);
 
     // First check if the context is read-only (browser non-editable area)
     if (_IsContextReadOnly(pContext))
@@ -97,21 +102,10 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // Use normalized hash for function hotkeys (Ctrl+`, Shift+Space, etc.)
     if (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyDownHotkey(normalizedKeyHash))
     {
-        WCHAR debug[128];
-        wsprintfW(debug, L"[WindInput] KeyDown hotkey matched: vk=0x%02X, hash=0x%08X\n",
-                  (uint32_t)wParam, normalizedKeyHash);
-        OutputDebugStringW(debug);
+        WIND_LOG_FMT(L"[WindInput] KeyDown hotkey matched: vk=0x%02X, hash=0x%08X\n",
+                     (uint32_t)wParam, normalizedKeyHash);
         *pfEaten = TRUE;
         return S_OK;
-    }
-
-    // Debug: log when Tab key is not matched (to diagnose Tab/Shift+Tab issues)
-    if (wParam == VK_TAB)
-    {
-        WCHAR debug[256];
-        wsprintfW(debug, L"[WindInput] Tab not in KeyDown hotkeys: mods=0x%04X, normHash=0x%08X, hasHotkeys=%d\n",
-                  modifiers, normalizedKeyHash, (pHotkeyMgr != nullptr && pHotkeyMgr->HasHotkeys()) ? 1 : 0);
-        OutputDebugStringW(debug);
     }
 
     // Check for KeyUp triggered keys (toggle mode keys) - we still need to intercept KeyDown
@@ -129,15 +123,6 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
         isToggleModeKey = TRUE;
     }
 
-    // Debug: Log toggle mode key detection
-    if (CHotkeyManager::IsToggleModeKeyByVK(wParam))
-    {
-        WCHAR debug[256];
-        wsprintfW(debug, L"[WindInput] OnTestKeyDown: Toggle key wParam=0x%X, mods=0x%X, hash=0x%08X, isToggle=%d\n",
-                  (uint32_t)wParam, modifiers, keyHash, isToggleModeKey);
-        OutputDebugStringW(debug);
-    }
-
     if (isToggleModeKey)
     {
         *pfEaten = TRUE;
@@ -145,10 +130,27 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     }
 
     // Check basic input keys based on current state
-    if (_isComposing || _hasCandidates || _pTextService->IsChineseMode())
+    // Different handling based on key type:
+    // - Letter/number/punctuation keys: intercept in Chinese mode
+    // - Backspace/Enter/Escape: only intercept when there's an active composition
+    BOOL isChineseMode = _pTextService->IsChineseMode();
+    // Use TextService's composition state - this is the source of truth in async architecture
+    BOOL hasComposition = _pTextService->HasActiveComposition();
+
+    if (hasComposition || isChineseMode)
     {
         HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
-        if (keyType != HotkeyType::None)
+
+        if (keyType == HotkeyType::Backspace || keyType == HotkeyType::Enter || keyType == HotkeyType::Escape)
+        {
+            // Only intercept if we have composition
+            if (hasComposition)
+            {
+                *pfEaten = TRUE;
+                return S_OK;
+            }
+        }
+        else if (keyType != HotkeyType::None)
         {
             *pfEaten = TRUE;
             return S_OK;
@@ -161,6 +163,12 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
 STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lParam, BOOL* pfEaten)
 {
     *pfEaten = FALSE;
+
+    // Update modifier state machine for this KeyDown event
+    _UpdateModsOnKeyDown(wParam);
+
+    // Check barrier timeout
+    _CheckBarrierTimeout();
 
     uint32_t modifiers = CHotkeyManager::GetCurrentModifiers();
     uint32_t keyHash = CHotkeyManager::CalcKeyHash(modifiers, (uint32_t)wParam);
@@ -224,7 +232,7 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         _pendingKeyUpKey = (uint32_t)wParam;
         _pendingKeyUpModifiers = modifiers;
 
-        OutputDebugStringW(L"[WindInput] OnKeyDown: Toggle mode key pending for KeyUp\n");
+        WIND_LOG(L"[WindInput] OnKeyDown: Toggle mode key pending for KeyUp\n");
 
         *pfEaten = TRUE;
         return S_OK;
@@ -245,15 +253,29 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     BOOL isKeyDownHotkey = (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyDownHotkey(normalizedKeyHash));
 
     // Check for basic input keys
-    // IMPORTANT: In Chinese mode, we must intercept letter/number/punctuation keys
-    // even if _isComposing and _hasCandidates are both FALSE (which can happen
-    // after a commit, before the next key arrives)
+    // IMPORTANT: Different handling based on key type:
+    // - Letter/number/punctuation keys: intercept in Chinese mode (start new composition)
+    // - Backspace/Enter/Escape: only intercept when there's an active composition
+    //   (otherwise, pass through to application)
     BOOL isInputKey = FALSE;
     BOOL isChineseMode = _pTextService->IsChineseMode();
-    if (_isComposing || _hasCandidates || isChineseMode)
+    // Use TextService's composition state - this is the source of truth in async architecture
+    BOOL hasComposition = _pTextService->HasActiveComposition();
+
+    if (hasComposition || isChineseMode)
     {
         HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
-        isInputKey = (keyType != HotkeyType::None);
+
+        // Backspace, Enter, Escape should only be intercepted when there's an active composition
+        // Otherwise they should pass through to the application
+        if (keyType == HotkeyType::Backspace || keyType == HotkeyType::Enter || keyType == HotkeyType::Escape)
+        {
+            isInputKey = hasComposition;  // Only intercept if we have composition
+        }
+        else
+        {
+            isInputKey = (keyType != HotkeyType::None);
+        }
     }
 
     if (!isKeyDownHotkey && !isInputKey)
@@ -271,22 +293,16 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         // We detect this by checking if we're in Chinese mode and this is a letter key.
         if (isChineseMode && wParam >= 'A' && wParam <= 'Z' && !(modifiers & (KEYMOD_CTRL | KEYMOD_ALT)))
         {
-            // This is a letter key in Chinese mode that should have been intercepted.
-            // Log a warning and consume it to prevent leaking to the application.
-            OutputDebugStringW(L"[WindInput] WARNING: Letter key slipped through due to state change, consuming anyway\n");
+            // Letter key in Chinese mode slipped through due to state change - consume it
             *pfEaten = TRUE;
         }
         return S_OK;
     }
 
-    // Update caret position before sending key event
-    // This ensures Go has accurate position for candidate window placement
-    _pTextService->SendCaretPositionUpdate();
-
-    // Send key to Go Service using binary protocol
+    // Send key to Go Service using binary protocol (SYNC mode)
     if (!_SendKeyToService((uint32_t)wParam, modifiers, KEY_EVENT_DOWN))
     {
-        OutputDebugStringW(L"[WindInput] Failed to send key to service, passing through\n");
+        WIND_LOG_ERROR(L"Failed to send key to service\n");
 
         // Service not available - pass through letters directly
         if (wParam >= 'A' && wParam <= 'Z' && !(modifiers & (KEYMOD_CTRL | KEYMOD_ALT)))
@@ -299,7 +315,8 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         return S_OK;
     }
 
-    // Handle response from service - returns TRUE if key was handled
+    // SYNC: Wait for response and handle it directly
+    // This is simpler and matches Weasel's architecture
     *pfEaten = _HandleServiceResponse();
     return S_OK;
 }
@@ -333,29 +350,44 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
 {
     *pfEaten = FALSE;
 
+    // Update modifier state machine for this KeyUp event
+    _UpdateModsOnKeyUp(wParam);
+
     // Handle toggle key release for mode toggle
     if (_pendingKeyUpKey != 0)
     {
         if (_IsMatchingKeyUp(wParam, _pendingKeyUpKey))
         {
             uint32_t pendingKey = _pendingKeyUpKey;
-            uint32_t pendingMods = _pendingKeyUpModifiers;
             _pendingKeyUpKey = 0;
             _pendingKeyUpModifiers = 0;
 
-            // Send KeyUp event to Go Service for toggle processing
+            // For Shift/Ctrl toggle: LOCAL IMMEDIATE MODE SWITCH
+            // In async architecture, we must toggle mode locally FIRST,
+            // then notify Go service asynchronously.
+            // This ensures subsequent key events use the correct mode.
             if (pendingKey != VK_CAPITAL)
             {
-                // For Shift/Ctrl, send KeyUp event with the saved modifiers
-                // The modifiers were captured when KeyDown was pressed (when the key was still held)
-                if (_SendKeyToService(pendingKey, pendingMods, KEY_EVENT_UP))
+                // 1. Toggle mode locally IMMEDIATELY
+                _pTextService->ToggleInputMode();
+                bool newChineseMode = _pTextService->IsChineseMode();
+
+                WIND_LOG_FMT(L"[WindInput] Local mode toggle: %s\n", newChineseMode ? L"Chinese" : L"English");
+
+                // 2. Clear composition if switching modes during input
+                bool hadInput = _isComposing || _hasCandidates;
+                if (hadInput)
                 {
-                    _HandleServiceResponse();
+                    _pTextService->EndComposition();
+                    _isComposing = FALSE;
+                    _hasCandidates = FALSE;
                 }
-                else
+
+                // 3. Notify Go service ASYNCHRONOUSLY (don't wait for response)
+                CIPCClient* pIPCClient = _pTextService->GetIPCClient();
+                if (pIPCClient != nullptr && pIPCClient->IsConnected())
                 {
-                    // Fallback: toggle locally if service unavailable
-                    _pTextService->ToggleInputMode();
+                    pIPCClient->SendModeNotify(newChineseMode, hadInput);
                 }
             }
 
@@ -391,10 +423,8 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
             mods |= 0x8000; // High bit as "state notification only" marker
         }
 
-        if (_SendKeyToService(VK_CAPITAL, mods, KEY_EVENT_UP))
-        {
-            _HandleServiceResponse();
-        }
+        // ASYNC: Send key event, response handled by reader thread
+        _SendKeyToService(VK_CAPITAL, mods, KEY_EVENT_UP);
 
         // Update language bar
         _pTextService->UpdateCapsLockState(capsLockOn);
@@ -414,12 +444,12 @@ STDAPI CKeyEventSink::OnPreservedKey(ITfContext* pContext, REFGUID rguid, BOOL* 
 
 BOOL CKeyEventSink::Initialize()
 {
-    OutputDebugStringW(L"[WindInput] KeyEventSink::Initialize\n");
+    WIND_LOG(L"[WindInput] KeyEventSink::Initialize\n");
 
     ITfThreadMgr* pThreadMgr = _pTextService->GetThreadMgr();
     if (pThreadMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] ThreadMgr is null!\n");
+        WIND_LOG_ERROR(L"ThreadMgr is null!\n");
         return FALSE;
     }
 
@@ -428,7 +458,7 @@ BOOL CKeyEventSink::Initialize()
 
     if (FAILED(hr) || pKeystrokeMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] Failed to get ITfKeystrokeMgr\n");
+        WIND_LOG_ERROR(L"Failed to get ITfKeystrokeMgr\n");
         return FALSE;
     }
 
@@ -437,17 +467,17 @@ BOOL CKeyEventSink::Initialize()
 
     if (FAILED(hr))
     {
-        OutputDebugStringW(L"[WindInput] AdviseKeyEventSink failed\n");
+        WIND_LOG_ERROR(L"AdviseKeyEventSink failed\n");
         return FALSE;
     }
 
-    OutputDebugStringW(L"[WindInput] KeyEventSink initialized successfully\n");
+    WIND_LOG(L"[WindInput] KeyEventSink initialized successfully\n");
     return TRUE;
 }
 
 void CKeyEventSink::Uninitialize()
 {
-    OutputDebugStringW(L"[WindInput] KeyEventSink::Uninitialize\n");
+    WIND_LOG(L"[WindInput] KeyEventSink::Uninitialize\n");
 
     ITfThreadMgr* pThreadMgr = _pTextService->GetThreadMgr();
     if (pThreadMgr == nullptr)
@@ -487,21 +517,41 @@ BOOL CKeyEventSink::_IsMatchingKeyUp(WPARAM wParam, uint32_t pendingKey)
 // Send key to Go Service using binary protocol
 BOOL CKeyEventSink::_SendKeyToService(uint32_t keyCode, uint32_t modifiers, uint8_t eventType)
 {
+    DWORD startTime = GetTickCount();
+
     CIPCClient* pIPCClient = _pTextService->GetIPCClient();
     if (pIPCClient == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] IPCClient is null!\n");
+        WIND_LOG_ERROR(L"IPCClient is null!\n");
         return FALSE;
     }
 
     // Get scan code from virtual key (optional, set to 0 if not needed)
     uint32_t scanCode = MapVirtualKeyW(keyCode, MAPVK_VK_TO_VSC);
 
-    return pIPCClient->SendKeyEvent(keyCode, scanCode, modifiers, eventType);
+    // Get toggles and event sequence
+    uint8_t toggles = _GetTogglesSnapshot();
+    uint16_t eventSeq = _GetNextEventSeq();
+
+    // IMPORTANT: Always use the passed-in modifiers from CHotkeyManager::GetCurrentModifiers()
+    // which calls GetAsyncKeyState(). The _modsState state machine can get out of sync
+    // when we pass keys through to the system (e.g., Ctrl+S for save).
+    // Using stale _modsState causes all subsequent keys to appear as having Ctrl held.
+
+    BOOL result = pIPCClient->SendKeyEvent(keyCode, scanCode, modifiers, eventType, toggles, eventSeq);
+
+    WIND_LOG_FMT(L"[WindInput] _SendKeyToService: vk=0x%02X, mods=0x%04X, elapsed=%dms\n",
+                 keyCode, modifiers, GetTickCount() - startTime);
+
+    return result;
 }
 
 BOOL CKeyEventSink::_HandleServiceResponse()
 {
+    LARGE_INTEGER startTime, midTime, endTime, freq;
+    QueryPerformanceCounter(&startTime);
+    QueryPerformanceFrequency(&freq);
+
     CIPCClient* pIPCClient = _pTextService->GetIPCClient();
     if (pIPCClient == nullptr)
         return TRUE; // Default to eating the key if no IPC
@@ -509,9 +559,14 @@ BOOL CKeyEventSink::_HandleServiceResponse()
     ServiceResponse response;
     if (!pIPCClient->ReceiveResponse(response))
     {
-        OutputDebugStringW(L"[WindInput] Failed to receive response from service\n");
+        WIND_LOG_ERROR(L"Failed to receive response from service\n");
         return TRUE; // Default to eating the key on error
     }
+
+    QueryPerformanceCounter(&midTime);
+    int ipcMs = (int)((midTime.QuadPart - startTime.QuadPart) * 1000 / freq.QuadPart);
+    WIND_LOG_FMT(L"[WindInput] _HandleServiceResponse: IPC receive took %dms, responseType=%d\n",
+                 ipcMs, (int)response.type);
 
     switch (response.type)
     {
@@ -521,20 +576,21 @@ BOOL CKeyEventSink::_HandleServiceResponse()
 
     case ResponseType::PassThrough:
         // PassThrough means key was NOT handled, pass to system
-        OutputDebugStringW(L"[WindInput] PassThrough: key not handled, passing to system\n");
+        WIND_LOG(L"[WindInput] PassThrough: key not handled, passing to system\n");
         return FALSE;
 
     case ResponseType::CommitText:
         {
-            OutputDebugStringW(L"[WindInput] Processing CommitText response\n");
+            LARGE_INTEGER ctStart, ctMid1, ctMid2, ctEnd;
+            QueryPerformanceCounter(&ctStart);
+
+            WIND_LOG(L"[WindInput] Processing CommitText response\n");
 
             // Handle new composition if present (top code commit feature)
             if (!response.newComposition.empty())
             {
-                WCHAR debug[256];
-                wsprintfW(debug, L"[WindInput] CommitText with new composition: text='%s', newComp='%s'\n",
-                          response.text.c_str(), response.newComposition.c_str());
-                OutputDebugStringW(debug);
+                WIND_LOG_FMT(L"[WindInput] CommitText with new composition: text='%s', newComp='%s'\n",
+                             response.text.c_str(), response.newComposition.c_str());
 
                 _pTextService->InsertTextAndStartComposition(response.text, response.newComposition);
                 _isComposing = TRUE;
@@ -544,13 +600,21 @@ BOOL CKeyEventSink::_HandleServiceResponse()
             {
                 // No new composition, just insert text normally
                 _pTextService->EndComposition();
+                QueryPerformanceCounter(&ctMid1);
 
                 if (!response.text.empty())
                 {
                     _pTextService->InsertText(response.text);
                 }
+                QueryPerformanceCounter(&ctMid2);
+
                 _isComposing = FALSE;
                 _hasCandidates = FALSE;
+
+                // Log detailed timing (use integer ms to avoid wsprintfW %f issue)
+                int endCompMs = (int)((ctMid1.QuadPart - ctStart.QuadPart) * 1000 / freq.QuadPart);
+                int insertMs = (int)((ctMid2.QuadPart - ctMid1.QuadPart) * 1000 / freq.QuadPart);
+                WIND_LOG_FMT(L"[WindInput] CommitText: EndComposition=%dms, InsertText=%dms\n", endCompMs, insertMs);
             }
 
             // Handle mode change if present
@@ -558,25 +622,38 @@ BOOL CKeyEventSink::_HandleServiceResponse()
             {
                 _pTextService->SetInputMode(response.chineseMode);
             }
+
+            QueryPerformanceCounter(&ctEnd);
+            int ctMs = (int)((ctEnd.QuadPart - ctStart.QuadPart) * 1000 / freq.QuadPart);
+            WIND_LOG_FMT(L"[WindInput] CommitText total took %dms\n", ctMs);
         }
         return TRUE;
 
     case ResponseType::UpdateComposition:
-        OutputDebugStringW(L"[WindInput] Received UpdateComposition from service\n");
-        _isComposing = TRUE;
-        _hasCandidates = TRUE;
-        _pTextService->UpdateComposition(response.composition, response.caretPos);
+        {
+            LARGE_INTEGER ucStart, ucEnd;
+            QueryPerformanceCounter(&ucStart);
+
+            WIND_LOG(L"[WindInput] Received UpdateComposition from service\n");
+            _isComposing = TRUE;
+            _hasCandidates = TRUE;
+            _pTextService->UpdateComposition(response.composition, response.caretPos);
+
+            QueryPerformanceCounter(&ucEnd);
+            int ucMs = (int)((ucEnd.QuadPart - ucStart.QuadPart) * 1000 / freq.QuadPart);
+            WIND_LOG_FMT(L"[WindInput] UpdateComposition total took %dms\n", ucMs);
+        }
         return TRUE;
 
     case ResponseType::ClearComposition:
-        OutputDebugStringW(L"[WindInput] Received ClearComposition from service\n");
+        WIND_LOG(L"[WindInput] Received ClearComposition from service\n");
         _isComposing = FALSE;
         _hasCandidates = FALSE;
         _pTextService->EndComposition();
         return TRUE;
 
     case ResponseType::ModeChanged:
-        OutputDebugStringW(L"[WindInput] Received ModeChanged from service\n");
+        WIND_LOG(L"[WindInput] Received ModeChanged from service\n");
         _isComposing = FALSE;
         _hasCandidates = FALSE;
         _pTextService->EndComposition();
@@ -585,7 +662,7 @@ BOOL CKeyEventSink::_HandleServiceResponse()
 
     case ResponseType::StatusUpdate:
         {
-            OutputDebugStringW(L"[WindInput] Received StatusUpdate from service\n");
+            WIND_LOG(L"[WindInput] Received StatusUpdate from service\n");
 
             // Update input mode
             _pTextService->SetInputMode(response.IsChineseMode());
@@ -601,11 +678,11 @@ BOOL CKeyEventSink::_HandleServiceResponse()
 
     case ResponseType::Consumed:
         // Key was consumed by a hotkey
-        OutputDebugStringW(L"[WindInput] Key consumed by hotkey\n");
+        WIND_LOG(L"[WindInput] Key consumed by hotkey\n");
         return TRUE;
 
     default:
-        OutputDebugStringW(L"[WindInput] Unknown response type from service\n");
+        WIND_LOG_ERROR(L"Unknown response type from service\n");
         return TRUE;
     }
 
@@ -644,7 +721,7 @@ BOOL CKeyEventSink::_IsContextReadOnly(ITfContext* pContext)
 // before the previous InsertText operation completes
 void CKeyEventSink::OnCompositionUnexpectedlyTerminated()
 {
-    OutputDebugStringW(L"[WindInput] OnCompositionUnexpectedlyTerminated: Resetting state\n");
+    WIND_LOG(L"[WindInput] OnCompositionUnexpectedlyTerminated: Resetting state\n");
 
     // Reset local state
     _isComposing = FALSE;
@@ -655,3 +732,211 @@ void CKeyEventSink::OnCompositionUnexpectedlyTerminated()
     // The key issue (composition text leaking) is already fixed by clearing the text
     // in OnCompositionTerminated before this method is called
 }
+
+// ============================================================================
+// Modifier key state machine implementation
+// ============================================================================
+
+void CKeyEventSink::_UpdateModsOnKeyDown(WPARAM vk)
+{
+    switch (vk)
+    {
+    case VK_SHIFT:
+        // Generic shift - set generic flag, actual L/R determined by GetAsyncKeyState
+        _modsState |= KEYMOD_SHIFT;
+        if (GetAsyncKeyState(VK_LSHIFT) & 0x8000) _modsState |= KEYMOD_LSHIFT;
+        if (GetAsyncKeyState(VK_RSHIFT) & 0x8000) _modsState |= KEYMOD_RSHIFT;
+        break;
+    case VK_LSHIFT:
+        _modsState |= (KEYMOD_SHIFT | KEYMOD_LSHIFT);
+        break;
+    case VK_RSHIFT:
+        _modsState |= (KEYMOD_SHIFT | KEYMOD_RSHIFT);
+        break;
+
+    case VK_CONTROL:
+        _modsState |= KEYMOD_CTRL;
+        if (GetAsyncKeyState(VK_LCONTROL) & 0x8000) _modsState |= KEYMOD_LCTRL;
+        if (GetAsyncKeyState(VK_RCONTROL) & 0x8000) _modsState |= KEYMOD_RCTRL;
+        break;
+    case VK_LCONTROL:
+        _modsState |= (KEYMOD_CTRL | KEYMOD_LCTRL);
+        break;
+    case VK_RCONTROL:
+        _modsState |= (KEYMOD_CTRL | KEYMOD_RCTRL);
+        break;
+
+    case VK_MENU:
+    case VK_LMENU:
+    case VK_RMENU:
+        _modsState |= KEYMOD_ALT;
+        break;
+
+    case VK_LWIN:
+    case VK_RWIN:
+        _modsState |= KEYMOD_WIN;
+        break;
+    }
+}
+
+void CKeyEventSink::_UpdateModsOnKeyUp(WPARAM vk)
+{
+    switch (vk)
+    {
+    case VK_SHIFT:
+        // Clear all shift flags when generic VK_SHIFT is released
+        _modsState &= ~(KEYMOD_SHIFT | KEYMOD_LSHIFT | KEYMOD_RSHIFT);
+        break;
+    case VK_LSHIFT:
+        _modsState &= ~KEYMOD_LSHIFT;
+        // Only clear generic shift if right shift is also not held
+        if (!(_modsState & KEYMOD_RSHIFT))
+            _modsState &= ~KEYMOD_SHIFT;
+        break;
+    case VK_RSHIFT:
+        _modsState &= ~KEYMOD_RSHIFT;
+        if (!(_modsState & KEYMOD_LSHIFT))
+            _modsState &= ~KEYMOD_SHIFT;
+        break;
+
+    case VK_CONTROL:
+        _modsState &= ~(KEYMOD_CTRL | KEYMOD_LCTRL | KEYMOD_RCTRL);
+        break;
+    case VK_LCONTROL:
+        _modsState &= ~KEYMOD_LCTRL;
+        if (!(_modsState & KEYMOD_RCTRL))
+            _modsState &= ~KEYMOD_CTRL;
+        break;
+    case VK_RCONTROL:
+        _modsState &= ~KEYMOD_RCTRL;
+        if (!(_modsState & KEYMOD_LCTRL))
+            _modsState &= ~KEYMOD_CTRL;
+        break;
+
+    case VK_MENU:
+    case VK_LMENU:
+    case VK_RMENU:
+        _modsState &= ~KEYMOD_ALT;
+        break;
+
+    case VK_LWIN:
+    case VK_RWIN:
+        _modsState &= ~KEYMOD_WIN;
+        break;
+    }
+}
+
+uint8_t CKeyEventSink::_GetTogglesSnapshot() const
+{
+    uint8_t toggles = 0;
+    if (GetKeyState(VK_CAPITAL) & 0x01) toggles |= TOGGLE_CAPSLOCK;
+    if (GetKeyState(VK_NUMLOCK) & 0x01) toggles |= TOGGLE_NUMLOCK;
+    if (GetKeyState(VK_SCROLL) & 0x01)  toggles |= TOGGLE_SCROLLLOCK;
+    return toggles;
+}
+
+void CKeyEventSink::_SyncStateFromResponse(uint32_t statusFlags)
+{
+    // Sync mode from Go response
+    bool chineseMode = (statusFlags & STATUS_CHINESE_MODE) != 0;
+    _pTextService->SetInputMode(chineseMode);
+}
+
+// ============================================================================
+// Barrier mechanism implementation
+// ============================================================================
+
+BOOL CKeyEventSink::_SendCommitRequest(uint16_t barrierSeq, uint16_t triggerKey, uint32_t mods, const std::string& inputBuffer)
+{
+    CIPCClient* pIPCClient = _pTextService->GetIPCClient();
+    if (pIPCClient == nullptr || !pIPCClient->IsConnected())
+    {
+        return FALSE;
+    }
+
+    // Build CommitRequestPayload
+    size_t payloadSize = sizeof(CommitRequestPayload) - sizeof(uint32_t) + 4 + inputBuffer.size();
+    std::vector<uint8_t> payload(12 + inputBuffer.size());
+
+    // Header fields
+    payload[0] = barrierSeq & 0xFF;
+    payload[1] = (barrierSeq >> 8) & 0xFF;
+    payload[2] = triggerKey & 0xFF;
+    payload[3] = (triggerKey >> 8) & 0xFF;
+    payload[4] = mods & 0xFF;
+    payload[5] = (mods >> 8) & 0xFF;
+    payload[6] = (mods >> 16) & 0xFF;
+    payload[7] = (mods >> 24) & 0xFF;
+    uint32_t inputLen = (uint32_t)inputBuffer.size();
+    payload[8] = inputLen & 0xFF;
+    payload[9] = (inputLen >> 8) & 0xFF;
+    payload[10] = (inputLen >> 16) & 0xFF;
+    payload[11] = (inputLen >> 24) & 0xFF;
+
+    // Copy input buffer
+    if (!inputBuffer.empty())
+    {
+        memcpy(payload.data() + 12, inputBuffer.data(), inputBuffer.size());
+    }
+
+    return pIPCClient->SendCommitRequest(payload.data(), (uint32_t)payload.size());
+}
+
+void CKeyEventSink::_HandleCommitResult(uint16_t barrierSeq, const std::wstring& text, const std::wstring& newComp, bool modeChanged, bool chineseMode)
+{
+    if (!_pendingCommit.waiting || _pendingCommit.barrierSeq != barrierSeq)
+    {
+        // Barrier mismatch, log warning
+        WIND_LOG(L"[WindInput] CommitResult barrier mismatch, ignoring\n");
+        return;
+    }
+
+    // Clear pending state
+    _pendingCommit.waiting = false;
+
+    // Commit the text
+    if (!text.empty())
+    {
+        _pTextService->InsertText(text);
+    }
+
+    // Handle new composition
+    if (!newComp.empty())
+    {
+        _pTextService->UpdateComposition(newComp, (int)newComp.length());
+        _isComposing = TRUE;
+    }
+    else
+    {
+        _pTextService->EndComposition();
+        _isComposing = FALSE;
+        _hasCandidates = FALSE;
+    }
+
+    // Handle mode change
+    if (modeChanged)
+    {
+        _pTextService->SetInputMode(chineseMode);
+    }
+}
+
+void CKeyEventSink::_CheckBarrierTimeout()
+{
+    if (!_pendingCommit.waiting)
+        return;
+
+    DWORD elapsed = GetTickCount() - _pendingCommit.requestTime;
+    if (elapsed > BARRIER_TIMEOUT_MS)
+    {
+        WIND_LOG(L"[WindInput] Barrier timeout, falling back to local handling\n");
+
+        // Timeout - clear pending state and try to recover
+        _pendingCommit.waiting = false;
+
+        // Fallback: just clear the composition
+        _pTextService->EndComposition();
+        _isComposing = FALSE;
+        _hasCandidates = FALSE;
+    }
+}
+

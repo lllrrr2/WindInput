@@ -4,6 +4,34 @@
 #include <msctf.h>
 #include <ctfutb.h>
 
+// ============================================================================
+// Debug logging configuration
+// ============================================================================
+// Uncomment to enable verbose debug logging (impacts performance when DebugView is active)
+// #define WIND_DEBUG_LOG
+
+#ifdef WIND_DEBUG_LOG
+    #define WIND_LOG(msg) OutputDebugStringW(msg)
+    #define WIND_LOG_FMT(fmt, ...) do { \
+        WCHAR _buf[512]; \
+        swprintf(_buf, 512, fmt, __VA_ARGS__); \
+        OutputDebugStringW(_buf); \
+    } while(0)
+#else
+    #define WIND_LOG(msg) ((void)0)
+    #define WIND_LOG_FMT(fmt, ...) ((void)0)
+#endif
+
+// Error logging is always enabled (critical errors only)
+#define WIND_LOG_ERROR(msg) OutputDebugStringW(L"[WindInput ERROR] " msg)
+#define WIND_LOG_ERROR_FMT(fmt, ...) do { \
+    WCHAR _buf[512]; \
+    swprintf(_buf, 512, L"[WindInput ERROR] " fmt, __VA_ARGS__); \
+    OutputDebugStringW(_buf); \
+} while(0)
+
+// ============================================================================
+
 // 全局变量声明
 extern HINSTANCE g_hInstance;
 extern LONG g_lServerLock;
