@@ -129,6 +129,11 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 	// Set up toolbar callbacks
 	c.setupToolbarCallbacks()
 
+	// Initialize UI config (including debug options)
+	if c.uiManager != nil && cfg != nil {
+		c.uiManager.UpdateConfig(cfg.UI.FontSize, cfg.UI.FontPath, cfg.UI.HideCandidateWindow)
+	}
+
 	return c
 }
 
@@ -1257,7 +1262,7 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 
 	// 通知 UI Manager 更新字体等设置
 	if c.uiManager != nil {
-		c.uiManager.UpdateConfig(uiConfig.FontSize, uiConfig.FontPath)
+		c.uiManager.UpdateConfig(uiConfig.FontSize, uiConfig.FontPath, uiConfig.HideCandidateWindow)
 	}
 
 	c.logger.Debug("UI config updated", "candidatesPerPage", c.candidatesPerPage)

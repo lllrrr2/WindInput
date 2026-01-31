@@ -65,6 +65,9 @@ type Manager struct {
 
 	// Toolbar callbacks (set by coordinator)
 	toolbarCallbacks *ToolbarCallback
+
+	// Debug: hide candidate window (for performance testing)
+	hideCandidateWindow bool
 }
 
 // NewManager creates a new UI manager
@@ -278,6 +281,12 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, caretX, c
 // doShowCandidates actually shows candidates (called from UI thread)
 // Parameters caretX, caretY, caretHeight are the original caret position info.
 func (m *Manager) doShowCandidates(candidates []Candidate, input string, caretX, caretY, caretHeight, page, totalPages int) {
+	// Debug: skip rendering if hide_candidate_window is enabled
+	if m.hideCandidateWindow {
+		m.logger.Debug("doShowCandidates skipped (hide_candidate_window enabled)")
+		return
+	}
+
 	m.logger.Debug("doShowCandidates start", "input", input, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight)
 
 	// Check if this is a new input session (input is shorter than before or empty)
@@ -448,12 +457,16 @@ func (m *Manager) doShowModeIndicator(mode string, x, y int) {
 }
 
 // UpdateConfig 更新 UI 配置（热更新）
-func (m *Manager) UpdateConfig(fontSize float64, fontPath string) {
+func (m *Manager) UpdateConfig(fontSize float64, fontPath string, hideCandidateWindow bool) {
 	// 更新渲染器的字体设置
 	if m.renderer != nil {
 		m.renderer.UpdateFont(fontSize, fontPath)
 	}
-	m.logger.Info("UI config updated", "fontSize", fontSize, "fontPath", fontPath)
+	// 更新调试开关
+	m.mu.Lock()
+	m.hideCandidateWindow = hideCandidateWindow
+	m.mu.Unlock()
+	m.logger.Info("UI config updated", "fontSize", fontSize, "fontPath", fontPath, "hideCandidateWindow", hideCandidateWindow)
 }
 
 // SetToolbarCallbacks sets the callbacks for toolbar actions

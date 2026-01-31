@@ -76,10 +76,11 @@ type HotkeyConfig struct {
 
 // UIConfig contains UI settings
 type UIConfig struct {
-	FontSize          float64 `yaml:"font_size" json:"font_size"`
-	CandidatesPerPage int     `yaml:"candidates_per_page" json:"candidates_per_page"`
-	FontPath          string  `yaml:"font_path" json:"font_path"`
-	InlinePreedit     bool    `yaml:"inline_preedit" json:"inline_preedit"` // 启用嵌入式编码行
+	FontSize            float64 `yaml:"font_size" json:"font_size"`
+	CandidatesPerPage   int     `yaml:"candidates_per_page" json:"candidates_per_page"`
+	FontPath            string  `yaml:"font_path" json:"font_path"`
+	InlinePreedit       bool    `yaml:"inline_preedit" json:"inline_preedit"`               // 启用嵌入式编码行
+	HideCandidateWindow bool    `yaml:"hide_candidate_window" json:"hide_candidate_window"` // 调试：隐藏候选框（测试性能）
 }
 
 // ToolbarConfig contains toolbar settings

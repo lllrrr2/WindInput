@@ -685,6 +685,22 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
+
+          <div class="settings-card">
+            <div class="card-title">调试选项</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>隐藏候选框</label>
+                <p class="setting-hint">禁用候选框渲染，用于性能测试对比</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.ui.hide_candidate_window" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- ==================== 词库管理 ==================== -->

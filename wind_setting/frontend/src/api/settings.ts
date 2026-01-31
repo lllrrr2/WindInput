@@ -60,6 +60,7 @@ export interface UIConfig {
   candidates_per_page: number;
   font_path: string;
   inline_preedit: boolean;
+  hide_candidate_window: boolean;
 }
 
 // 工具栏配置
@@ -267,6 +268,7 @@ export function getDefaultConfig(): Config {
       candidates_per_page: 9,
       font_path: '',
       inline_preedit: true,
+      hide_candidate_window: false,
     },
     toolbar: {
       visible: false,
