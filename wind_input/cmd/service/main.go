@@ -240,6 +240,26 @@ func main() {
 		filepath.Join(exeDir, config.GetWubiDictPath()),
 	)
 
+	// Initialize DictManager (manages user dict, phrases, shadow rules)
+	// Use config dir as data dir (same location as config.yaml)
+	dataDir, err := config.GetConfigDir()
+	if err != nil {
+		logger.Warn("Failed to get config dir, using exe dir", "error", err)
+		dataDir = exeDir
+	}
+	dictManager := dict.NewDictManager(dataDir)
+	if err := dictManager.Initialize(); err != nil {
+		logger.Warn("Failed to initialize dict manager", "error", err)
+	} else {
+		stats := dictManager.GetStats()
+		logger.Info("DictManager initialized",
+			"phrases", stats["phrases"],
+			"commands", stats["commands"],
+			"user_words", stats["user_words"],
+			"shadow_rules", stats["shadow_rules"])
+	}
+	engineMgr.SetDictManager(dictManager)
+
 	// Initialize engine based on config
 	// 根据引擎类型选择正确的词库路径
 	var fullDictPath string

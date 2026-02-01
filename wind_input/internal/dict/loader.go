@@ -150,3 +150,8 @@ func (d *SimpleDict) AddPhrase(syllables []string, text string, weight int) {
 func (d *SimpleDict) EntryCount() int {
 	return d.entryCount
 }
+
+// GetEntries 获取所有条目（用于前缀搜索等）
+func (d *SimpleDict) GetEntries() map[string][]candidate.Candidate {
+	return d.entries
+}

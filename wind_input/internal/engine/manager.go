@@ -28,6 +28,9 @@ type Manager struct {
 
 	// 可执行文件目录（用于相对路径）
 	exeDir string
+
+	// 词库管理器
+	dictManager *dict.DictManager
 }
 
 // NewManager 创建引擎管理器
@@ -198,12 +201,35 @@ func (m *Manager) InitializeFromConfig(config *EngineConfig) error {
 
 // initPinyinEngine 初始化拼音引擎
 func (m *Manager) initPinyinEngine(dictPath, wubiDictPath string, config *pinyin.Config) error {
-	// 加载词库
-	d := dict.NewSimpleDict()
-	if dictPath != "" {
-		if err := d.Load(dictPath); err != nil {
-			return fmt.Errorf("加载拼音词库失败: %w", err)
+	// 确定使用哪个词库
+	var d dict.Dict
+
+	if m.dictManager != nil {
+		// 使用 DictManager 管理的 CompositeDict
+		// 先加载系统词库并注册
+		simpleDict := dict.NewSimpleDict()
+		if dictPath != "" {
+			if err := simpleDict.Load(dictPath); err != nil {
+				return fmt.Errorf("加载拼音词库失败: %w", err)
+			}
 		}
+
+		// 注册系统词库到 DictManager
+		systemLayer := dict.NewSimpleDictLayer("pinyin-system", dict.LayerTypeSystem, simpleDict)
+		m.dictManager.RegisterSystemLayer("pinyin-system", systemLayer)
+
+		// 使用 CompositeDict
+		d = m.dictManager.GetCompositeDict()
+		log.Printf("[EngineManager] 拼音引擎使用 CompositeDict")
+	} else {
+		// 回退：直接使用 SimpleDict
+		simpleDict := dict.NewSimpleDict()
+		if dictPath != "" {
+			if err := simpleDict.Load(dictPath); err != nil {
+				return fmt.Errorf("加载拼音词库失败: %w", err)
+			}
+		}
+		d = simpleDict
 	}
 
 	// 创建引擎
@@ -234,6 +260,21 @@ func (m *Manager) initWubiEngine(dictPath string, config *wubi.Config) error {
 			return fmt.Errorf("加载五笔码表失败: %w", err)
 		}
 		log.Printf("[EngineManager] 五笔码表加载成功，词条数: %d", engine.GetEntryCount())
+
+		// 如果有 DictManager，注册系统词库
+		if m.dictManager != nil {
+			ct, _ := dict.LoadCodeTable(dictPath)
+			if ct != nil {
+				systemLayer := dict.NewCodeTableLayer("wubi-system", dict.LayerTypeSystem, ct)
+				m.dictManager.RegisterSystemLayer("wubi-system", systemLayer)
+				log.Printf("[EngineManager] 五笔系统词库已注册到 DictManager")
+			}
+		}
+	}
+
+	// 设置 DictManager（用于查询用户词和短语）
+	if m.dictManager != nil {
+		engine.SetDictManager(m.dictManager)
 	}
 
 	// 注册并设置为当前引擎
@@ -266,6 +307,20 @@ func (m *Manager) SetExeDir(dir string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.exeDir = dir
+}
+
+// SetDictManager 设置词库管理器
+func (m *Manager) SetDictManager(dm *dict.DictManager) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dictManager = dm
+}
+
+// GetDictManager 获取词库管理器
+func (m *Manager) GetDictManager() *dict.DictManager {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.dictManager
 }
 
 // SetDictPaths 设置词库路径
@@ -362,10 +417,29 @@ func (m *Manager) loadPinyinEngineLocked() error {
 		fullPath = m.exeDir + "/" + dictPath
 	}
 
-	// 加载拼音词库
-	d := dict.NewSimpleDict()
-	if err := d.Load(fullPath); err != nil {
-		return fmt.Errorf("加载拼音词库失败: %w", err)
+	// 确定使用哪个词库
+	var d dict.Dict
+
+	if m.dictManager != nil {
+		// 使用 DictManager
+		simpleDict := dict.NewSimpleDict()
+		if err := simpleDict.Load(fullPath); err != nil {
+			return fmt.Errorf("加载拼音词库失败: %w", err)
+		}
+
+		// 注册系统词库
+		systemLayer := dict.NewSimpleDictLayer("pinyin-system", dict.LayerTypeSystem, simpleDict)
+		m.dictManager.RegisterSystemLayer("pinyin-system", systemLayer)
+		d = m.dictManager.GetCompositeDict()
+		log.Printf("[EngineManager] 拼音引擎使用 CompositeDict，词条数: %d", simpleDict.EntryCount())
+	} else {
+		// 回退：直接使用 SimpleDict
+		simpleDict := dict.NewSimpleDict()
+		if err := simpleDict.Load(fullPath); err != nil {
+			return fmt.Errorf("加载拼音词库失败: %w", err)
+		}
+		d = simpleDict
+		log.Printf("[EngineManager] 拼音引擎加载成功，词条数: %d", simpleDict.EntryCount())
 	}
 
 	// 创建引擎
@@ -389,7 +463,6 @@ func (m *Manager) loadPinyinEngineLocked() error {
 	}
 
 	m.engines[EngineTypePinyin] = engine
-	log.Printf("[EngineManager] 拼音引擎加载成功，词条数: %d", d.EntryCount())
 	return nil
 }
 
@@ -413,6 +486,16 @@ func (m *Manager) loadWubiEngineLocked() error {
 	engine := wubi.NewEngine(config)
 	if err := engine.LoadCodeTable(fullPath); err != nil {
 		return fmt.Errorf("加载五笔码表失败: %w", err)
+	}
+
+	// 如果有 DictManager，注册系统词库并设置
+	if m.dictManager != nil {
+		ct, _ := dict.LoadCodeTable(fullPath)
+		if ct != nil {
+			systemLayer := dict.NewCodeTableLayer("wubi-system", dict.LayerTypeSystem, ct)
+			m.dictManager.RegisterSystemLayer("wubi-system", systemLayer)
+		}
+		engine.SetDictManager(m.dictManager)
 	}
 
 	m.engines[EngineTypeWubi] = engine

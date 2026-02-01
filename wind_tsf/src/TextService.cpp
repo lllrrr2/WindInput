@@ -762,8 +762,7 @@ BOOL CTextService::_InitIPCClient()
         return FALSE;
 
     // Try to connect to Go Service (failure is OK, will retry later)
-    // Pass false to disable reader thread - using sync IPC mode
-    if (!_pIPCClient->Connect(false))
+    if (!_pIPCClient->Connect())
     {
         WIND_LOG(L"[WindInput] Failed to connect to Go Service, will retry later\n");
     }

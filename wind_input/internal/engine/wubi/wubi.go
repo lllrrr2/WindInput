@@ -34,8 +34,9 @@ func DefaultConfig() *Config {
 
 // Engine 五笔输入引擎
 type Engine struct {
-	codeTable *dict.CodeTable // 主码表
-	config    *Config
+	codeTable   *dict.CodeTable   // 主码表
+	config      *Config
+	dictManager *dict.DictManager // 词库管理器（可选，用于查询用户词和短语）
 }
 
 // NewEngine 创建五笔引擎
@@ -116,19 +117,30 @@ func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candid
 func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	result := &ConvertResult{}
 
-	if e.codeTable == nil || input == "" {
+	if input == "" {
 		return result
 	}
 
 	input = strings.ToLower(input)
 	inputLen := len(input)
 
-	// 精确匹配
-	candidates := e.codeTable.Lookup(input)
+	var candidates []candidate.Candidate
 
-	// 如果精确匹配为空，尝试前缀匹配
-	if len(candidates) == 0 {
-		candidates = e.codeTable.LookupPrefix(input)
+	// 如果有 DictManager，使用聚合查询（包含用户词、短语等）
+	if e.dictManager != nil {
+		candidates = e.dictManager.Search(input, 0)
+
+		// 如果精确匹配为空，尝试前缀匹配
+		if len(candidates) == 0 {
+			candidates = e.dictManager.SearchPrefix(input, 0)
+		}
+	} else if e.codeTable != nil {
+		// 回退：直接查询码表
+		candidates = e.codeTable.Lookup(input)
+
+		if len(candidates) == 0 {
+			candidates = e.codeTable.LookupPrefix(input)
+		}
 	}
 
 	// 空码处理
@@ -255,4 +267,14 @@ func (e *Engine) GetEntryCount() int {
 		return 0
 	}
 	return e.codeTable.EntryCount()
+}
+
+// SetDictManager 设置词库管理器
+func (e *Engine) SetDictManager(dm *dict.DictManager) {
+	e.dictManager = dm
+}
+
+// GetDictManager 获取词库管理器
+func (e *Engine) GetDictManager() *dict.DictManager {
+	return e.dictManager
 }
