@@ -299,6 +299,10 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         return S_OK;
     }
 
+    // Update caret position before sending key event
+    // This ensures the candidate window appears at the correct position
+    _pTextService->SendCaretPositionUpdate();
+
     // Send key to Go Service using binary protocol (SYNC mode)
     if (!_SendKeyToService((uint32_t)wParam, modifiers, KEY_EVENT_DOWN))
     {
