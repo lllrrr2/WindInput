@@ -544,25 +544,52 @@ void CKeyEventSink::Uninitialize()
     }
 }
 
-// Helper: Check if wParam matches the pending KeyUp key (handles VK_SHIFT -> VK_LSHIFT/RSHIFT mapping)
+// Helper: Check if wParam matches the pending KeyUp key
+// IMPORTANT: We now store specific keys (VK_LSHIFT vs VK_RSHIFT) at KeyDown time,
+// so we need to match the specific key that was pressed, not any Shift/Ctrl.
+// When KeyUp comes with generic VK_SHIFT, we use GetAsyncKeyState to determine which one.
 BOOL CKeyEventSink::_IsMatchingKeyUp(WPARAM wParam, uint32_t pendingKey)
 {
+    if (pendingKey == 0)
+        return FALSE;
+
+    // Direct match
     if (wParam == pendingKey)
         return TRUE;
 
-    // Handle generic VK_SHIFT matching VK_LSHIFT/VK_RSHIFT
-    if ((wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT) &&
-        (pendingKey == VK_SHIFT || pendingKey == VK_LSHIFT || pendingKey == VK_RSHIFT))
+    // Handle generic VK_SHIFT -> need to check if the pending specific key was released
+    if (wParam == VK_SHIFT)
     {
-        return TRUE;
+        // pendingKey is specific (VK_LSHIFT or VK_RSHIFT)
+        // Check if that specific key is no longer pressed
+        if (pendingKey == VK_LSHIFT && !(GetAsyncKeyState(VK_LSHIFT) & 0x8000))
+        {
+            return TRUE;
+        }
+        if (pendingKey == VK_RSHIFT && !(GetAsyncKeyState(VK_RSHIFT) & 0x8000))
+        {
+            return TRUE;
+        }
+        return FALSE;
     }
 
-    // Handle generic VK_CONTROL matching VK_LCONTROL/VK_RCONTROL
-    if ((wParam == VK_CONTROL || wParam == VK_LCONTROL || wParam == VK_RCONTROL) &&
-        (pendingKey == VK_CONTROL || pendingKey == VK_LCONTROL || pendingKey == VK_RCONTROL))
+    // Handle generic VK_CONTROL -> need to check if the pending specific key was released
+    if (wParam == VK_CONTROL)
     {
-        return TRUE;
+        if (pendingKey == VK_LCONTROL && !(GetAsyncKeyState(VK_LCONTROL) & 0x8000))
+        {
+            return TRUE;
+        }
+        if (pendingKey == VK_RCONTROL && !(GetAsyncKeyState(VK_RCONTROL) & 0x8000))
+        {
+            return TRUE;
+        }
+        return FALSE;
     }
+
+    // Handle specific VK matching specific pending
+    // E.g., if pendingKey is VK_LSHIFT and wParam is VK_LSHIFT -> already matched above
+    // But if pendingKey is VK_LSHIFT and wParam is VK_RSHIFT -> don't match (different keys)
 
     return FALSE;
 }

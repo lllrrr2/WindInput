@@ -688,17 +688,45 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
             _pLangBarItemButton->ForceRefresh();
         }
 
+        // Reset composing state on focus gained to ensure clean state
+        // This prevents stale composition state from affecting new input
+        if (_pKeyEventSink != nullptr)
+        {
+            _pKeyEventSink->ResetComposingState();
+        }
+
         // Get caret position for toolbar placement
         LONG caretX = 0, caretY = 0, caretHeight = 0;
         GetCaretPosition(&caretX, &caretY, &caretHeight);
 
-        // Send focus_gained to service (for toolbar display)
-        // ASYNC: Don't wait for response - reader thread will receive StatusUpdate via callback
-        // This avoids race condition with the reader thread
-        if (_pIPCClient != nullptr)
+        // Send focus_gained to service and receive response synchronously
+        // This ensures state is properly synced before user starts typing
+        if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
         {
-            _pIPCClient->SendFocusGained(caretX, caretY, caretHeight);
-            // Response will be handled by OnStatusUpdate callback
+            if (_pIPCClient->SendFocusGained(caretX, caretY, caretHeight))
+            {
+                ServiceResponse response;
+                if (_pIPCClient->ReceiveResponse(response))
+                {
+                    WIND_LOG(L"[WindInput] FocusGained response received\n");
+
+                    // If we got a status update, sync state and hotkeys
+                    if (response.type == ResponseType::StatusUpdate)
+                    {
+                        _bChineseMode = response.IsChineseMode();
+
+                        // Update hotkey whitelist if present
+                        if (response.HasHotkeys() && _pHotkeyManager != nullptr)
+                        {
+                            WIND_LOG(L"[WindInput] Updating hotkey whitelist from focus_gained\n");
+                            _pHotkeyManager->UpdateHotkeys(
+                                response.keyDownHotkeys,
+                                response.keyUpHotkeys
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 
