@@ -378,6 +378,12 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 
 			// Return Consumed to indicate we handled it (no mode change)
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+		} else {
+			// Toggle key recognized (lshift/rshift/lctrl/rctrl) but not configured
+			// Consume the key to avoid passing Shift/Ctrl through to the application
+			// This ensures consistent behavior: modifier key releases are always eaten by IME
+			c.logger.Debug("Toggle key not configured, consuming", "key", toggleKey)
+			return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 		}
 	}
 

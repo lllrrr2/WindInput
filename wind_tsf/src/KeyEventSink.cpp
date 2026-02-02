@@ -229,7 +229,33 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         }
 
         // Mark key as pending for KeyUp toggle (Shift/Ctrl only, not CapsLock)
-        _pendingKeyUpKey = (uint32_t)wParam;
+        // IMPORTANT: Determine the specific left/right key for proper config matching
+        // wParam might be generic VK_SHIFT, but we need to know if it's LShift or RShift
+        uint32_t specificKey = (uint32_t)wParam;
+        if (wParam == VK_SHIFT)
+        {
+            // Determine which shift is actually pressed using GetAsyncKeyState
+            if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+            {
+                specificKey = VK_LSHIFT;
+            }
+            else if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+            {
+                specificKey = VK_RSHIFT;
+            }
+        }
+        else if (wParam == VK_CONTROL)
+        {
+            if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+            {
+                specificKey = VK_LCONTROL;
+            }
+            else if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+            {
+                specificKey = VK_RCONTROL;
+            }
+        }
+        _pendingKeyUpKey = specificKey;
         _pendingKeyUpModifiers = modifiers;
 
         WIND_LOG(L"[WindInput] OnKeyDown: Toggle mode key pending for KeyUp\n");
@@ -366,32 +392,55 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
             _pendingKeyUpKey = 0;
             _pendingKeyUpModifiers = 0;
 
-            // For Shift/Ctrl toggle: LOCAL IMMEDIATE MODE SWITCH
-            // In async architecture, we must toggle mode locally FIRST,
-            // then notify Go service asynchronously.
-            // This ensures subsequent key events use the correct mode.
+            // For Shift/Ctrl toggle: Send KeyUp event to Go service
+            // Go side will check config (e.g., only LShift vs both L/R Shift)
+            // and return ModeChanged response if the key is configured as toggle key
             if (pendingKey != VK_CAPITAL)
             {
-                // 1. Toggle mode locally IMMEDIATELY
-                _pTextService->ToggleInputMode();
-                bool newChineseMode = _pTextService->IsChineseMode();
+                WIND_LOG_FMT(L"[WindInput] Sending toggle key KeyUp to Go: vk=0x%02X\n", pendingKey);
 
-                WIND_LOG_FMT(L"[WindInput] Local mode toggle: %s\n", newChineseMode ? L"Chinese" : L"English");
-
-                // 2. Clear composition if switching modes during input
-                bool hadInput = _isComposing || _hasCandidates;
-                if (hadInput)
+                // Build modifiers for the specific key being released
+                // This helps Go identify exactly which key was released
+                uint32_t mods = 0;
+                if (pendingKey == VK_LSHIFT)
                 {
-                    _pTextService->EndComposition();
-                    _isComposing = FALSE;
-                    _hasCandidates = FALSE;
+                    mods = KEYMOD_SHIFT | KEYMOD_LSHIFT;
+                }
+                else if (pendingKey == VK_RSHIFT)
+                {
+                    mods = KEYMOD_SHIFT | KEYMOD_RSHIFT;
+                }
+                else if (pendingKey == VK_LCONTROL)
+                {
+                    mods = KEYMOD_CTRL | KEYMOD_LCTRL;
+                }
+                else if (pendingKey == VK_RCONTROL)
+                {
+                    mods = KEYMOD_CTRL | KEYMOD_RCTRL;
                 }
 
-                // 3. Notify Go service ASYNCHRONOUSLY (don't wait for response)
-                CIPCClient* pIPCClient = _pTextService->GetIPCClient();
-                if (pIPCClient != nullptr && pIPCClient->IsConnected())
+                // Send KeyUp event to Go service (SYNC mode, wait for response)
+                // Go will check config and return ModeChanged if key is configured as toggle
+                if (_SendKeyToService(pendingKey, mods, KEY_EVENT_UP))
                 {
-                    pIPCClient->SendModeNotify(newChineseMode, hadInput);
+                    // Handle response - may include mode change
+                    _HandleServiceResponse();
+                }
+                else
+                {
+                    // IPC failed - fallback to local toggle for reliability
+                    WIND_LOG(L"[WindInput] IPC failed, falling back to local toggle\n");
+                    _pTextService->ToggleInputMode();
+                    bool newChineseMode = _pTextService->IsChineseMode();
+
+                    // Clear composition if switching modes during input
+                    bool hadInput = _isComposing || _hasCandidates;
+                    if (hadInput)
+                    {
+                        _pTextService->EndComposition();
+                        _isComposing = FALSE;
+                        _hasCandidates = FALSE;
+                    }
                 }
             }
 
