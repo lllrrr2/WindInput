@@ -121,6 +121,10 @@ func isCJKChar(char rune) bool {
 // IsStringCommon 判断字符串中的所有汉字是否都是通用规范汉字
 // 采用"一票否决"规则：只要有一个汉字不是通用字，就返回 false
 func IsStringCommon(text string) bool {
+	// 空字符串不是有效的候选词
+	if text == "" {
+		return false
+	}
 	InitCommonChars()
 	for _, char := range text {
 		// 检查所有 CJK 汉字（包括扩展区）
@@ -147,4 +151,11 @@ func AddCommonChars(chars string) {
 			commonCharMap[char] = true
 		}
 	}
+}
+
+// ResetCommonCharsForTesting 重置通用汉字表（仅用于测试）
+// 这个函数会清空现有数据并重置 sync.Once，以便重新初始化
+func ResetCommonCharsForTesting() {
+	commonCharMap = make(map[rune]bool)
+	commonCharOnce = sync.Once{}
 }

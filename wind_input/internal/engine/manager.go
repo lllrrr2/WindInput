@@ -260,16 +260,8 @@ func (m *Manager) initWubiEngine(dictPath string, config *wubi.Config) error {
 			return fmt.Errorf("加载五笔码表失败: %w", err)
 		}
 		log.Printf("[EngineManager] 五笔码表加载成功，词条数: %d", engine.GetEntryCount())
-
-		// 如果有 DictManager，注册系统词库
-		if m.dictManager != nil {
-			ct, _ := dict.LoadCodeTable(dictPath)
-			if ct != nil {
-				systemLayer := dict.NewCodeTableLayer("wubi-system", dict.LayerTypeSystem, ct)
-				m.dictManager.RegisterSystemLayer("wubi-system", systemLayer)
-				log.Printf("[EngineManager] 五笔系统词库已注册到 DictManager")
-			}
-		}
+		// 注意：五笔引擎直接使用自己的 codeTable，不注册到 DictManager
+		// 这样避免与其他引擎的系统词库混淆
 	}
 
 	// 设置 DictManager（用于查询用户词和短语）
@@ -488,13 +480,8 @@ func (m *Manager) loadWubiEngineLocked() error {
 		return fmt.Errorf("加载五笔码表失败: %w", err)
 	}
 
-	// 如果有 DictManager，注册系统词库并设置
+	// 设置 DictManager（用于查询用户词和短语，不含系统词库）
 	if m.dictManager != nil {
-		ct, _ := dict.LoadCodeTable(fullPath)
-		if ct != nil {
-			systemLayer := dict.NewCodeTableLayer("wubi-system", dict.LayerTypeSystem, ct)
-			m.dictManager.RegisterSystemLayer("wubi-system", systemLayer)
-		}
 		engine.SetDictManager(m.dictManager)
 	}
 

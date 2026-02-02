@@ -126,21 +126,29 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 
 	var candidates []candidate.Candidate
 
-	// 如果有 DictManager，使用聚合查询（包含用户词、短语等）
+	// 查询策略：
+	// 1. 先查上层词库（短语、用户词）- 通过 DictManager 的上层
+	// 2. 再查五笔系统码表 - 直接使用 codeTable
+	// 这样避免了 DictManager 中其他引擎的系统词库干扰
+
+	// Step 1: 查询上层词库（短语、用户词）
 	if e.dictManager != nil {
-		candidates = e.dictManager.Search(input, 0)
-
-		// 如果精确匹配为空，尝试前缀匹配
-		if len(candidates) == 0 {
-			candidates = e.dictManager.SearchPrefix(input, 0)
+		// 只查询上层（PhraseLayer、UserDict），不查系统词库
+		if phraseLayer := e.dictManager.GetPhraseLayer(); phraseLayer != nil {
+			candidates = append(candidates, phraseLayer.Search(input, 0)...)
 		}
-	} else if e.codeTable != nil {
-		// 回退：直接查询码表
-		candidates = e.codeTable.Lookup(input)
-
-		if len(candidates) == 0 {
-			candidates = e.codeTable.LookupPrefix(input)
+		if userDict := e.dictManager.GetUserDict(); userDict != nil {
+			candidates = append(candidates, userDict.Search(input, 0)...)
 		}
+	}
+
+	// Step 2: 查询五笔系统码表
+	if e.codeTable != nil {
+		systemCandidates := e.codeTable.Lookup(input)
+		if len(systemCandidates) == 0 {
+			systemCandidates = e.codeTable.LookupPrefix(input)
+		}
+		candidates = append(candidates, systemCandidates...)
 	}
 
 	// 空码处理
