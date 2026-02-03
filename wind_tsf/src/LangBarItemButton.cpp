@@ -97,7 +97,7 @@ STDAPI CLangBarItemButton::GetInfo(TF_LANGBARITEMINFO* pInfo)
     // 设置描述 - 显示为工具提示
     wcscpy_s(pInfo->szDescription, TEXTSERVICE_NAME);
 
-    OutputDebugStringW(L"[WindInput] LangBarItemButton::GetInfo called\n");
+    WIND_LOG_TRACE(L"GetInfo called\n");
 
     return S_OK;
 }
@@ -176,7 +176,7 @@ STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu)
     if (pMenu == nullptr)
         return E_INVALIDARG;
 
-    OutputDebugStringW(L"[WindInput] InitMenu called\n");
+    WIND_LOG_DEBUG(L"InitMenu called\n");
 
     // Add menu items
     // 中文模式
@@ -221,9 +221,7 @@ STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu)
 
 STDAPI CLangBarItemButton::OnMenuSelect(UINT wID)
 {
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] OnMenuSelect: wID=%d\n", wID);
-    OutputDebugStringW(debug);
+    WIND_LOG_DEBUG_FMT(L"OnMenuSelect: wID=%d\n", wID);
 
     if (_pTextService == nullptr)
         return E_FAIL;
@@ -267,13 +265,13 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
 
     *phIcon = nullptr;
 
-    OutputDebugStringW(L"[WindInput] LangBarItemButton::GetIcon called\n");
+    WIND_LOG_TRACE(L"GetIcon called\n");
 
     // Get DPI scaling
     HDC hdcScreen = GetDC(NULL);
     if (hdcScreen == NULL)
     {
-        OutputDebugStringW(L"[WindInput] GetIcon: GetDC failed\n");
+        WIND_LOG_ERROR(L"GetIcon: GetDC failed\n");
         return E_FAIL;
     }
 
@@ -286,7 +284,7 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
     if (hdcMem == NULL)
     {
         ReleaseDC(NULL, hdcScreen);
-        OutputDebugStringW(L"[WindInput] GetIcon: CreateCompatibleDC failed\n");
+        WIND_LOG_ERROR(L"GetIcon: CreateCompatibleDC failed\n");
         return E_FAIL;
     }
 
@@ -296,7 +294,7 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
     {
         DeleteDC(hdcMem);
         ReleaseDC(NULL, hdcScreen);
-        OutputDebugStringW(L"[WindInput] GetIcon: CreateCompatibleBitmap failed\n");
+        WIND_LOG_ERROR(L"GetIcon: CreateCompatibleBitmap failed\n");
         return E_FAIL;
     }
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdcMem, hBitmap);
@@ -398,10 +396,8 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
     DeleteObject(hBitmap);
     DeleteObject(hMaskBitmap);
 
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] GetIcon: size=%d, mode=%s, icon=%p\n",
+    WIND_LOG_DEBUG_FMT(L"GetIcon: size=%d, mode=%s, icon=%p\n",
               iconSize, _bChineseMode ? L"Chinese" : L"English", *phIcon);
-    OutputDebugStringW(debug);
 
     return (*phIcon != nullptr) ? S_OK : E_FAIL;
 }
@@ -469,7 +465,7 @@ LRESULT CALLBACK CLangBarItemButton::_MsgWndProc(HWND hwnd, UINT msg, WPARAM wPa
 
         if (pThis != nullptr && pData != nullptr)
         {
-            OutputDebugStringW(L"[WindInput] MsgWndProc: Processing WM_UPDATE_STATUS\n");
+            WIND_LOG_DEBUG(L"MsgWndProc: Processing WM_UPDATE_STATUS\n");
             // Call UpdateFullStatus on the UI thread
             pThis->UpdateFullStatus(pData->bChineseMode, pData->bFullWidth,
                                      pData->bChinesePunct, pData->bToolbarVisible, pData->bCapsLock);
@@ -485,11 +481,11 @@ LRESULT CALLBACK CLangBarItemButton::_MsgWndProc(HWND hwnd, UINT msg, WPARAM wPa
 
 BOOL CLangBarItemButton::Initialize()
 {
-    OutputDebugStringW(L"[WindInput] LangBarItemButton::Initialize\n");
+    WIND_LOG_INFO(L"LangBarItemButton::Initialize\n");
 
     if (_pTextService == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] LangBarItemButton: _pTextService is null\n");
+        WIND_LOG_ERROR(L"LangBarItemButton: _pTextService is null\n");
         return FALSE;
     }
 
@@ -503,7 +499,7 @@ BOOL CLangBarItemButton::Initialize()
         s_msgWndClass = RegisterClassExW(&wc);
         if (s_msgWndClass == 0)
         {
-            OutputDebugStringW(L"[WindInput] Failed to register message window class\n");
+            WIND_LOG_WARN(L"Failed to register message window class\n");
         }
     }
 
@@ -516,18 +512,18 @@ BOOL CLangBarItemButton::Initialize()
         {
             // Store this pointer in window data
             SetWindowLongPtrW(_hMsgWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-            OutputDebugStringW(L"[WindInput] Message window created for cross-thread updates\n");
+            WIND_LOG_DEBUG(L"Message window created for cross-thread updates\n");
         }
         else
         {
-            OutputDebugStringW(L"[WindInput] Failed to create message window\n");
+            WIND_LOG_WARN(L"Failed to create message window\n");
         }
     }
 
     ITfThreadMgr* pThreadMgr = _pTextService->GetThreadMgr();
     if (pThreadMgr == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] LangBarItemButton: pThreadMgr is null\n");
+        WIND_LOG_ERROR(L"LangBarItemButton: pThreadMgr is null\n");
         return FALSE;
     }
 
@@ -535,33 +531,29 @@ BOOL CLangBarItemButton::Initialize()
     HRESULT hr = pThreadMgr->QueryInterface(IID_ITfLangBarItemMgr, (void**)&pLangBarItemMgr);
     if (FAILED(hr) || pLangBarItemMgr == nullptr)
     {
-        WCHAR debug[256];
-        wsprintfW(debug, L"[WindInput] Failed to get ITfLangBarItemMgr, hr=0x%08X\n", hr);
-        OutputDebugStringW(debug);
+        WIND_LOG_ERROR_FMT(L"Failed to get ITfLangBarItemMgr, hr=0x%08X\n", hr);
         return FALSE;
     }
 
     hr = pLangBarItemMgr->AddItem(this);
 
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] LangBarItemMgr->AddItem returned hr=0x%08X\n", hr);
-    OutputDebugStringW(debug);
+    WIND_LOG_DEBUG_FMT(L"LangBarItemMgr->AddItem returned hr=0x%08X\n", hr);
 
     pLangBarItemMgr->Release();
 
     if (FAILED(hr))
     {
-        OutputDebugStringW(L"[WindInput] Failed to add LangBarItem\n");
+        WIND_LOG_ERROR(L"Failed to add LangBarItem\n");
         return FALSE;
     }
 
-    OutputDebugStringW(L"[WindInput] LangBarItemButton initialized successfully\n");
+    WIND_LOG_INFO(L"LangBarItemButton initialized successfully\n");
     return TRUE;
 }
 
 void CLangBarItemButton::Uninitialize()
 {
-    OutputDebugStringW(L"[WindInput] LangBarItemButton::Uninitialize\n");
+    WIND_LOG_INFO(L"LangBarItemButton::Uninitialize\n");
 
     // Destroy message window
     if (_hMsgWnd != NULL)
@@ -647,10 +639,8 @@ void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BO
         _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
     }
 
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, needUpdate=%d\n",
+    WIND_LOG_DEBUG_FMT(L"UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, needUpdate=%d\n",
               bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock, needUpdate);
-    OutputDebugStringW(debug);
 }
 
 void CLangBarItemButton::PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
@@ -658,7 +648,7 @@ void CLangBarItemButton::PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth
     // Thread-safe update: post message to message window which runs on UI thread
     if (_hMsgWnd == NULL)
     {
-        OutputDebugStringW(L"[WindInput] PostUpdateFullStatus: No message window, falling back to direct call\n");
+        WIND_LOG_WARN(L"PostUpdateFullStatus: No message window, falling back to direct call\n");
         // Fallback to direct call (may not work from async thread)
         UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
         return;
@@ -677,17 +667,17 @@ void CLangBarItemButton::PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth
     {
         // PostMessage failed, free data and fallback
         delete pData;
-        OutputDebugStringW(L"[WindInput] PostUpdateFullStatus: PostMessage failed\n");
+        WIND_LOG_WARN(L"PostUpdateFullStatus: PostMessage failed\n");
     }
     else
     {
-        OutputDebugStringW(L"[WindInput] PostUpdateFullStatus: Message posted to UI thread\n");
+        WIND_LOG_DEBUG(L"PostUpdateFullStatus: Message posted to UI thread\n");
     }
 }
 
 void CLangBarItemButton::ForceRefresh()
 {
-    OutputDebugStringW(L"[WindInput] ForceRefresh called\n");
+    WIND_LOG_DEBUG(L"ForceRefresh called\n");
 
     // Update current Caps Lock state
     _bCapsLock = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
@@ -698,7 +688,5 @@ void CLangBarItemButton::ForceRefresh()
         _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP | TF_LBI_STATUS);
     }
 
-    WCHAR debug[256];
-    wsprintfW(debug, L"[WindInput] ForceRefresh: mode=%d, caps=%d\n", _bChineseMode, _bCapsLock);
-    OutputDebugStringW(debug);
+    WIND_LOG_DEBUG_FMT(L"ForceRefresh: mode=%d, caps=%d\n", _bChineseMode, _bCapsLock);
 }

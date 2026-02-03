@@ -71,7 +71,7 @@ STDAPI_(ULONG) CKeyEventSink::Release()
 
 STDAPI CKeyEventSink::OnSetFocus(BOOL fForeground)
 {
-    WIND_LOG(L"[WindInput] KeyEventSink::OnSetFocus\n");
+    WIND_LOG_INFO(L"KeyEventSink::OnSetFocus\n");
     return S_OK;
 }
 
@@ -79,8 +79,8 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
 {
     *pfEaten = FALSE;
 
-    // Debug: Log ALL key presses (only when WIND_DEBUG_LOG is enabled)
-    WIND_LOG_FMT(L"[WindInput] OnTestKeyDown: wParam=0x%02X\n", (uint32_t)wParam);
+    // Trace: Log ALL key presses (very high frequency)
+    WIND_LOG_TRACE_FMT(L"OnTestKeyDown: wParam=0x%02X\n", (uint32_t)wParam);
 
     // First check if the context is read-only (browser non-editable area)
     if (_IsContextReadOnly(pContext))
@@ -102,7 +102,7 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // Use normalized hash for function hotkeys (Ctrl+`, Shift+Space, etc.)
     if (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyDownHotkey(normalizedKeyHash))
     {
-        WIND_LOG_FMT(L"[WindInput] KeyDown hotkey matched: vk=0x%02X, hash=0x%08X\n",
+        WIND_LOG_DEBUG_FMT(L"KeyDown hotkey matched: vk=0x%02X, hash=0x%08X\n",
                      (uint32_t)wParam, normalizedKeyHash);
         *pfEaten = TRUE;
         return S_OK;
@@ -260,7 +260,7 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         _pendingKeyUpKey = specificKey;
         _pendingKeyUpModifiers = modifiers;
 
-        WIND_LOG(L"[WindInput] OnKeyDown: Toggle mode key pending for KeyUp\n");
+        WIND_LOG_DEBUG(L"OnKeyDown: Toggle mode key pending for KeyUp\n");
 
         *pfEaten = TRUE;
         return S_OK;
@@ -334,7 +334,7 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     // Send key to Go Service using binary protocol (SYNC mode)
     if (!_SendKeyToService((uint32_t)wParam, modifiers, KEY_EVENT_DOWN))
     {
-        WIND_LOG_ERROR(L"Failed to send key to service\n");
+        WIND_LOG_ERROR(L"Failed to send key to service");
 
         // Service not available - pass through letters directly
         if (wParam >= 'A' && wParam <= 'Z' && !(modifiers & (KEYMOD_CTRL | KEYMOD_ALT)))
@@ -399,7 +399,7 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
             // and return ModeChanged response if the key is configured as toggle key
             if (pendingKey != VK_CAPITAL)
             {
-                WIND_LOG_FMT(L"[WindInput] Sending toggle key KeyUp to Go: vk=0x%02X\n", pendingKey);
+                WIND_LOG_DEBUG_FMT(L"Sending toggle key KeyUp to Go: vk=0x%02X\n", pendingKey);
 
                 // Build modifiers for the specific key being released
                 // This helps Go identify exactly which key was released
@@ -432,7 +432,7 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
                 else
                 {
                     // IPC failed - don't toggle locally to keep state consistent with Go
-                    WIND_LOG(L"[WindInput] IPC failed for toggle key, not toggling locally\n");
+                    WIND_LOG_ERROR(L"IPC failed for toggle key, not toggling locally");
                 }
             }
 
@@ -478,7 +478,7 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
         else
         {
             // IPC failed, fall back to local update
-            WIND_LOG(L"[WindInput] IPC failed for CapsLock, updating locally\n");
+            WIND_LOG_ERROR(L"IPC failed for CapsLock, updating locally");
             _pTextService->UpdateCapsLockState(capsLockOn);
         }
 
@@ -497,12 +497,12 @@ STDAPI CKeyEventSink::OnPreservedKey(ITfContext* pContext, REFGUID rguid, BOOL* 
 
 BOOL CKeyEventSink::Initialize()
 {
-    WIND_LOG(L"[WindInput] KeyEventSink::Initialize\n");
+    WIND_LOG_INFO(L"KeyEventSink::Initialize\n");
 
     ITfThreadMgr* pThreadMgr = _pTextService->GetThreadMgr();
     if (pThreadMgr == nullptr)
     {
-        WIND_LOG_ERROR(L"ThreadMgr is null!\n");
+        WIND_LOG_ERROR(L"ThreadMgr is null");
         return FALSE;
     }
 
@@ -511,7 +511,7 @@ BOOL CKeyEventSink::Initialize()
 
     if (FAILED(hr) || pKeystrokeMgr == nullptr)
     {
-        WIND_LOG_ERROR(L"Failed to get ITfKeystrokeMgr\n");
+        WIND_LOG_ERROR(L"Failed to get ITfKeystrokeMgr");
         return FALSE;
     }
 
@@ -520,17 +520,17 @@ BOOL CKeyEventSink::Initialize()
 
     if (FAILED(hr))
     {
-        WIND_LOG_ERROR(L"AdviseKeyEventSink failed\n");
+        WIND_LOG_ERROR(L"AdviseKeyEventSink failed");
         return FALSE;
     }
 
-    WIND_LOG(L"[WindInput] KeyEventSink initialized successfully\n");
+    WIND_LOG_INFO(L"KeyEventSink initialized successfully\n");
     return TRUE;
 }
 
 void CKeyEventSink::Uninitialize()
 {
-    WIND_LOG(L"[WindInput] KeyEventSink::Uninitialize\n");
+    WIND_LOG_INFO(L"KeyEventSink::Uninitialize\n");
 
     ITfThreadMgr* pThreadMgr = _pTextService->GetThreadMgr();
     if (pThreadMgr == nullptr)
@@ -602,7 +602,7 @@ BOOL CKeyEventSink::_SendKeyToService(uint32_t keyCode, uint32_t modifiers, uint
     CIPCClient* pIPCClient = _pTextService->GetIPCClient();
     if (pIPCClient == nullptr)
     {
-        WIND_LOG_ERROR(L"IPCClient is null!\n");
+        WIND_LOG_ERROR(L"IPCClient is null");
         return FALSE;
     }
 
@@ -620,7 +620,7 @@ BOOL CKeyEventSink::_SendKeyToService(uint32_t keyCode, uint32_t modifiers, uint
 
     BOOL result = pIPCClient->SendKeyEvent(keyCode, scanCode, modifiers, eventType, toggles, eventSeq);
 
-    WIND_LOG_FMT(L"[WindInput] _SendKeyToService: vk=0x%02X, mods=0x%04X, elapsed=%dms\n",
+    WIND_LOG_DEBUG_FMT(L"_SendKeyToService: vk=0x%02X, mods=0x%04X, elapsed=%dms\n",
                  keyCode, modifiers, GetTickCount() - startTime);
 
     return result;
@@ -644,14 +644,14 @@ BOOL CKeyEventSink::_HandleServiceResponse()
     {
         if (!pIPCClient->ReceiveResponse(response))
         {
-            WIND_LOG_ERROR(L"Failed to receive response from service\n");
+            WIND_LOG_ERROR(L"Failed to receive response from service");
             return TRUE; // Default to eating the key on error
         }
 
         // If this is a StatusUpdate (state push), process it and continue reading
         if (response.type == ResponseType::StatusUpdate)
         {
-            WIND_LOG(L"[WindInput] Received StatusUpdate (state push), processing and reading next response\n");
+            WIND_LOG_DEBUG(L"Received StatusUpdate (state push), processing and reading next response\n");
 
             // Update input mode from state push
             _pTextService->UpdateFullStatus(
@@ -679,7 +679,7 @@ BOOL CKeyEventSink::_HandleServiceResponse()
 
     QueryPerformanceCounter(&midTime);
     int ipcMs = (int)((midTime.QuadPart - startTime.QuadPart) * 1000 / freq.QuadPart);
-    WIND_LOG_FMT(L"[WindInput] _HandleServiceResponse: IPC receive took %dms, responseType=%d\n",
+    WIND_LOG_DEBUG_FMT(L"_HandleServiceResponse: IPC receive took %dms, responseType=%d\n",
                  ipcMs, (int)response.type);
 
     switch (response.type)
@@ -690,7 +690,7 @@ BOOL CKeyEventSink::_HandleServiceResponse()
 
     case ResponseType::PassThrough:
         // PassThrough means key was NOT handled, pass to system
-        WIND_LOG(L"[WindInput] PassThrough: key not handled, passing to system\n");
+        WIND_LOG_DEBUG(L"PassThrough: key not handled, passing to system\n");
         return FALSE;
 
     case ResponseType::CommitText:
@@ -698,12 +698,12 @@ BOOL CKeyEventSink::_HandleServiceResponse()
             LARGE_INTEGER ctStart, ctMid1, ctMid2, ctEnd;
             QueryPerformanceCounter(&ctStart);
 
-            WIND_LOG(L"[WindInput] Processing CommitText response\n");
+            WIND_LOG_DEBUG(L"Processing CommitText response\n");
 
             // Handle new composition if present (top code commit feature)
             if (!response.newComposition.empty())
             {
-                WIND_LOG_FMT(L"[WindInput] CommitText with new composition: text='%s', newComp='%s'\n",
+                WIND_LOG_TRACE_FMT(L"CommitText with new composition: text='%s', newComp='%s'\n",
                              response.text.c_str(), response.newComposition.c_str());
 
                 _pTextService->InsertTextAndStartComposition(response.text, response.newComposition);
@@ -728,7 +728,7 @@ BOOL CKeyEventSink::_HandleServiceResponse()
                 // Log detailed timing (use integer ms to avoid wsprintfW %f issue)
                 int endCompMs = (int)((ctMid1.QuadPart - ctStart.QuadPart) * 1000 / freq.QuadPart);
                 int insertMs = (int)((ctMid2.QuadPart - ctMid1.QuadPart) * 1000 / freq.QuadPart);
-                WIND_LOG_FMT(L"[WindInput] CommitText: EndComposition=%dms, InsertText=%dms\n", endCompMs, insertMs);
+                WIND_LOG_TRACE_FMT(L"CommitText: EndComposition=%dms, InsertText=%dms\n", endCompMs, insertMs);
             }
 
             // Handle mode change if present
@@ -739,7 +739,7 @@ BOOL CKeyEventSink::_HandleServiceResponse()
 
             QueryPerformanceCounter(&ctEnd);
             int ctMs = (int)((ctEnd.QuadPart - ctStart.QuadPart) * 1000 / freq.QuadPart);
-            WIND_LOG_FMT(L"[WindInput] CommitText total took %dms\n", ctMs);
+            WIND_LOG_DEBUG_FMT(L"CommitText total took %dms\n", ctMs);
         }
         return TRUE;
 
@@ -748,26 +748,26 @@ BOOL CKeyEventSink::_HandleServiceResponse()
             LARGE_INTEGER ucStart, ucEnd;
             QueryPerformanceCounter(&ucStart);
 
-            WIND_LOG(L"[WindInput] Received UpdateComposition from service\n");
+            WIND_LOG_TRACE(L"Received UpdateComposition from service\n");
             _isComposing = TRUE;
             _hasCandidates = TRUE;
             _pTextService->UpdateComposition(response.composition, response.caretPos);
 
             QueryPerformanceCounter(&ucEnd);
             int ucMs = (int)((ucEnd.QuadPart - ucStart.QuadPart) * 1000 / freq.QuadPart);
-            WIND_LOG_FMT(L"[WindInput] UpdateComposition total took %dms\n", ucMs);
+            WIND_LOG_DEBUG_FMT(L"UpdateComposition total took %dms\n", ucMs);
         }
         return TRUE;
 
     case ResponseType::ClearComposition:
-        WIND_LOG(L"[WindInput] Received ClearComposition from service\n");
+        WIND_LOG_DEBUG(L"Received ClearComposition from service\n");
         _isComposing = FALSE;
         _hasCandidates = FALSE;
         _pTextService->EndComposition();
         return TRUE;
 
     case ResponseType::ModeChanged:
-        WIND_LOG(L"[WindInput] Received ModeChanged from service\n");
+        WIND_LOG_DEBUG(L"Received ModeChanged from service\n");
         _isComposing = FALSE;
         _hasCandidates = FALSE;
         _pTextService->EndComposition();
@@ -777,7 +777,7 @@ BOOL CKeyEventSink::_HandleServiceResponse()
     case ResponseType::StatusUpdate:
         // StatusUpdate is normally handled in the loop above, but if we get here
         // it means we received a StatusUpdate as the final response (e.g., from FocusGained)
-        WIND_LOG(L"[WindInput] Received StatusUpdate as final response\n");
+        WIND_LOG_DEBUG(L"Received StatusUpdate as final response\n");
         _pTextService->UpdateFullStatus(
             response.IsChineseMode(),
             response.IsFullWidth(),
@@ -789,11 +789,11 @@ BOOL CKeyEventSink::_HandleServiceResponse()
 
     case ResponseType::Consumed:
         // Key was consumed by a hotkey
-        WIND_LOG(L"[WindInput] Key consumed by hotkey\n");
+        WIND_LOG_DEBUG(L"Key consumed by hotkey\n");
         return TRUE;
 
     default:
-        WIND_LOG_ERROR(L"Unknown response type from service\n");
+        WIND_LOG_ERROR(L"Unknown response type from service");
         return TRUE;
     }
 
@@ -832,7 +832,7 @@ BOOL CKeyEventSink::_IsContextReadOnly(ITfContext* pContext)
 // before the previous InsertText operation completes
 void CKeyEventSink::OnCompositionUnexpectedlyTerminated()
 {
-    WIND_LOG(L"[WindInput] OnCompositionUnexpectedlyTerminated: Resetting state\n");
+    WIND_LOG_DEBUG(L"OnCompositionUnexpectedlyTerminated: Resetting state\n");
 
     // Reset local state
     _isComposing = FALSE;
@@ -998,7 +998,7 @@ void CKeyEventSink::_HandleCommitResult(uint16_t barrierSeq, const std::wstring&
     if (!_pendingCommit.waiting || _pendingCommit.barrierSeq != barrierSeq)
     {
         // Barrier mismatch, log warning
-        WIND_LOG(L"[WindInput] CommitResult barrier mismatch, ignoring\n");
+        WIND_LOG_TRACE(L"CommitResult barrier mismatch, ignoring\n");
         return;
     }
 
@@ -1039,7 +1039,7 @@ void CKeyEventSink::_CheckBarrierTimeout()
     DWORD elapsed = GetTickCount() - _pendingCommit.requestTime;
     if (elapsed > BARRIER_TIMEOUT_MS)
     {
-        WIND_LOG(L"[WindInput] Barrier timeout, falling back to local handling\n");
+        WIND_LOG_ERROR(L"Barrier timeout, falling back to local handling");
 
         // Timeout - clear pending state and try to recover
         _pendingCommit.waiting = false;

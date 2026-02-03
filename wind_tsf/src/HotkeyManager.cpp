@@ -11,7 +11,7 @@ CHotkeyManager::~CHotkeyManager()
 void CHotkeyManager::UpdateHotkeys(const std::vector<uint32_t>& keyDownHotkeys,
                                    const std::vector<uint32_t>& keyUpHotkeys)
 {
-    OutputDebugStringW(L"[WindInput] HotkeyManager::UpdateHotkeys called\n");
+    WIND_LOG_INFO(L"HotkeyManager::UpdateHotkeys called\n");
 
     // Clear existing hotkeys
     _keyDownHotkeys.clear();
@@ -199,43 +199,43 @@ uint32_t CHotkeyManager::NormalizeModifiers(uint32_t modifiers)
 
 void CHotkeyManager::LogConfig() const
 {
-    WCHAR debug[512];
-    wsprintfW(debug, L"[WindInput] HotkeyManager: keyDownHotkeys=%d, keyUpHotkeys=%d\n",
+    WIND_LOG_DEBUG_FMT(L"HotkeyManager: keyDownHotkeys=%d, keyUpHotkeys=%d\n",
               (int)_keyDownHotkeys.size(), (int)_keyUpHotkeys.size());
-    OutputDebugStringW(debug);
 
     // Log some hotkey hashes for debugging
     if (!_keyDownHotkeys.empty())
     {
-        OutputDebugStringW(L"[WindInput] KeyDown hotkeys: ");
+        WCHAR hashBuf[256] = L"";
         int count = 0;
         for (uint32_t hash : _keyDownHotkeys)
         {
-            wsprintfW(debug, L"0x%08X ", hash);
-            OutputDebugStringW(debug);
+            WCHAR temp[16];
+            wsprintfW(temp, L"0x%08X ", hash);
+            wcscat_s(hashBuf, temp);
             if (++count >= 5)
             {
-                OutputDebugStringW(L"...");
+                wcscat_s(hashBuf, L"...");
                 break;
             }
         }
-        OutputDebugStringW(L"\n");
+        WIND_LOG_DEBUG_FMT(L"KeyDown hotkeys: %s\n", hashBuf);
     }
 
     if (!_keyUpHotkeys.empty())
     {
-        OutputDebugStringW(L"[WindInput] KeyUp hotkeys: ");
+        WCHAR hashBuf[256] = L"";
         int count = 0;
         for (uint32_t hash : _keyUpHotkeys)
         {
-            wsprintfW(debug, L"0x%08X ", hash);
-            OutputDebugStringW(debug);
+            WCHAR temp[16];
+            wsprintfW(temp, L"0x%08X ", hash);
+            wcscat_s(hashBuf, temp);
             if (++count >= 5)
             {
-                OutputDebugStringW(L"...");
+                wcscat_s(hashBuf, L"...");
                 break;
             }
         }
-        OutputDebugStringW(L"\n");
+        WIND_LOG_DEBUG_FMT(L"KeyUp hotkeys: %s\n", hashBuf);
     }
 }

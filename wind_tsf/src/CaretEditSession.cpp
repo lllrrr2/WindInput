@@ -1,5 +1,6 @@
 #include "CaretEditSession.h"
 #include "TextService.h"
+#include "Globals.h"
 
 CCaretEditSession::CCaretEditSession(ITfContext* pContext)
     : _refCount(1)
@@ -62,7 +63,7 @@ STDAPI CCaretEditSession::DoEditSession(TfEditCookie ec)
 
     if (!_pContext)
     {
-        OutputDebugStringW(L"[WindInput] CaretEditSession: Context is null\n");
+        WIND_LOG_ERROR(L"CaretEditSession: Context is null\n");
         return E_FAIL;
     }
 
@@ -71,7 +72,7 @@ STDAPI CCaretEditSession::DoEditSession(TfEditCookie ec)
     HRESULT hr = _pContext->GetActiveView(&pContextView);
     if (FAILED(hr) || pContextView == nullptr)
     {
-        OutputDebugStringW(L"[WindInput] CaretEditSession: Failed to get active view\n");
+        WIND_LOG_ERROR(L"CaretEditSession: Failed to get active view\n");
         return hr;
     }
 
@@ -90,16 +91,12 @@ STDAPI CCaretEditSession::DoEditSession(TfEditCookie ec)
         {
             _succeeded = TRUE;
 
-            WCHAR debug[256];
-            wsprintfW(debug, L"[WindInput] CaretEditSession: Got caret rect (%ld, %ld, %ld, %ld) clipped=%d\n",
+            WIND_LOG_DEBUG_FMT(L"CaretEditSession: Got caret rect (%ld, %ld, %ld, %ld) clipped=%d\n",
                       _caretRect.left, _caretRect.top, _caretRect.right, _caretRect.bottom, clipped);
-            OutputDebugStringW(debug);
         }
         else
         {
-            WCHAR debug[128];
-            wsprintfW(debug, L"[WindInput] CaretEditSession: GetTextExt failed hr=0x%08X\n", hr);
-            OutputDebugStringW(debug);
+            WIND_LOG_ERROR_FMT(L"CaretEditSession: GetTextExt failed hr=0x%08X\n", hr);
         }
 
         sel[0].range->Release();
@@ -107,7 +104,7 @@ STDAPI CCaretEditSession::DoEditSession(TfEditCookie ec)
     else
     {
         // No selection, try to get the end of the document or use insertion point
-        OutputDebugStringW(L"[WindInput] CaretEditSession: No selection available\n");
+        WIND_LOG_DEBUG(L"CaretEditSession: No selection available\n");
 
         // Try to get screen extent as fallback
         hr = pContextView->GetScreenExt(&_caretRect);
@@ -117,7 +114,7 @@ STDAPI CCaretEditSession::DoEditSession(TfEditCookie ec)
             _caretRect.right = _caretRect.left + 2;
             _caretRect.bottom = _caretRect.top + 20;
             _succeeded = TRUE;
-            OutputDebugStringW(L"[WindInput] CaretEditSession: Using screen extent as fallback\n");
+            WIND_LOG_DEBUG(L"CaretEditSession: Using screen extent as fallback\n");
         }
     }
 
@@ -170,9 +167,7 @@ BOOL CCaretEditSession::GetCaretRect(ITfContext* pContext, RECT* prc)
     }
     else
     {
-        WCHAR debug[128];
-        wsprintfW(debug, L"[WindInput] RequestEditSession failed hr=0x%08X, hrSession=0x%08X\n", hr, hrSession);
-        OutputDebugStringW(debug);
+        WIND_LOG_ERROR_FMT(L"RequestEditSession failed hr=0x%08X, hrSession=0x%08X\n", hr, hrSession);
     }
 
     pEditSession->Release();

@@ -1,5 +1,6 @@
 #include "Register.h"
 #include "DisplayAttributeInfo.h"
+#include "Globals.h"
 #include <shlwapi.h>
 #include <strsafe.h>
 #include <inputscope.h>
@@ -108,9 +109,11 @@ HRESULT RegisterProfile()
             TRUE,                   // bEnabledByDefault
             0);                     // dwFlags
 
-        WCHAR debug[256];
-        wsprintfW(debug, L"[WindInput] RegisterProfile (ProfileMgr) hr=0x%08X\n", hr);
-        OutputDebugStringW(debug);
+        if (SUCCEEDED(hr)) {
+            WIND_LOG_INFO(L"RegisterProfile (ProfileMgr) succeeded\n");
+        } else {
+            WIND_LOG_WARN_FMT(L"RegisterProfile (ProfileMgr) failed hr=0x%08X\n", hr);
+        }
 
         pProfileMgr->Release();
     }
@@ -137,9 +140,11 @@ HRESULT RegisterProfile()
                                                    TEXTSERVICE_ICON_INDEX);
             }
 
-            WCHAR debug[256];
-            wsprintfW(debug, L"[WindInput] RegisterProfile (legacy) hr=0x%08X\n", hr);
-            OutputDebugStringW(debug);
+            if (SUCCEEDED(hr)) {
+                WIND_LOG_INFO(L"RegisterProfile (legacy) succeeded\n");
+            } else {
+                WIND_LOG_WARN_FMT(L"RegisterProfile (legacy) failed hr=0x%08X\n", hr);
+            }
 
             pProfiles->Release();
         }
@@ -176,54 +181,66 @@ HRESULT RegisterCategories()
                                              GUID_TFCAT_TIP_KEYBOARD,
                                              c_clsidTextService);
 
-        OutputDebugStringW(SUCCEEDED(hr) ?
-            L"[WindInput] Registered GUID_TFCAT_TIP_KEYBOARD\n" :
-            L"[WindInput] Failed to register GUID_TFCAT_TIP_KEYBOARD\n");
+        if (SUCCEEDED(hr)) {
+            WIND_LOG_INFO(L"Registered GUID_TFCAT_TIP_KEYBOARD\n");
+        } else {
+            WIND_LOG_WARN_FMT(L"Failed to register GUID_TFCAT_TIP_KEYBOARD hr=0x%08X\n", hr);
+        }
 
         // 注册 Windows 8+ 现代应用支持 (Immersive/Metro apps)
         HRESULT hr2 = pCategoryMgr->RegisterCategory(c_clsidTextService,
                                                       GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
                                                       c_clsidTextService);
 
-        OutputDebugStringW(SUCCEEDED(hr2) ?
-            L"[WindInput] Registered GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT\n" :
-            L"[WindInput] Failed to register GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT\n");
+        if (SUCCEEDED(hr2)) {
+            WIND_LOG_INFO(L"Registered GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT\n");
+        } else {
+            WIND_LOG_WARN_FMT(L"Failed to register GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT hr=0x%08X\n", hr2);
+        }
 
         // 注册系统托盘支持 (用于在输入指示器显示图标)
         hr2 = pCategoryMgr->RegisterCategory(c_clsidTextService,
                                               GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT,
                                               c_clsidTextService);
 
-        OutputDebugStringW(SUCCEEDED(hr2) ?
-            L"[WindInput] Registered GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT\n" :
-            L"[WindInput] Failed to register GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT\n");
+        if (SUCCEEDED(hr2)) {
+            WIND_LOG_INFO(L"Registered GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT\n");
+        } else {
+            WIND_LOG_WARN_FMT(L"Failed to register GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT hr=0x%08X\n", hr2);
+        }
 
         // 注册 UI 元素支持 (候选窗口等)
         hr2 = pCategoryMgr->RegisterCategory(c_clsidTextService,
                                               GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
                                               c_clsidTextService);
 
-        OutputDebugStringW(SUCCEEDED(hr2) ?
-            L"[WindInput] Registered GUID_TFCAT_TIPCAP_UIELEMENTENABLED\n" :
-            L"[WindInput] Failed to register GUID_TFCAT_TIPCAP_UIELEMENTENABLED\n");
+        if (SUCCEEDED(hr2)) {
+            WIND_LOG_INFO(L"Registered GUID_TFCAT_TIPCAP_UIELEMENTENABLED\n");
+        } else {
+            WIND_LOG_WARN_FMT(L"Failed to register GUID_TFCAT_TIPCAP_UIELEMENTENABLED hr=0x%08X\n", hr2);
+        }
 
         // 注册 Display Attribute Provider (用于 Inline Composition 显示下划线)
         hr2 = pCategoryMgr->RegisterCategory(c_clsidTextService,
                                               GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
                                               c_clsidTextService);
 
-        OutputDebugStringW(SUCCEEDED(hr2) ?
-            L"[WindInput] Registered GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER\n" :
-            L"[WindInput] Failed to register GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER\n");
+        if (SUCCEEDED(hr2)) {
+            WIND_LOG_INFO(L"Registered GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER\n");
+        } else {
+            WIND_LOG_WARN_FMT(L"Failed to register GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER hr=0x%08X\n", hr2);
+        }
 
         // 注册 Display Attribute Info (具体的显示属性)
         hr2 = pCategoryMgr->RegisterCategory(c_clsidTextService,
                                               GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
                                               c_guidDisplayAttributeInput);
 
-        OutputDebugStringW(SUCCEEDED(hr2) ?
-            L"[WindInput] Registered display attribute to provider\n" :
-            L"[WindInput] Failed to register display attribute to provider\n");
+        if (SUCCEEDED(hr2)) {
+            WIND_LOG_INFO(L"Registered display attribute to provider\n");
+        } else {
+            WIND_LOG_WARN_FMT(L"Failed to register display attribute to provider hr=0x%08X\n", hr2);
+        }
 
         pCategoryMgr->Release();
     }
