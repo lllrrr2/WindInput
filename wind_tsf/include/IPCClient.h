@@ -117,6 +117,10 @@ public:
     // This notifies Go that TSF has locally toggled the mode
     BOOL SendModeNotify(bool chineseMode, bool clearInput);
 
+    // Send toggle mode request (sync, from UI click)
+    // Go service will toggle mode and return ModeChanged response
+    BOOL SendToggleMode(ServiceResponse& response);
+
     // Check if connected
     BOOL IsConnected() const { return _hPipe != INVALID_HANDLE_VALUE; }
 

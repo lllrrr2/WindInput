@@ -340,6 +340,9 @@ func main() {
 	// Create Bridge IPC server (connects to C++)
 	bridgeServer := bridge.NewServer(coord, logger)
 
+	// Set bridge server on coordinator for state broadcasting
+	coord.SetBridgeServer(bridgeServer)
+
 	// Start Bridge server (blocks main thread)
 	logger.Info("Starting Bridge IPC server...")
 	if err := bridgeServer.Start(); err != nil {

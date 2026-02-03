@@ -55,10 +55,11 @@ const (
 
 // ToolbarState represents the current state of the toolbar
 type ToolbarState struct {
-	ChineseMode bool
-	CapsLock    bool
-	FullWidth   bool
-	ChinesePunct bool
+	ChineseMode   bool
+	CapsLock      bool
+	FullWidth     bool
+	ChinesePunct  bool
+	EffectiveMode int // 0=Chinese, 1=EnglishLower, 2=EnglishUpper
 }
 
 // ToolbarCallback represents callbacks for toolbar actions

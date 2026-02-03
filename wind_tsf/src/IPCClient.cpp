@@ -648,6 +648,30 @@ BOOL CIPCClient::SendModeNotify(bool chineseMode, bool clearInput)
     return _SendBinaryMessage(CMD_MODE_NOTIFY, &flags, sizeof(flags), true /* async */);
 }
 
+BOOL CIPCClient::SendToggleMode(ServiceResponse& response)
+{
+    if (!_ShouldAttemptOperation())
+    {
+        return FALSE;
+    }
+
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
+    _LogInfo(L"Sending toggle_mode (sync)");
+
+    // Send sync - wait for ModeChanged response
+    if (!_SendBinaryMessage(CMD_TOGGLE_MODE, nullptr, 0))
+    {
+        return FALSE;
+    }
+
+    // Receive response
+    return ReceiveResponse(response);
+}
+
 // ============================================================================
 // Message receiving
 // ============================================================================
@@ -916,6 +940,28 @@ BOOL CIPCClient::_ParseResponse(const IpcHeader& header, const std::vector<uint8
 
             _LogInfo(L"Response: SyncHotkeys keyDown=%d, keyUp=%d",
                      (int)response.keyDownHotkeys.size(), (int)response.keyUpHotkeys.size());
+        }
+        break;
+
+    case CMD_STATE_PUSH:
+        {
+            // State push from Go service (proactive state broadcast)
+            // Format is same as StatusUpdate
+            response.type = ResponseType::StatusUpdate;
+
+            if (payload.size() < sizeof(StatusHeader))
+            {
+                _LogError(L"StatePush payload too short");
+                return FALSE;
+            }
+
+            const StatusHeader* statusHeader = reinterpret_cast<const StatusHeader*>(payload.data());
+            response.statusFlags = statusHeader->flags;
+            response.chineseMode = (statusHeader->flags & STATUS_CHINESE_MODE) != 0;
+
+            _LogInfo(L"Response: StatePush mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d",
+                     response.IsChineseMode(), response.IsFullWidth(), response.IsChinesePunct(),
+                     response.IsToolbarVisible(), response.IsCapsLock());
         }
         break;
 

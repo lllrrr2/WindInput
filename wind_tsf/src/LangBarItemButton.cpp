@@ -1,5 +1,6 @@
 #include "LangBarItemButton.h"
 #include "TextService.h"
+#include "IPCClient.h"
 #include "Globals.h"
 #include <olectl.h>  // For CONNECT_E_* constants
 
@@ -116,20 +117,28 @@ STDAPI CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip)
     if (pbstrToolTip == nullptr)
         return E_INVALIDARG;
 
-    if (_bChineseMode)
+    // Use effective mode: Chinese mode + CapsLock ON = English Upper (temporary)
+    BOOL effectiveChinese = _bChineseMode && !_bCapsLock;
+
+    if (effectiveChinese)
     {
         *pbstrToolTip = SysAllocString(L"WindInput - 中文模式");
     }
-    else
+    else if (_bCapsLock)
     {
-        if (_bCapsLock)
+        if (_bChineseMode)
         {
-            *pbstrToolTip = SysAllocString(L"WindInput - English Mode (Caps Lock ON)");
+            // Chinese mode with CapsLock = temporary English uppercase
+            *pbstrToolTip = SysAllocString(L"WindInput - 英文大写 (中文模式, Caps Lock)");
         }
         else
         {
-            *pbstrToolTip = SysAllocString(L"WindInput - English Mode (Caps Lock OFF)");
+            *pbstrToolTip = SysAllocString(L"WindInput - English Mode (Caps Lock ON)");
         }
+    }
+    else
+    {
+        *pbstrToolTip = SysAllocString(L"WindInput - English Mode (Caps Lock OFF)");
     }
 
     return (*pbstrToolTip != nullptr) ? S_OK : E_OUTOFMEMORY;
@@ -137,10 +146,23 @@ STDAPI CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip)
 
 STDAPI CLangBarItemButton::OnClick(TfLBIClick click, POINT pt, const RECT* prcArea)
 {
-    // Toggle mode when clicked
+    // Toggle mode via Go service (all state changes go through Go)
     if (_pTextService != nullptr)
     {
-        _pTextService->ToggleInputMode();
+        CIPCClient* pIPCClient = _pTextService->GetIPCClient();
+        if (pIPCClient != nullptr && pIPCClient->IsConnected())
+        {
+            ServiceResponse response;
+            if (pIPCClient->SendToggleMode(response))
+            {
+                // Apply mode change from Go service response
+                if (response.type == ResponseType::ModeChanged)
+                {
+                    _pTextService->SetInputMode(response.chineseMode);
+                }
+            }
+            // If IPC fails, don't toggle locally - keep state consistent with Go
+        }
     }
     return S_OK;
 }
@@ -275,10 +297,16 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
     }
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdcMem, hBitmap);
 
-    // Draw background
+    // Draw background based on effective mode:
+    // - Chinese mode + CapsLock OFF = Chinese (蓝底"中")
+    // - Chinese mode + CapsLock ON = English Upper (灰底"A") - temporary English for caps
+    // - English mode + CapsLock OFF = English Lower (灰底"a")
+    // - English mode + CapsLock ON = English Upper (灰底"A")
+    BOOL effectiveChinese = _bChineseMode && !_bCapsLock;
+
     RECT rc = { 0, 0, iconSize, iconSize };
     HBRUSH hBrush;
-    if (_bChineseMode)
+    if (effectiveChinese)
     {
         hBrush = CreateSolidBrush(RGB(66, 133, 244)); // Blue for Chinese
     }
@@ -313,12 +341,12 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
 
     HFONT hOldFont = (HFONT)SelectObject(hdcMem, hFont);
 
-    // Display text based on mode and Caps Lock state:
-    // Chinese mode: "中"
-    // English mode + Caps Lock ON: "A"
-    // English mode + Caps Lock OFF: "a"
+    // Display text based on effective mode:
+    // - effectiveChinese = true: "中"
+    // - effectiveChinese = false + CapsLock ON: "A"
+    // - effectiveChinese = false + CapsLock OFF: "a"
     const wchar_t* text;
-    if (_bChineseMode)
+    if (effectiveChinese)
     {
         text = L"中";
     }
@@ -379,7 +407,10 @@ STDAPI CLangBarItemButton::GetText(BSTR* pbstrText)
     if (pbstrText == nullptr)
         return E_INVALIDARG;
 
-    if (_bChineseMode)
+    // Use effective mode: Chinese mode + CapsLock ON = English Upper
+    BOOL effectiveChinese = _bChineseMode && !_bCapsLock;
+
+    if (effectiveChinese)
     {
         *pbstrText = SysAllocString(L"中");
     }
@@ -511,8 +542,10 @@ void CLangBarItemButton::UpdateCapsLockState(BOOL bCapsLock)
 
 void CLangBarItemButton::UpdateState(BOOL bChineseMode, BOOL bCapsLock)
 {
+    // With effective mode, CapsLock affects display in Chinese mode too
+    // (Chinese + CapsLock = English Upper)
     BOOL needUpdate = (_bChineseMode != bChineseMode) ||
-                      (!bChineseMode && _bCapsLock != bCapsLock);
+                      (_bCapsLock != bCapsLock);
 
     _bChineseMode = bChineseMode;
     _bCapsLock = bCapsLock;
@@ -525,11 +558,13 @@ void CLangBarItemButton::UpdateState(BOOL bChineseMode, BOOL bCapsLock)
 
 void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
 {
+    // With effective mode, CapsLock affects display in Chinese mode too
+    // (Chinese + CapsLock = English Upper)
     BOOL needUpdate = (_bChineseMode != bChineseMode) ||
                       (_bFullWidth != bFullWidth) ||
                       (_bChinesePunct != bChinesePunct) ||
                       (_bToolbarVisible != bToolbarVisible) ||
-                      (!bChineseMode && _bCapsLock != bCapsLock);
+                      (_bCapsLock != bCapsLock);
 
     _bChineseMode = bChineseMode;
     _bFullWidth = bFullWidth;

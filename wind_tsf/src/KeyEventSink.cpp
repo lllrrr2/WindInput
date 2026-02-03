@@ -141,9 +141,11 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     {
         HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
 
-        if (keyType == HotkeyType::Backspace || keyType == HotkeyType::Enter || keyType == HotkeyType::Escape)
+        if (keyType == HotkeyType::Backspace || keyType == HotkeyType::Enter ||
+            keyType == HotkeyType::Escape || keyType == HotkeyType::Space)
         {
             // Only intercept if we have composition
+            // Space should only be intercepted when there are candidates to select
             if (hasComposition)
             {
                 *pfEaten = TRUE;
@@ -421,6 +423,7 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
 
                 // Send KeyUp event to Go service (SYNC mode, wait for response)
                 // Go will check config and return ModeChanged if key is configured as toggle
+                // All state changes go through Go service - no local fallback
                 if (_SendKeyToService(pendingKey, mods, KEY_EVENT_UP))
                 {
                     // Handle response - may include mode change
@@ -428,19 +431,8 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
                 }
                 else
                 {
-                    // IPC failed - fallback to local toggle for reliability
-                    WIND_LOG(L"[WindInput] IPC failed, falling back to local toggle\n");
-                    _pTextService->ToggleInputMode();
-                    bool newChineseMode = _pTextService->IsChineseMode();
-
-                    // Clear composition if switching modes during input
-                    bool hadInput = _isComposing || _hasCandidates;
-                    if (hadInput)
-                    {
-                        _pTextService->EndComposition();
-                        _isComposing = FALSE;
-                        _hasCandidates = FALSE;
-                    }
+                    // IPC failed - don't toggle locally to keep state consistent with Go
+                    WIND_LOG(L"[WindInput] IPC failed for toggle key, not toggling locally\n");
                 }
             }
 
@@ -476,11 +468,19 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
             mods |= 0x8000; // High bit as "state notification only" marker
         }
 
-        // ASYNC: Send key event, response handled by reader thread
-        _SendKeyToService(VK_CAPITAL, mods, KEY_EVENT_UP);
-
-        // Update language bar
-        _pTextService->UpdateCapsLockState(capsLockOn);
+        // SYNC: Send key event and wait for response
+        // Go service will push state update followed by CMD_CONSUMED response
+        // _HandleServiceResponse will process both and update the language bar
+        if (_SendKeyToService(VK_CAPITAL, mods, KEY_EVENT_UP))
+        {
+            _HandleServiceResponse();
+        }
+        else
+        {
+            // IPC failed, fall back to local update
+            WIND_LOG(L"[WindInput] IPC failed for CapsLock, updating locally\n");
+            _pTextService->UpdateCapsLockState(capsLockOn);
+        }
 
         *pfEaten = TRUE;
         return S_OK;
@@ -637,10 +637,44 @@ BOOL CKeyEventSink::_HandleServiceResponse()
         return TRUE; // Default to eating the key if no IPC
 
     ServiceResponse response;
-    if (!pIPCClient->ReceiveResponse(response))
+
+    // Loop to handle any StatusUpdate (state push) messages that may precede the actual response
+    // This is necessary because Go service may push state updates before the operation response
+    while (true)
     {
-        WIND_LOG_ERROR(L"Failed to receive response from service\n");
-        return TRUE; // Default to eating the key on error
+        if (!pIPCClient->ReceiveResponse(response))
+        {
+            WIND_LOG_ERROR(L"Failed to receive response from service\n");
+            return TRUE; // Default to eating the key on error
+        }
+
+        // If this is a StatusUpdate (state push), process it and continue reading
+        if (response.type == ResponseType::StatusUpdate)
+        {
+            WIND_LOG(L"[WindInput] Received StatusUpdate (state push), processing and reading next response\n");
+
+            // Update input mode from state push
+            _pTextService->UpdateFullStatus(
+                response.IsChineseMode(),
+                response.IsFullWidth(),
+                response.IsChinesePunct(),
+                response.IsToolbarVisible(),
+                response.IsCapsLock()
+            );
+
+            // Update hotkey whitelist if present
+            CHotkeyManager* pHotkeyMgr = _pTextService->GetHotkeyManager();
+            if (pHotkeyMgr != nullptr && response.HasHotkeys())
+            {
+                pHotkeyMgr->UpdateHotkeys(response.keyDownHotkeys, response.keyUpHotkeys);
+            }
+
+            // Continue reading to get the actual operation response
+            continue;
+        }
+
+        // Got a non-StatusUpdate response, break out of loop to process it
+        break;
     }
 
     QueryPerformanceCounter(&midTime);
@@ -741,19 +775,16 @@ BOOL CKeyEventSink::_HandleServiceResponse()
         return TRUE;
 
     case ResponseType::StatusUpdate:
-        {
-            WIND_LOG(L"[WindInput] Received StatusUpdate from service\n");
-
-            // Update input mode
-            _pTextService->SetInputMode(response.IsChineseMode());
-
-            // Update hotkey whitelist
-            CHotkeyManager* pHotkeyMgr = _pTextService->GetHotkeyManager();
-            if (pHotkeyMgr != nullptr && response.HasHotkeys())
-            {
-                pHotkeyMgr->UpdateHotkeys(response.keyDownHotkeys, response.keyUpHotkeys);
-            }
-        }
+        // StatusUpdate is normally handled in the loop above, but if we get here
+        // it means we received a StatusUpdate as the final response (e.g., from FocusGained)
+        WIND_LOG(L"[WindInput] Received StatusUpdate as final response\n");
+        _pTextService->UpdateFullStatus(
+            response.IsChineseMode(),
+            response.IsFullWidth(),
+            response.IsChinesePunct(),
+            response.IsToolbarVisible(),
+            response.IsCapsLock()
+        );
         return TRUE;
 
     case ResponseType::Consumed:

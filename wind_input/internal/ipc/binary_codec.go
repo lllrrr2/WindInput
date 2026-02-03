@@ -384,6 +384,48 @@ func (c *BinaryCodec) WriteMessage(w io.Writer, message []byte) error {
 	return err
 }
 
+// EncodeStatePush encodes a state push message (CMD_STATE_PUSH)
+// This is used for proactive state broadcast to all clients
+// Format is the same as StatusUpdate but uses CmdStatePush command
+func (c *BinaryCodec) EncodeStatePush(chineseMode, fullWidth, chinesePunct, toolbarVisible, capsLock bool) []byte {
+	// Build flags
+	var flags uint32
+	if chineseMode {
+		flags |= StatusChineseMode
+	}
+	if fullWidth {
+		flags |= StatusFullWidth
+	}
+	if chinesePunct {
+		flags |= StatusChinesePunct
+	}
+	if toolbarVisible {
+		flags |= StatusToolbarVisible
+	}
+	if capsLock {
+		flags |= StatusCapsLock
+	}
+
+	// Calculate payload size: header(12) with no hotkeys
+	payloadLen := uint32(12)
+
+	// Encode header with CmdStatePush
+	header := c.EncodeHeader(CmdStatePush, payloadLen)
+
+	// Encode status header (no hotkeys for push)
+	statusHeader := make([]byte, 12)
+	binary.LittleEndian.PutUint32(statusHeader[0:4], flags)
+	binary.LittleEndian.PutUint32(statusHeader[4:8], 0) // keyDownCount = 0
+	binary.LittleEndian.PutUint32(statusHeader[8:12], 0) // keyUpCount = 0
+
+	// Combine all parts
+	result := make([]byte, 0, HeaderSize+payloadLen)
+	result = append(result, header...)
+	result = append(result, statusHeader...)
+
+	return result
+}
+
 // ReadPayload reads a payload of specified length from a reader
 func (c *BinaryCodec) ReadPayload(r io.Reader, length uint32) ([]byte, error) {
 	if length == 0 {

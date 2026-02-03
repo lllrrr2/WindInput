@@ -22,17 +22,28 @@ const (
 	ModAlt   = 0x04
 )
 
+// EffectiveMode represents the effective input mode considering CapsLock
+type EffectiveMode int
+
+const (
+	ModeChinese     EffectiveMode = iota // 中文模式
+	ModeEnglishLower                     // 英文小写模式
+	ModeEnglishUpper                     // 英文大写模式 (CapsLock on)
+)
+
 // Coordinator orchestrates between C++ Bridge, Engine, and native UI
 type Coordinator struct {
-	engineMgr *engine.Manager
-	uiManager *ui.Manager
-	logger    *slog.Logger
-	config    *config.Config
+	engineMgr    *engine.Manager
+	uiManager    *ui.Manager
+	logger       *slog.Logger
+	config       *config.Config
+	bridgeServer BridgeServer // Interface for broadcasting state to TSF clients
 
 	mu sync.Mutex
 
 	// Input mode state
 	chineseMode bool // true = Chinese, false = English
+	capsLockOn  bool // CapsLock state (authority source)
 
 	// Full-width and punctuation state
 	fullWidth          bool // true = full-width, false = half-width
@@ -63,6 +74,100 @@ type Coordinator struct {
 
 	// Hotkey compiler for binary protocol
 	hotkeyCompiler *hotkey.Compiler
+}
+
+// BridgeServer interface for broadcasting state to TSF clients
+type BridgeServer interface {
+	PushStateToAllClients(status *bridge.StatusUpdateData)
+}
+
+// SetBridgeServer sets the bridge server for state broadcasting
+func (c *Coordinator) SetBridgeServer(server BridgeServer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.bridgeServer = server
+}
+
+// GetEffectiveMode returns the effective input mode considering CapsLock
+// - Chinese mode + CapsLock OFF = Chinese
+// - Chinese mode + CapsLock ON = English Upper (temporary English for caps)
+// - English mode + CapsLock OFF = English Lower
+// - English mode + CapsLock ON = English Upper
+func (c *Coordinator) GetEffectiveMode() EffectiveMode {
+	if c.capsLockOn {
+		return ModeEnglishUpper
+	}
+	if c.chineseMode {
+		return ModeChinese
+	}
+	return ModeEnglishLower
+}
+
+// GetEffectiveModeNoLock returns the effective input mode without acquiring lock
+// Caller must hold the lock
+func (c *Coordinator) getEffectiveModeNoLock() EffectiveMode {
+	if c.capsLockOn {
+		return ModeEnglishUpper
+	}
+	if c.chineseMode {
+		return ModeChinese
+	}
+	return ModeEnglishLower
+}
+
+// IsCapsLockOn returns the current CapsLock state
+func (c *Coordinator) IsCapsLockOn() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.capsLockOn
+}
+
+// buildStatusUpdate creates a StatusUpdateData from current state (caller must hold lock)
+func (c *Coordinator) buildStatusUpdate() *bridge.StatusUpdateData {
+	keyDownHotkeys, keyUpHotkeys := c.getCompiledHotkeys()
+	return &bridge.StatusUpdateData{
+		ChineseMode:        c.chineseMode,
+		FullWidth:          c.fullWidth,
+		ChinesePunctuation: c.chinesePunctuation,
+		ToolbarVisible:     c.toolbarVisible,
+		CapsLock:           c.capsLockOn,
+		KeyDownHotkeys:     keyDownHotkeys,
+		KeyUpHotkeys:       keyUpHotkeys,
+	}
+}
+
+// broadcastState broadcasts the current state to toolbar and all TSF clients
+// This should be called after any state change. Caller must hold the lock.
+func (c *Coordinator) broadcastState() {
+	// 1. Update Go toolbar
+	c.syncToolbarStateNoLock()
+
+	// 2. Push state to all TSF clients
+	if c.bridgeServer != nil {
+		status := c.buildStatusUpdate()
+		// Release lock before network I/O to avoid blocking
+		c.mu.Unlock()
+		c.bridgeServer.PushStateToAllClients(status)
+		c.mu.Lock()
+	}
+}
+
+// syncToolbarStateNoLock synchronizes the current state to the toolbar (without lock)
+func (c *Coordinator) syncToolbarStateNoLock() {
+	if c.uiManager == nil {
+		return
+	}
+
+	// Use effective mode for toolbar display
+	effectiveMode := c.getEffectiveModeNoLock()
+
+	c.uiManager.UpdateToolbarState(ui.ToolbarState{
+		ChineseMode:   effectiveMode == ModeChinese,
+		FullWidth:     c.fullWidth,
+		ChinesePunct:  c.chinesePunctuation,
+		CapsLock:      c.capsLockOn,
+		EffectiveMode: int(effectiveMode),
+	})
 }
 
 // NewCoordinator creates a new Coordinator
@@ -188,8 +293,8 @@ func (c *Coordinator) handleToolbarToggleMode() {
 	// Save runtime state if remember_last_state is enabled
 	c.saveRuntimeState()
 
-	// Update toolbar state
-	c.syncToolbarState()
+	// Broadcast state to toolbar and all TSF clients
+	c.broadcastState()
 }
 
 // handleToolbarToggleWidth handles width toggle from toolbar click
@@ -200,11 +305,11 @@ func (c *Coordinator) handleToolbarToggleWidth() {
 	c.fullWidth = !c.fullWidth
 	c.logger.Debug("Full-width toggled via toolbar", "fullWidth", c.fullWidth)
 
-	// Update toolbar state
-	c.syncToolbarState()
-
 	// Save runtime state if remember_last_state is enabled
 	c.saveRuntimeState()
+
+	// Broadcast state to toolbar and all TSF clients
+	c.broadcastState()
 }
 
 // handleToolbarTogglePunct handles punctuation toggle from toolbar click
@@ -218,11 +323,11 @@ func (c *Coordinator) handleToolbarTogglePunct() {
 	// Reset punctuation converter state
 	c.punctConverter.Reset()
 
-	// Update toolbar state
-	c.syncToolbarState()
-
 	// Save runtime state if remember_last_state is enabled
 	c.saveRuntimeState()
+
+	// Broadcast state to toolbar and all TSF clients
+	c.broadcastState()
 }
 
 // handleToolbarOpenSettings handles settings button click from toolbar
@@ -240,17 +345,9 @@ func (c *Coordinator) handleToolbarPositionChanged(x, y int) {
 }
 
 // syncToolbarState synchronizes the current state to the toolbar
+// Note: This should be called with lock held, or use broadcastState() instead
 func (c *Coordinator) syncToolbarState() {
-	if c.uiManager == nil {
-		return
-	}
-
-	c.uiManager.UpdateToolbarState(ui.ToolbarState{
-		ChineseMode:  c.chineseMode,
-		FullWidth:    c.fullWidth,
-		ChinesePunct: c.chinesePunctuation,
-		CapsLock:     ui.GetCapsLockState(), // Get actual CapsLock state
-	})
+	c.syncToolbarStateNoLock()
 }
 
 // saveToolbarPosition saves the toolbar position to config
@@ -343,15 +440,8 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 			// Show mode indicator
 			c.showModeIndicator()
 
-			// Update toolbar state
-			if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
-				c.uiManager.UpdateToolbarState(ui.ToolbarState{
-					ChineseMode:  c.chineseMode,
-					FullWidth:    c.fullWidth,
-					ChinesePunct: c.chinesePunctuation,
-					CapsLock:     ui.GetCapsLockState(),
-				})
-			}
+			// Broadcast state to toolbar and all TSF clients
+			c.broadcastState()
 
 			// Return mode_changed with optional commit text
 			if commitText != "" {
@@ -370,8 +460,15 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		} else if toggleKey == "capslock" {
 			// CapsLock is not configured as mode toggle key, but we still need to show indicator
 			// C++ side sets 0x8000 bit in modifiers to indicate "state notification only"
-			capsLockOn := ui.GetCapsLockState()
+			// Use the CapsLock state from C++ side (data.Toggles) as it's more accurate
+			capsLockOn := data.IsCapsLockOn()
 			c.logger.Debug("CapsLock state notification", "on", capsLockOn)
+
+			// Update CapsLock state and broadcast if changed
+			if c.capsLockOn != capsLockOn {
+				c.capsLockOn = capsLockOn
+				c.broadcastState()
+			}
 
 			// Show CapsLock indicator (A/a) - use NoLock version since we already hold the lock
 			c.handleCapsLockStateNoLock(capsLockOn)
@@ -411,7 +508,8 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 
 	// Chinese mode with CapsLock: output uppercase letters directly
 	// This allows users to quickly type uppercase English while in Chinese mode
-	if ui.GetCapsLockState() {
+	// Use the CapsLock state from C++ side (data.Toggles) as it's more accurate
+	if data.IsCapsLockOn() {
 		if len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')) {
 			// If there's pending input, commit it first then output the uppercase letter
 			if len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
@@ -1015,12 +1113,16 @@ func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
 	keyDownHotkeys, keyUpHotkeys := c.getCompiledHotkeys()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Sync CapsLock state from system on focus gain
+	c.capsLockOn = ui.GetCapsLockState()
+
 	return &bridge.StatusUpdateData{
 		ChineseMode:        c.chineseMode,
 		FullWidth:          c.fullWidth,
 		ChinesePunctuation: c.chinesePunctuation,
 		ToolbarVisible:     c.toolbarVisible,
-		CapsLock:           ui.GetCapsLockState(),
+		CapsLock:           c.capsLockOn,
 		KeyDownHotkeys:     keyDownHotkeys,
 		KeyUpHotkeys:       keyUpHotkeys,
 	}
@@ -1053,12 +1155,16 @@ func (c *Coordinator) HandleIMEActivated() *bridge.StatusUpdateData {
 	keyDownHotkeys, keyUpHotkeys := c.getCompiledHotkeys()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Sync CapsLock state from system on IME activation
+	c.capsLockOn = ui.GetCapsLockState()
+
 	return &bridge.StatusUpdateData{
 		ChineseMode:        c.chineseMode,
 		FullWidth:          c.fullWidth,
 		ChinesePunctuation: c.chinesePunctuation,
 		ToolbarVisible:     c.toolbarVisible,
-		CapsLock:           ui.GetCapsLockState(),
+		CapsLock:           c.capsLockOn,
 		KeyDownHotkeys:     keyDownHotkeys,
 		KeyUpHotkeys:       keyUpHotkeys,
 	}
@@ -1224,18 +1330,11 @@ func (c *Coordinator) HandleModeNotify(data bridge.ModeNotifyData) {
 	// Show mode indicator
 	c.showModeIndicator()
 
-	// Update toolbar state
-	if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
-		c.uiManager.UpdateToolbarState(ui.ToolbarState{
-			ChineseMode:  c.chineseMode,
-			FullWidth:    c.fullWidth,
-			ChinesePunct: c.chinesePunctuation,
-			CapsLock:     ui.GetCapsLockState(),
-		})
-	}
-
 	// Save runtime state if remember_last_state is enabled
 	c.saveRuntimeState()
+
+	// Broadcast state to toolbar and all TSF clients
+	c.broadcastState()
 }
 
 // HandleToggleMode toggles the input mode and returns the new state
@@ -1275,18 +1374,11 @@ func (c *Coordinator) HandleToggleMode() (commitText string, chineseMode bool) {
 	// Show mode indicator
 	c.showModeIndicator()
 
-	// Update toolbar state to sync Chinese/English mode
-	if c.uiManager != nil && c.toolbarVisible && c.imeActivated {
-		c.uiManager.UpdateToolbarState(ui.ToolbarState{
-			ChineseMode:  c.chineseMode,
-			FullWidth:    c.fullWidth,
-			ChinesePunct: c.chinesePunctuation,
-			CapsLock:     ui.GetCapsLockState(),
-		})
-	}
-
 	// Save runtime state if remember_last_state is enabled
 	c.saveRuntimeStateNoLock()
+
+	// Broadcast state to toolbar and all TSF clients
+	c.broadcastState()
 
 	return commitText, c.chineseMode
 }
@@ -1295,6 +1387,13 @@ func (c *Coordinator) HandleToggleMode() (commitText string, chineseMode bool) {
 func (c *Coordinator) HandleCapsLockState(on bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Update capsLockOn state and broadcast if changed
+	if c.capsLockOn != on {
+		c.capsLockOn = on
+		c.broadcastState()
+	}
+
 	c.handleCapsLockStateNoLock(on)
 }
 
@@ -1325,16 +1424,9 @@ func (c *Coordinator) handleCapsLockStateNoLock(on bool) {
 	}
 
 	c.uiManager.ShowModeIndicator(indicator, x, y)
-
-	// Update toolbar state to sync CapsLock indicator
-	if c.toolbarVisible && c.imeActivated {
-		c.uiManager.UpdateToolbarState(ui.ToolbarState{
-			ChineseMode:  c.chineseMode,
-			FullWidth:    c.fullWidth,
-			ChinesePunct: c.chinesePunctuation,
-			CapsLock:     on,
-		})
-	}
+	// Note: Toolbar state is already updated by broadcastState() which is called
+	// before handleCapsLockStateNoLock() in the CapsLock handling path.
+	// We don't need to update it again here.
 }
 
 // handleEngineSwitchKey 处理引擎切换快捷键 (Ctrl+`)
@@ -1474,10 +1566,11 @@ func (c *Coordinator) UpdateToolbarConfig(toolbarConfig *config.ToolbarConfig) {
 	if c.uiManager != nil {
 		if c.toolbarVisible && c.imeActivated {
 			c.uiManager.ShowToolbarWithState(toolbarConfig.PositionX, toolbarConfig.PositionY, ui.ToolbarState{
-				ChineseMode:  c.chineseMode,
-				FullWidth:    c.fullWidth,
-				ChinesePunct: c.chinesePunctuation,
-				CapsLock:     ui.GetCapsLockState(),
+				ChineseMode:   c.chineseMode,
+				FullWidth:     c.fullWidth,
+				ChinesePunct:  c.chinesePunctuation,
+				CapsLock:      c.capsLockOn,
+				EffectiveMode: int(c.getEffectiveModeNoLock()),
 			})
 		} else {
 			c.uiManager.SetToolbarVisible(false)
@@ -1644,10 +1737,11 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 
 			// Show toolbar with position and state in one atomic operation
 			c.uiManager.ShowToolbarWithState(posX, posY, ui.ToolbarState{
-				ChineseMode:  c.chineseMode,
-				FullWidth:    c.fullWidth,
-				ChinesePunct: c.chinesePunctuation,
-				CapsLock:     ui.GetCapsLockState(),
+				ChineseMode:   c.chineseMode,
+				FullWidth:     c.fullWidth,
+				ChinesePunct:  c.chinesePunctuation,
+				CapsLock:      c.capsLockOn,
+				EffectiveMode: int(c.getEffectiveModeNoLock()),
 			})
 		}
 	} else {
@@ -1664,6 +1758,8 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 	defer c.mu.Unlock()
 
 	c.logger.Info("HandleMenuCommand", "command", command)
+
+	needBroadcast := false
 
 	switch command {
 	case "toggle_mode":
@@ -1690,6 +1786,8 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 		// Show mode indicator
 		c.showModeIndicator()
 
+		needBroadcast = true
+
 	case "toggle_width":
 		c.fullWidth = !c.fullWidth
 		c.logger.Debug("Full-width toggled via menu", "fullWidth", c.fullWidth)
@@ -1703,6 +1801,8 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 
 		// Save runtime state
 		c.saveRuntimeState()
+
+		needBroadcast = true
 
 	case "toggle_punct":
 		c.chinesePunctuation = !c.chinesePunctuation
@@ -1720,6 +1820,8 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 
 		// Save runtime state
 		c.saveRuntimeState()
+
+		needBroadcast = true
 
 	case "toggle_toolbar":
 		c.toolbarVisible = !c.toolbarVisible
@@ -1745,10 +1847,11 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 					)
 				}
 				c.uiManager.ShowToolbarWithState(posX, posY, ui.ToolbarState{
-					ChineseMode:  c.chineseMode,
-					FullWidth:    c.fullWidth,
-					ChinesePunct: c.chinesePunctuation,
-					CapsLock:     ui.GetCapsLockState(),
+					ChineseMode:   c.chineseMode,
+					FullWidth:     c.fullWidth,
+					ChinesePunct:  c.chinesePunctuation,
+					CapsLock:      c.capsLockOn,
+					EffectiveMode: int(c.getEffectiveModeNoLock()),
 				})
 			} else {
 				c.uiManager.SetToolbarVisible(false)
@@ -1758,6 +1861,8 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 		// Save to config
 		c.saveToolbarConfig()
 
+		needBroadcast = true
+
 	case "open_settings":
 		c.logger.Info("Opening settings requested")
 		// Open settings window (will be implemented in UI)
@@ -1766,18 +1871,23 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 		}
 	}
 
+	// Broadcast state to all clients if needed
+	if needBroadcast {
+		c.broadcastState()
+	}
+
 	// Return current status
-	return c.getStatusUpdate()
+	return c.buildStatusUpdate()
 }
 
-// getStatusUpdate returns the current status
+// getStatusUpdate returns the current status (caller must hold lock)
 func (c *Coordinator) getStatusUpdate() *bridge.StatusUpdateData {
 	return &bridge.StatusUpdateData{
 		ChineseMode:        c.chineseMode,
 		FullWidth:          c.fullWidth,
 		ChinesePunctuation: c.chinesePunctuation,
 		ToolbarVisible:     c.toolbarVisible,
-		CapsLock:           ui.GetCapsLockState(),
+		CapsLock:           c.capsLockOn,
 	}
 }
 

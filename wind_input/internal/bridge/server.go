@@ -31,9 +31,9 @@ type Server struct {
 	handler MessageHandler
 	codec   *ipc.BinaryCodec
 
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	clientCount   int
-	activeHandles map[windows.Handle]bool
+	activeHandles map[windows.Handle]*pipeWriter // Map handle to writer for broadcasting
 }
 
 // NewServer creates a new Bridge IPC server
@@ -42,7 +42,7 @@ func NewServer(handler MessageHandler, logger *slog.Logger) *Server {
 		handler:       handler,
 		logger:        logger,
 		codec:         ipc.NewBinaryCodec(),
-		activeHandles: make(map[windows.Handle]bool),
+		activeHandles: make(map[windows.Handle]*pipeWriter),
 	}
 }
 
@@ -96,10 +96,13 @@ func (s *Server) Start() error {
 			continue
 		}
 
+		// Create pipe writer for this client
+		writer := &pipeWriter{handle: handle}
+
 		s.mu.Lock()
 		s.clientCount++
 		clientID := s.clientCount
-		s.activeHandles[handle] = true
+		s.activeHandles[handle] = writer
 		s.mu.Unlock()
 
 		s.logger.Info("C++ Bridge connected", "clientID", clientID)
@@ -305,6 +308,9 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 	case ipc.CmdModeNotify:
 		return s.handleModeNotify(payload, clientID)
 
+	case ipc.CmdToggleMode:
+		return s.handleToggleMode(clientID)
+
 	case ipc.CmdCaretUpdate:
 		return s.handleCaretUpdate(payload, clientID)
 
@@ -332,16 +338,19 @@ func (s *Server) handleKeyEvent(payload []byte, clientID int) []byte {
 		KeyCode:   int(keyPayload.KeyCode),
 		Modifiers: int(keyPayload.Modifiers),
 		Event:     eventType,
+		Toggles:   keyPayload.Toggles,
 	}
 
 	s.logger.Debug("Key event", "clientID", clientID,
 		"keyCode", keyData.KeyCode,
 		"modifiers", fmt.Sprintf("0x%X", keyData.Modifiers),
+		"toggles", fmt.Sprintf("0x%X", keyData.Toggles),
 		"event", eventType)
 
 	result := s.handler.HandleKeyEvent(keyData)
 	if result == nil {
 		// Key not handled by IME, tell C++ to pass it through to the system
+		s.logger.Debug("Returning PassThrough response", "clientID", clientID)
 		return s.codec.EncodePassThrough()
 	}
 
@@ -448,6 +457,22 @@ func (s *Server) handleCommitRequest(payload []byte, clientID int) []byte {
 	)
 }
 
+func (s *Server) handleToggleMode(clientID int) []byte {
+	s.logger.Info("Toggle mode request from UI", "clientID", clientID)
+
+	// Call handler to toggle mode
+	commitText, chineseMode := s.handler.HandleToggleMode()
+
+	s.logger.Debug("Toggle mode result", "clientID", clientID,
+		"chineseMode", chineseMode, "commitText", commitText)
+
+	// Return ModeChanged response (with optional commit text if there was pending input)
+	if commitText != "" {
+		return s.codec.EncodeCommitText(commitText, "", true, chineseMode)
+	}
+	return s.codec.EncodeModeChanged(chineseMode)
+}
+
 func (s *Server) handleModeNotify(payload []byte, clientID int) []byte {
 	if len(payload) < 4 {
 		s.logger.Error("Mode notify payload too short", "clientID", clientID)
@@ -516,6 +541,59 @@ func (s *Server) encodeStatusUpdate(status *StatusUpdateData) []byte {
 		status.KeyDownHotkeys,
 		status.KeyUpHotkeys,
 	)
+}
+
+// PushStateToAllClients broadcasts state update to all connected TSF clients
+// This is used for proactive state push (e.g., when mode changes via toolbar click)
+func (s *Server) PushStateToAllClients(status *StatusUpdateData) {
+	if status == nil {
+		return
+	}
+
+	// Encode the state push message using CMD_STATE_PUSH
+	encoded := s.encodeStatePush(status)
+
+	// Get all active clients
+	s.mu.RLock()
+	clients := make([]*pipeWriter, 0, len(s.activeHandles))
+	for _, writer := range s.activeHandles {
+		clients = append(clients, writer)
+	}
+	clientCount := len(clients)
+	s.mu.RUnlock()
+
+	if clientCount == 0 {
+		s.logger.Debug("No clients to push state to")
+		return
+	}
+
+	s.logger.Debug("Pushing state to all clients", "count", clientCount, "chineseMode", status.ChineseMode, "capsLock", status.CapsLock)
+
+	// Send to all clients (fire and forget, don't block on failures)
+	for _, writer := range clients {
+		if err := s.codec.WriteMessage(writer, encoded); err != nil {
+			s.logger.Warn("Failed to push state to client", "error", err)
+			// Don't disconnect client on push failure - it might recover
+		}
+	}
+}
+
+// encodeStatePush encodes a state push message (CMD_STATE_PUSH)
+func (s *Server) encodeStatePush(status *StatusUpdateData) []byte {
+	return s.codec.EncodeStatePush(
+		status.ChineseMode,
+		status.FullWidth,
+		status.ChinesePunctuation,
+		status.ToolbarVisible,
+		status.CapsLock,
+	)
+}
+
+// GetActiveClientCount returns the number of active TSF clients
+func (s *Server) GetActiveClientCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.activeHandles)
 }
 
 // keyCodeToKeyName converts a virtual key code to a key name string

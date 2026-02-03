@@ -15,14 +15,27 @@ const (
 	ResponseTypeConsumed          ResponseType = "consumed"
 )
 
+// Toggle key state flags (matching C++ TOGGLE_* constants)
+const (
+	ToggleCapsLock   uint8 = 0x01 // CapsLock is on
+	ToggleNumLock    uint8 = 0x02 // NumLock is on
+	ToggleScrollLock uint8 = 0x04 // ScrollLock is on
+)
+
 // KeyEventData contains key event information (parsed from binary)
 type KeyEventData struct {
 	Key       string // Key name (derived from keycode for backwards compatibility)
 	KeyCode   int    // Virtual key code
 	Modifiers int    // Modifier flags
 	Event     string // "down" or "up"
+	Toggles   uint8  // Toggle key states (CapsLock/NumLock/ScrollLock) from C++ side
 	// Caret position (optional, sent with key events)
 	Caret *CaretData
+}
+
+// IsCapsLockOn returns true if CapsLock is on (from C++ side toggle state)
+func (d *KeyEventData) IsCapsLockOn() bool {
+	return (d.Toggles & ToggleCapsLock) != 0
 }
 
 // CaretData contains caret position information

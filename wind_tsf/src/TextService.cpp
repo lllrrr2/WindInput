@@ -710,10 +710,22 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
                 {
                     WIND_LOG(L"[WindInput] FocusGained response received\n");
 
-                    // If we got a status update, sync state and hotkeys
+                    // If we got a status update, sync full state including language bar
                     if (response.type == ResponseType::StatusUpdate)
                     {
                         _bChineseMode = response.IsChineseMode();
+
+                        // Update language bar with full status (including CapsLock)
+                        if (_pLangBarItemButton != nullptr)
+                        {
+                            _pLangBarItemButton->UpdateFullStatus(
+                                response.IsChineseMode(),
+                                response.IsFullWidth(),
+                                response.IsChinesePunct(),
+                                response.IsToolbarVisible(),
+                                response.IsCapsLock()
+                            );
+                        }
 
                         // Update hotkey whitelist if present
                         if (response.HasHotkeys() && _pHotkeyManager != nullptr)
