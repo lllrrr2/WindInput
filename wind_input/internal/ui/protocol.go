@@ -25,7 +25,7 @@ type RenderResult struct {
 
 // CandidateCallback defines callbacks for candidate window interactions
 type CandidateCallback struct {
-	OnSelect      func(index int) // Called when user clicks a candidate (index is 0-based within page)
-	OnHoverChange func(index int) // Called when hover state changes (-1 for no hover)
-	OnContextMenu func(index int) // Called when user right-clicks a candidate
+	OnSelect      func(index int)               // Called when user clicks a candidate (index is 0-based within page)
+	OnHoverChange func(index, mouseX, mouseY int) // Called when hover state changes (-1 for no hover, with mouse position)
+	OnContextMenu func(index int)               // Called when user right-clicks a candidate
 }

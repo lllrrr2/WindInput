@@ -607,6 +607,8 @@ func (w *CandidateWindow) handleMouseMove(lParam uintptr) {
 	hitRects := w.hitRects
 	prevHoverIndex := w.hoverIndex
 	callbacks := w.callbacks
+	windowX := w.x
+	windowY := w.y
 	w.mu.Unlock()
 
 	// Hit test against candidate rectangles
@@ -625,9 +627,13 @@ func (w *CandidateWindow) handleMouseMove(lParam uintptr) {
 		w.hoverIndex = newHoverIndex
 		w.mu.Unlock()
 
-		// Notify callback
+		// Calculate screen coordinates for tooltip
+		screenX := windowX + mouseX
+		screenY := windowY + mouseY
+
+		// Notify callback with screen coordinates
 		if callbacks != nil && callbacks.OnHoverChange != nil {
-			callbacks.OnHoverChange(newHoverIndex)
+			callbacks.OnHoverChange(newHoverIndex, screenX, screenY)
 		}
 	}
 }
@@ -691,7 +697,7 @@ func (w *CandidateWindow) handleMouseLeave() {
 
 	// Notify callback if hover state changed
 	if prevHoverIndex != -1 && callbacks != nil && callbacks.OnHoverChange != nil {
-		callbacks.OnHoverChange(-1)
+		callbacks.OnHoverChange(-1, 0, 0)
 	}
 }
 

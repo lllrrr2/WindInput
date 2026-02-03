@@ -37,6 +37,9 @@ type Manager struct {
 	// Toolbar window
 	toolbar *ToolbarWindow
 
+	// Tooltip window for encoding lookup
+	tooltip *TooltipWindow
+
 	mu         sync.Mutex
 	candidates []Candidate
 	input      string
@@ -95,6 +98,7 @@ func NewManager(logger *slog.Logger) *Manager {
 		window:                  NewCandidateWindow(logger),
 		renderer:                NewRenderer(DefaultRenderConfig()),
 		toolbar:                 NewToolbarWindow(logger),
+		tooltip:                 NewTooltipWindow(logger),
 		logger:                  logger,
 		readyCh:                 make(chan struct{}),
 		cmdCh:                   make(chan UICommand, 100), // Buffered channel to avoid blocking IPC
@@ -137,6 +141,12 @@ func (m *Manager) Start() error {
 			m.toolbar.SetCallback(m.toolbarCallbacks)
 		}
 		m.mu.Unlock()
+	}
+
+	// Create tooltip window
+	if err := m.tooltip.Create(); err != nil {
+		m.logger.Error("Failed to create tooltip window", "error", err)
+		// Non-fatal, continue without tooltip
 	}
 
 	m.mu.Lock()
@@ -433,6 +443,9 @@ func (m *Manager) Destroy() {
 	if m.toolbar != nil {
 		m.toolbar.Destroy()
 	}
+	if m.tooltip != nil {
+		m.tooltip.Destroy()
+	}
 	if m.cmdEvent != 0 {
 		CloseEvent(m.cmdEvent)
 		m.cmdEvent = 0
@@ -614,6 +627,42 @@ func (m *Manager) RefreshCandidates() {
 		}
 	default:
 		// Channel full, skip refresh
+	}
+}
+
+// ShowTooltipForCandidate shows a tooltip for the candidate at the given page-local index
+func (m *Manager) ShowTooltipForCandidate(pageIndex int, mouseX, mouseY int) {
+	m.mu.Lock()
+	if !m.ready || m.tooltip == nil {
+		m.mu.Unlock()
+		return
+	}
+
+	// Get the candidate at the page-local index
+	if pageIndex < 0 || pageIndex >= len(m.candidates) {
+		m.mu.Unlock()
+		m.HideTooltip()
+		return
+	}
+
+	candidate := m.candidates[pageIndex]
+	comment := candidate.Comment
+	m.mu.Unlock()
+
+	// Only show tooltip if there's a comment (encoding info)
+	if comment == "" {
+		m.HideTooltip()
+		return
+	}
+
+	// Show tooltip below and to the right of the mouse cursor
+	m.tooltip.Show(comment, mouseX+15, mouseY+20)
+}
+
+// HideTooltip hides the tooltip
+func (m *Manager) HideTooltip() {
+	if m.tooltip != nil {
+		m.tooltip.Hide()
 	}
 }
 

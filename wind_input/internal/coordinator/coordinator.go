@@ -304,9 +304,9 @@ func (c *Coordinator) setupCandidateCallbacks() {
 			// Run in goroutine to avoid blocking UI thread
 			go c.handleCandidateSelect(index)
 		},
-		OnHoverChange: func(index int) {
+		OnHoverChange: func(index, mouseX, mouseY int) {
 			// Run in goroutine to avoid blocking UI thread
-			go c.handleCandidateHoverChange(index)
+			go c.handleCandidateHoverChange(index, mouseX, mouseY)
 		},
 		OnContextMenu: func(index int) {
 			// Run in goroutine to avoid blocking UI thread
@@ -356,12 +356,19 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 }
 
 // handleCandidateHoverChange handles hover state change
-func (c *Coordinator) handleCandidateHoverChange(index int) {
-	c.logger.Debug("Candidate hover changed", "index", index)
+func (c *Coordinator) handleCandidateHoverChange(index, mouseX, mouseY int) {
+	c.logger.Debug("Candidate hover changed", "index", index, "mouseX", mouseX, "mouseY", mouseY)
 
 	// Refresh the candidate window to show/hide hover highlight
 	if c.uiManager != nil {
 		c.uiManager.RefreshCandidates()
+
+		// Show/hide tooltip for encoding lookup
+		if index >= 0 {
+			c.uiManager.ShowTooltipForCandidate(index, mouseX, mouseY)
+		} else {
+			c.uiManager.HideTooltip()
+		}
 	}
 }
 
