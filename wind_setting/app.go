@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/huanfeng/wind_input/pkg/theme"
 	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/control"
 	"github.com/huanfeng/wind_input/pkg/dictfile"
@@ -533,4 +534,127 @@ func (a *App) ReloadAllFiles() error {
 	}
 
 	return lastErr
+}
+
+// ========== 主题管理 ==========
+
+// ThemeInfo 主题信息（用于前端）
+type ThemeInfo struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Author      string `json:"author"`
+	Version     string `json:"version"`
+	IsBuiltin   bool   `json:"is_builtin"`
+	IsActive    bool   `json:"is_active"`
+}
+
+// GetAvailableThemes 获取可用的主题列表
+func (a *App) GetAvailableThemes() ([]ThemeInfo, error) {
+	themeManager := theme.NewManager(nil)
+	themeNames := themeManager.ListAvailableThemes()
+
+	// 获取当前配置的主题
+	currentTheme := "default"
+	if a.configEditor != nil {
+		cfg := a.configEditor.GetConfig()
+		if cfg != nil && cfg.UI.Theme != "" {
+			currentTheme = cfg.UI.Theme
+		}
+	}
+
+	themes := make([]ThemeInfo, 0, len(themeNames))
+	for _, name := range themeNames {
+		info := ThemeInfo{
+			Name:      name,
+			IsBuiltin: name == "default" || name == "dark",
+			IsActive:  name == currentTheme,
+		}
+
+		// 加载主题以获取显示名称
+		if err := themeManager.LoadTheme(name); err == nil {
+			t := themeManager.GetCurrentTheme()
+			if t != nil {
+				info.DisplayName = t.Meta.Name
+				info.Author = t.Meta.Author
+				info.Version = t.Meta.Version
+			}
+		}
+
+		if info.DisplayName == "" {
+			info.DisplayName = name
+		}
+
+		themes = append(themes, info)
+	}
+
+	return themes, nil
+}
+
+// GetThemePreview 获取主题预览数据（颜色配置）
+func (a *App) GetThemePreview(themeName string) (map[string]interface{}, error) {
+	themeManager := theme.NewManager(nil)
+
+	if err := themeManager.LoadTheme(themeName); err != nil {
+		return nil, fmt.Errorf("failed to load theme: %w", err)
+	}
+
+	t := themeManager.GetCurrentTheme()
+	if t == nil {
+		return nil, fmt.Errorf("theme not found")
+	}
+
+	// 返回主题的颜色配置供前端预览
+	preview := map[string]interface{}{
+		"meta": map[string]string{
+			"name":    t.Meta.Name,
+			"version": t.Meta.Version,
+			"author":  t.Meta.Author,
+		},
+		"candidate_window": map[string]string{
+			"background_color": t.CandidateWindow.BackgroundColor,
+			"border_color":     t.CandidateWindow.BorderColor,
+			"text_color":       t.CandidateWindow.TextColor,
+			"index_color":      t.CandidateWindow.IndexColor,
+			"index_bg_color":   t.CandidateWindow.IndexBgColor,
+			"hover_bg_color":   t.CandidateWindow.HoverBgColor,
+		},
+		"toolbar": map[string]string{
+			"background_color":       t.Toolbar.BackgroundColor,
+			"border_color":           t.Toolbar.BorderColor,
+			"mode_chinese_bg_color":  t.Toolbar.ModeChineseBgColor,
+			"mode_english_bg_color":  t.Toolbar.ModeEnglishBgColor,
+			"full_width_on_bg_color": t.Toolbar.FullWidthOnBgColor,
+			"punct_chinese_bg_color": t.Toolbar.PunctChineseBgColor,
+		},
+	}
+
+	return preview, nil
+}
+
+// ApplyTheme 应用主题（保存到配置）
+func (a *App) ApplyTheme(themeName string) error {
+	if a.configEditor == nil {
+		return fmt.Errorf("config editor not initialized")
+	}
+
+	cfg := a.configEditor.GetConfig()
+	if cfg == nil {
+		return fmt.Errorf("config not loaded")
+	}
+
+	// 更新主题配置
+	cfg.UI.Theme = themeName
+	a.configEditor.SetConfig(cfg)
+
+	if err := a.configEditor.Save(); err != nil {
+		return err
+	}
+
+	// 更新文件监控状态
+	a.fileWatcher.UpdateState(a.configEditor.GetFilePath())
+
+	// 通知主程序重载
+	go a.NotifyReload("config")
+
+	return nil
 }

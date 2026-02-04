@@ -65,6 +65,7 @@ export interface UIConfig {
   status_indicator_duration: number;
   status_indicator_offset_x: number;
   status_indicator_offset_y: number;
+  theme: string;
 }
 
 // 工具栏配置
@@ -277,6 +278,7 @@ export function getDefaultConfig(): Config {
       status_indicator_duration: 800,
       status_indicator_offset_x: 0,
       status_indicator_offset_y: -30,
+      theme: 'default',
     },
     toolbar: {
       visible: false,

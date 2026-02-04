@@ -11,12 +11,38 @@ export type UserWordItem = main.UserWordItem;
 export type ShadowRuleItem = main.ShadowRuleItem;
 export type FileChangeStatus = main.FileChangeStatus;
 export type ServiceStatus = control.ServiceStatus;
+export type ThemeInfo = main.ThemeInfo;
 
 // 词库统计类型
 export interface DictStats {
   word_count: number;
   phrase_count: number;
   shadow_count: number;
+}
+
+// 主题预览数据类型
+export interface ThemePreview {
+  meta: {
+    name: string;
+    version: string;
+    author: string;
+  };
+  candidate_window: {
+    background_color: string;
+    border_color: string;
+    text_color: string;
+    index_color: string;
+    index_bg_color: string;
+    hover_bg_color: string;
+  };
+  toolbar: {
+    background_color: string;
+    border_color: string;
+    mode_chinese_bg_color: string;
+    mode_english_bg_color: string;
+    full_width_on_bg_color: string;
+    punct_chinese_bg_color: string;
+  };
 }
 
 // 配置管理
@@ -130,6 +156,20 @@ export async function reloadAllFiles(): Promise<void> {
   return App.ReloadAllFiles();
 }
 
+// 主题管理
+export async function getAvailableThemes(): Promise<ThemeInfo[]> {
+  return App.GetAvailableThemes();
+}
+
+export async function getThemePreview(themeName: string): Promise<ThemePreview> {
+  const preview = await App.GetThemePreview(themeName);
+  return preview as unknown as ThemePreview;
+}
+
+export async function applyTheme(themeName: string): Promise<void> {
+  return App.ApplyTheme(themeName);
+}
+
 // 默认配置
 export function getDefaultConfig(): Config {
   return new config.Config({
@@ -170,6 +210,7 @@ export function getDefaultConfig(): Config {
       font_path: '',
       inline_preedit: true,
       hide_candidate_window: false,
+      theme: 'default',
     },
     toolbar: {
       visible: false,

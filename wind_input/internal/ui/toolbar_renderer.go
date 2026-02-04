@@ -5,7 +5,7 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/huanfeng/wind_input/internal/theme"
+	"github.com/huanfeng/wind_input/pkg/theme"
 	"github.com/fogleman/gg"
 )
 

@@ -7,7 +7,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/huanfeng/wind_input/internal/theme"
+	"github.com/huanfeng/wind_input/pkg/theme"
 	"golang.org/x/sys/windows"
 )
 

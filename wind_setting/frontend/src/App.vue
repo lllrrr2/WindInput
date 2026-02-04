@@ -3,7 +3,7 @@ import { ref, onMounted, computed, watch, onUnmounted, nextTick } from 'vue';
 import * as api from './api/settings';
 import * as wailsApi from './api/wails';
 import type { Config, Status, EngineInfo, LogEntry } from './api/settings';
-import type { PhraseItem, UserWordItem, ShadowRuleItem, DictStats, FileChangeStatus } from './api/wails';
+import type { PhraseItem, UserWordItem, ShadowRuleItem, DictStats, FileChangeStatus, ThemeInfo, ThemePreview } from './api/wails';
 import { getDefaultConfig } from './api/settings';
 
 // 检测是否在 Wails 环境中
@@ -74,6 +74,12 @@ let fileCheckTimer: number | null = null;
 
 // 服务运行状态
 const serviceRunning = ref(false);
+
+// 主题相关状态
+const availableThemes = ref<ThemeInfo[]>([]);
+const selectedTheme = ref('default');
+const themePreview = ref<ThemePreview | null>(null);
+const themeLoading = ref(false);
 
 // 重新组织的标签页 - 按用户视角划分
 const tabs = [
@@ -211,6 +217,9 @@ async function loadDataFromWails() {
 
     // 加载词库数据
     await loadDictData();
+
+    // 加载主题列表
+    await loadThemes();
   } catch (e) {
     console.error('Wails API 调用失败', e);
     throw e;
@@ -407,6 +416,75 @@ function resetToDefault() {
     saveMessageType.value = 'success';
     saveMessage.value = '已重置为当前配置';
     setTimeout(() => { saveMessage.value = ''; }, 2000);
+  }
+}
+
+// 加载可用主题列表
+async function loadThemes() {
+  if (!isWailsEnv.value) return;
+
+  try {
+    themeLoading.value = true;
+    const themes = await wailsApi.getAvailableThemes();
+    availableThemes.value = themes;
+
+    // 找到当前激活的主题
+    const activeTheme = themes.find(t => t.is_active);
+    if (activeTheme) {
+      selectedTheme.value = activeTheme.name;
+      // 加载当前主题的预览
+      await loadThemePreview(activeTheme.name);
+    }
+  } catch (e) {
+    console.error('加载主题列表失败', e);
+  } finally {
+    themeLoading.value = false;
+  }
+}
+
+// 加载主题预览
+async function loadThemePreview(themeName: string) {
+  if (!isWailsEnv.value) return;
+
+  try {
+    const preview = await wailsApi.getThemePreview(themeName);
+    themePreview.value = preview;
+  } catch (e) {
+    console.error('加载主题预览失败', e);
+    themePreview.value = null;
+  }
+}
+
+// 选择主题时加载预览
+async function onThemeSelect(themeName: string) {
+  selectedTheme.value = themeName;
+  await loadThemePreview(themeName);
+}
+
+// 应用选中的主题
+async function applyTheme() {
+  if (!isWailsEnv.value) return;
+
+  try {
+    themeLoading.value = true;
+    await wailsApi.applyTheme(selectedTheme.value);
+
+    // 更新表单数据中的主题
+    formData.value.ui.theme = selectedTheme.value;
+
+    // 刷新主题列表以更新激活状态
+    await loadThemes();
+
+    saveMessageType.value = 'success';
+    saveMessage.value = '主题已应用';
+    setTimeout(() => { saveMessage.value = ''; }, 2000);
+  } catch (e) {
+    console.error('应用主题失败', e);
+    saveMessageType.value = 'error';
+    saveMessage.value = '应用主题失败';
+    setTimeout(() => { saveMessage.value = ''; }, 3000);
+  } finally {
+    themeLoading.value = false;
   }
 }
 
@@ -944,6 +1022,116 @@ onUnmounted(() => {
           <div class="section-header">
             <h2>外观设置</h2>
             <p class="section-desc">定制候选框的视觉呈现</p>
+          </div>
+
+          <!-- 主题选择 -->
+          <div class="settings-card" v-if="isWailsEnv">
+            <div class="card-title">主题</div>
+            <div class="theme-selector">
+              <div class="theme-list">
+                <div
+                  v-for="theme in availableThemes"
+                  :key="theme.name"
+                  class="theme-card"
+                  :class="{ 'theme-card-selected': selectedTheme === theme.name, 'theme-card-active': theme.is_active }"
+                  @click="onThemeSelect(theme.name)"
+                >
+                  <div class="theme-card-header">
+                    <span class="theme-name">{{ theme.display_name || theme.name }}</span>
+                    <span v-if="theme.is_builtin" class="theme-badge builtin">内置</span>
+                    <span v-if="theme.is_active" class="theme-badge active">当前</span>
+                  </div>
+                  <div class="theme-card-meta" v-if="theme.author">
+                    <span class="theme-author">{{ theme.author }}</span>
+                    <span v-if="theme.version" class="theme-version">v{{ theme.version }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 主题预览 -->
+              <div class="theme-preview" v-if="themePreview">
+                <div class="preview-title">预览</div>
+                <div class="preview-content">
+                  <!-- 候选窗口预览 -->
+                  <div class="preview-section">
+                    <div class="preview-label">候选窗口</div>
+                    <div
+                      class="preview-candidate-window"
+                      :style="{
+                        backgroundColor: themePreview.candidate_window?.background_color,
+                        borderColor: themePreview.candidate_window?.border_color
+                      }"
+                    >
+                      <div class="preview-candidate-item">
+                        <span
+                          class="preview-index"
+                          :style="{
+                            backgroundColor: themePreview.candidate_window?.index_bg_color,
+                            color: themePreview.candidate_window?.index_color
+                          }"
+                        >1</span>
+                        <span
+                          class="preview-text"
+                          :style="{ color: themePreview.candidate_window?.text_color }"
+                        >中文</span>
+                      </div>
+                      <div
+                        class="preview-candidate-item preview-hover"
+                        :style="{ backgroundColor: themePreview.candidate_window?.hover_bg_color }"
+                      >
+                        <span
+                          class="preview-index"
+                          :style="{
+                            backgroundColor: themePreview.candidate_window?.index_bg_color,
+                            color: themePreview.candidate_window?.index_color
+                          }"
+                        >2</span>
+                        <span
+                          class="preview-text"
+                          :style="{ color: themePreview.candidate_window?.text_color }"
+                        >输入</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 工具栏预览 -->
+                  <div class="preview-section">
+                    <div class="preview-label">工具栏</div>
+                    <div
+                      class="preview-toolbar"
+                      :style="{
+                        backgroundColor: themePreview.toolbar?.background_color,
+                        borderColor: themePreview.toolbar?.border_color
+                      }"
+                    >
+                      <span
+                        class="preview-toolbar-item"
+                        :style="{ backgroundColor: themePreview.toolbar?.mode_chinese_bg_color }"
+                      >中</span>
+                      <span
+                        class="preview-toolbar-item"
+                        :style="{ backgroundColor: themePreview.toolbar?.full_width_on_bg_color }"
+                      >全</span>
+                      <span
+                        class="preview-toolbar-item"
+                        :style="{ backgroundColor: themePreview.toolbar?.punct_chinese_bg_color }"
+                      >。</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 应用按钮 -->
+                <div class="preview-actions">
+                  <button
+                    class="btn btn-primary"
+                    @click="applyTheme"
+                    :disabled="themeLoading || availableThemes.find(t => t.name === selectedTheme)?.is_active"
+                  >
+                    {{ themeLoading ? '应用中...' : '应用主题' }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="settings-card">
@@ -2308,6 +2496,175 @@ input:checked + .slider:before { transform: translateX(20px); }
 .error-icon { font-size: 48px; }
 .error-panel p { color: #6b7280; max-width: 300px; }
 
+/* Theme Selector */
+.theme-selector {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.theme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.theme-card {
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #fff;
+}
+
+.theme-card:hover {
+  border-color: #93c5fd;
+  background: #f8fafc;
+}
+
+.theme-card-selected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.theme-card-active {
+  border-color: #22c55e;
+}
+
+.theme-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-name {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.theme-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.theme-badge.builtin {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.theme-badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.theme-card-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+  display: flex;
+  gap: 8px;
+}
+
+.theme-preview {
+  flex: 1;
+  min-width: 280px;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.preview-candidate-window {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.preview-candidate-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.preview-hover {
+  background: #e6f0ff;
+}
+
+.preview-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 3px;
+}
+
+.preview-text {
+  font-size: 14px;
+}
+
+.preview-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.preview-toolbar-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.preview-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar { width: 60px; min-width: 60px; }
@@ -2316,5 +2673,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   .nav-item { justify-content: center; padding: 12px; }
   .action-bar { left: 60px; }
   .content { padding: 16px; }
+  .theme-selector { flex-direction: column; }
+  .theme-preview { min-width: auto; }
 }
 </style>
