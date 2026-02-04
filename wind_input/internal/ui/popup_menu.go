@@ -49,7 +49,18 @@ const (
 
 	// Windows message for popup menu
 	WM_CAPTURECHANGED = 0x0215
+
+	// Timer for checking mouse state (for click-outside detection)
+	MENU_CHECK_TIMER_ID = 100
+	MENU_CHECK_INTERVAL = 50 // ms
 )
+
+var (
+	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
+)
+
+// VK_LBUTTON is the virtual key code for left mouse button
+const VK_LBUTTON = 0x01
 
 // Global popup menu registry
 var (
@@ -123,10 +134,16 @@ func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 		// Capture was taken away from us - hide the menu
 		m := getPopupMenu(windows.HWND(hwnd))
 		if m != nil && m.IsVisible() {
-			m.mu.Lock()
-			m.visible = false
-			m.mu.Unlock()
-			procShowWindow.Call(hwnd, SW_HIDE)
+			m.Hide()
+		}
+		return 0
+
+	case WM_TIMER:
+		if wParam == MENU_CHECK_TIMER_ID {
+			m := getPopupMenu(windows.HWND(hwnd))
+			if m != nil {
+				m.checkMouseState()
+			}
 		}
 		return 0
 	}
@@ -222,6 +239,9 @@ func (m *PopupMenu) Show(items []MenuItem, x, y int, callback PopupMenuCallback)
 	// Capture mouse to detect clicks outside the menu
 	procSetCapture.Call(uintptr(m.hwnd))
 
+	// Start timer to check mouse state (backup for cross-process click detection)
+	procSetTimer.Call(uintptr(m.hwnd), MENU_CHECK_TIMER_ID, MENU_CHECK_INTERVAL, 0)
+
 	// Start tracking mouse leave
 	m.trackMouseLeave()
 }
@@ -234,6 +254,8 @@ func (m *PopupMenu) Hide() {
 	m.mu.Unlock()
 
 	if wasVisible {
+		// Stop the mouse check timer
+		procKillTimer.Call(uintptr(m.hwnd), MENU_CHECK_TIMER_ID)
 		// Release mouse capture
 		procReleaseCapture.Call()
 		procShowWindow.Call(uintptr(m.hwnd), SW_HIDE)
@@ -592,4 +614,35 @@ func (m *PopupMenu) GetBounds() (int, int, int, int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.x, m.y, m.width, m.height
+}
+
+// checkMouseState checks if mouse button is pressed outside the menu
+// This is a backup mechanism for cross-process click detection where SetCapture doesn't work
+func (m *PopupMenu) checkMouseState() {
+	if !m.IsVisible() {
+		return
+	}
+
+	// Check if left mouse button is pressed
+	state, _, _ := procGetAsyncKeyState.Call(VK_LBUTTON)
+	// GetAsyncKeyState returns: high-order bit set if key is down
+	if state&0x8000 == 0 {
+		return // Mouse button not pressed
+	}
+
+	// Get current cursor position (screen coordinates)
+	var pt struct{ X, Y int32 }
+	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+
+	// Check if cursor is outside the menu
+	m.mu.Lock()
+	menuX, menuY := m.x, m.y
+	menuW, menuH := m.width, m.height
+	m.mu.Unlock()
+
+	if int(pt.X) < menuX || int(pt.X) >= menuX+menuW ||
+		int(pt.Y) < menuY || int(pt.Y) >= menuY+menuH {
+		// Mouse pressed outside menu - close it
+		m.Hide()
+	}
 }

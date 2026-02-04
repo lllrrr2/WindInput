@@ -1056,6 +1056,14 @@ func (c *Coordinator) handleEnter() *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleEscape() *bridge.KeyEventResult {
+	// If toolbar context menu is open, close it and consume ESC
+	if c.uiManager != nil && c.uiManager.IsToolbarMenuOpen() {
+		c.logger.Debug("ESC closes toolbar context menu")
+		c.uiManager.HideToolbarMenu()
+		// Return Consumed to eat the ESC key (don't pass to app)
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+	}
+
 	// If candidate context menu is open, close it and consume ESC
 	if c.uiManager != nil && c.uiManager.IsCandidateMenuOpen() {
 		c.logger.Debug("ESC closes candidate context menu")
