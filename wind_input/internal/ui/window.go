@@ -281,6 +281,9 @@ type CandidateWindow struct {
 	hoverIndex    int             // Currently hovered candidate index (-1 for none)
 	trackingMouse bool            // Whether mouse leave tracking is enabled
 	callbacks     *CandidateCallback
+
+	// Menu state (for ESC key handling coordination)
+	menuOpen bool // Whether context menu is currently open
 }
 
 // NewCandidateWindow creates a new candidate window
@@ -618,6 +621,13 @@ func (w *CandidateWindow) ResetHoverIndex() {
 	w.mu.Unlock()
 }
 
+// IsMenuOpen returns whether the context menu is currently open
+func (w *CandidateWindow) IsMenuOpen() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.menuOpen
+}
+
 // handleMouseMove processes mouse move events
 func (w *CandidateWindow) handleMouseMove(lParam uintptr) {
 	// Extract mouse position from lParam (relative to window client area)
@@ -779,6 +789,11 @@ func (w *CandidateWindow) handleRightClick(lParam uintptr) {
 	// Note: Do NOT call SetForegroundWindow to avoid losing input focus
 	// which would cause IME switching issues
 
+	// Set menu open flag (for ESC key handling coordination)
+	w.mu.Lock()
+	w.menuOpen = true
+	w.mu.Unlock()
+
 	// Show popup menu and wait for selection
 	// TPM_RETURNCMD: Return the command instead of posting WM_COMMAND
 	// Note: Removed TPM_NONOTIFY so menu can properly handle ESC key
@@ -791,6 +806,11 @@ func (w *CandidateWindow) handleRightClick(lParam uintptr) {
 		uintptr(w.hwnd),
 		0,
 	)
+
+	// Clear menu open flag
+	w.mu.Lock()
+	w.menuOpen = false
+	w.mu.Unlock()
 
 	// Handle menu selection
 	if ret != 0 && callbacks != nil {

@@ -266,6 +266,14 @@ func (m *Manager) IsReady() bool {
 	return m.ready
 }
 
+// IsCandidateMenuOpen returns whether the candidate window's context menu is open
+func (m *Manager) IsCandidateMenuOpen() bool {
+	if m.window != nil {
+		return m.window.IsMenuOpen()
+	}
+	return false
+}
+
 // ShowCandidates shows candidates at the given caret position (async, non-blocking)
 // The position will be automatically adjusted to stay within screen bounds.
 // Parameters:

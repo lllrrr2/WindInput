@@ -1062,6 +1062,12 @@ func (c *Coordinator) handleEnter() *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleEscape() *bridge.KeyEventResult {
+	// If candidate context menu is open, ignore ESC - let the menu handle it
+	if c.uiManager != nil && c.uiManager.IsCandidateMenuOpen() {
+		c.logger.Debug("ESC ignored: candidate context menu is open")
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+	}
+
 	if len(c.inputBuffer) > 0 {
 		c.clearState()
 		c.hideUI()
