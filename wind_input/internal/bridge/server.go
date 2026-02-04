@@ -633,38 +633,10 @@ func (s *Server) startPushPipeListener() {
 
 		s.logger.Info("Push pipe client connected", "clientID", clientID)
 
-		// Monitor client disconnection in a separate goroutine
-		go func(h windows.Handle, id int) {
-			// Wait for pipe to break (client disconnects)
-			// Use GetNamedPipeHandleState to check if pipe is still connected
-			for {
-				time.Sleep(2 * time.Second)
-
-				s.pushMu.RLock()
-				_, exists := s.pushClients[h]
-				s.pushMu.RUnlock()
-
-				if !exists {
-					break
-				}
-
-				// Try to get pipe state to detect disconnection
-				var state, curInstances uint32
-				err := windows.GetNamedPipeHandleState(h, &state, &curInstances, nil, nil, nil, 0)
-				if err != nil {
-					s.logger.Debug("Push pipe client disconnected (detected via state check)", "clientID", id, "error", err)
-
-					// Remove from clients map and close handle
-					s.pushMu.Lock()
-					if _, exists := s.pushClients[h]; exists {
-						delete(s.pushClients, h)
-						windows.CloseHandle(h)
-					}
-					s.pushMu.Unlock()
-					break
-				}
-			}
-		}(handle, clientID)
+		// Note: We don't actively monitor disconnection here.
+		// Client disconnection is detected when write fails in PushCommitTextToAllClients
+		// or PushStateToAllClients. This avoids false positives from GetNamedPipeHandleState
+		// which can return "Access is denied" on valid pipes.
 	}
 }
 
