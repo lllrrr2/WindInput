@@ -833,20 +833,27 @@ BOOL CKeyEventSink::_IsContextReadOnly(ITfContext* pContext)
 }
 
 // Called when composition is unexpectedly terminated by the application
-// This typically happens during fast typing when a new composition starts
-// before the previous InsertText operation completes
+// This typically happens when:
+// 1. Fast typing: new composition starts before previous InsertText completes
+// 2. User clicks in input field to change cursor position
+// 3. Application forcefully terminates composition
 void CKeyEventSink::OnCompositionUnexpectedlyTerminated()
 {
-    WIND_LOG_DEBUG(L"OnCompositionUnexpectedlyTerminated: Resetting state\n");
+    WIND_LOG_INFO(L"OnCompositionUnexpectedlyTerminated: Resetting state and notifying Go service\n");
 
     // Reset local state
     _isComposing = FALSE;
     _hasCandidates = FALSE;
 
-    // TODO: Consider sending a message to Go service to clear input buffer
-    // For now, the Go service will receive the next key event and handle accordingly
-    // The key issue (composition text leaking) is already fixed by clearing the text
-    // in OnCompositionTerminated before this method is called
+    // Notify Go service to clear input buffer and hide candidate window
+    // This fixes the issue where candidate window stays open after user clicks
+    // in input field to change cursor position
+    CIPCClient* pIPCClient = _pTextService->GetIPCClient();
+    if (pIPCClient != nullptr && pIPCClient->IsConnected())
+    {
+        pIPCClient->SendFocusLost();
+        WIND_LOG_DEBUG(L"OnCompositionUnexpectedlyTerminated: Sent FocusLost to Go service\n");
+    }
 }
 
 // ============================================================================
