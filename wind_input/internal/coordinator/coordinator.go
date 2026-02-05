@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
-	"github.com/huanfeng/wind_input/internal/config"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/hotkey"
 	"github.com/huanfeng/wind_input/internal/transform"

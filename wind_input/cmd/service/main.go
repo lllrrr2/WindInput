@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
-	"github.com/huanfeng/wind_input/internal/config"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/internal/control"
 	"github.com/huanfeng/wind_input/internal/coordinator"
 	"github.com/huanfeng/wind_input/internal/dict"

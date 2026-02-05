@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/Microsoft/go-winio"
-	"github.com/huanfeng/wind_input/internal/config"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/pkg/control"
 )

@@ -631,30 +631,3 @@ func (a *App) GetThemePreview(themeName string) (map[string]interface{}, error) 
 	return preview, nil
 }
 
-// ApplyTheme 应用主题（保存到配置）
-func (a *App) ApplyTheme(themeName string) error {
-	if a.configEditor == nil {
-		return fmt.Errorf("config editor not initialized")
-	}
-
-	cfg := a.configEditor.GetConfig()
-	if cfg == nil {
-		return fmt.Errorf("config not loaded")
-	}
-
-	// 更新主题配置
-	cfg.UI.Theme = themeName
-	a.configEditor.SetConfig(cfg)
-
-	if err := a.configEditor.Save(); err != nil {
-		return err
-	}
-
-	// 更新文件监控状态
-	a.fileWatcher.UpdateState(a.configEditor.GetFilePath())
-
-	// 通知主程序重载
-	go a.NotifyReload("config")
-
-	return nil
-}

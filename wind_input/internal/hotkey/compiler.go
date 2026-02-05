@@ -4,7 +4,7 @@ package hotkey
 import (
 	"strings"
 
-	"github.com/huanfeng/wind_input/internal/config"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/internal/ipc"
 )
 

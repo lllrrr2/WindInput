@@ -77,7 +77,6 @@ const serviceRunning = ref(false);
 
 // 主题相关状态
 const availableThemes = ref<ThemeInfo[]>([]);
-const selectedTheme = ref('default');
 const themePreview = ref<ThemePreview | null>(null);
 const themeLoading = ref(false);
 
@@ -428,12 +427,9 @@ async function loadThemes() {
     const themes = await wailsApi.getAvailableThemes();
     availableThemes.value = themes;
 
-    // 找到当前激活的主题
-    const activeTheme = themes.find(t => t.is_active);
-    if (activeTheme) {
-      selectedTheme.value = activeTheme.name;
-      // 加载当前主题的预览
-      await loadThemePreview(activeTheme.name);
+    // 加载当前选中主题的预览
+    if (formData.value.ui.theme) {
+      await loadThemePreview(formData.value.ui.theme);
     }
   } catch (e) {
     console.error('加载主题列表失败', e);
@@ -455,37 +451,10 @@ async function loadThemePreview(themeName: string) {
   }
 }
 
-// 选择主题时加载预览
+// 选择主题时更新 formData 并加载预览
 async function onThemeSelect(themeName: string) {
-  selectedTheme.value = themeName;
+  formData.value.ui.theme = themeName;
   await loadThemePreview(themeName);
-}
-
-// 应用选中的主题
-async function applyTheme() {
-  if (!isWailsEnv.value) return;
-
-  try {
-    themeLoading.value = true;
-    await wailsApi.applyTheme(selectedTheme.value);
-
-    // 更新表单数据中的主题
-    formData.value.ui.theme = selectedTheme.value;
-
-    // 刷新主题列表以更新激活状态
-    await loadThemes();
-
-    saveMessageType.value = 'success';
-    saveMessage.value = '主题已应用';
-    setTimeout(() => { saveMessage.value = ''; }, 2000);
-  } catch (e) {
-    console.error('应用主题失败', e);
-    saveMessageType.value = 'error';
-    saveMessage.value = '应用主题失败';
-    setTimeout(() => { saveMessage.value = ''; }, 3000);
-  } finally {
-    themeLoading.value = false;
-  }
 }
 
 // 测试输入
@@ -1033,7 +1002,7 @@ onUnmounted(() => {
                   v-for="theme in availableThemes"
                   :key="theme.name"
                   class="theme-card"
-                  :class="{ 'theme-card-selected': selectedTheme === theme.name, 'theme-card-active': theme.is_active }"
+                  :class="{ 'theme-card-selected': formData.ui.theme === theme.name, 'theme-card-active': theme.is_active }"
                   @click="onThemeSelect(theme.name)"
                 >
                   <div class="theme-card-header">
@@ -1120,16 +1089,6 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- 应用按钮 -->
-                <div class="preview-actions">
-                  <button
-                    class="btn btn-primary"
-                    @click="applyTheme"
-                    :disabled="themeLoading || availableThemes.find(t => t.name === selectedTheme)?.is_active"
-                  >
-                    {{ themeLoading ? '应用中...' : '应用主题' }}
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -2659,11 +2618,6 @@ input:checked + .slider:before { transform: translateX(20px); }
   color: #fff;
 }
 
-.preview-actions {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-}
 
 /* Responsive */
 @media (max-width: 768px) {

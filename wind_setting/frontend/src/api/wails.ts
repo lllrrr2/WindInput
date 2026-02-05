@@ -166,10 +166,6 @@ export async function getThemePreview(themeName: string): Promise<ThemePreview> 
   return preview as unknown as ThemePreview;
 }
 
-export async function applyTheme(themeName: string): Promise<void> {
-  return App.ApplyTheme(themeName);
-}
-
 // 默认配置
 export function getDefaultConfig(): Config {
   return new config.Config({
