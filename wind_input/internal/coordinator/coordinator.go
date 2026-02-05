@@ -361,12 +361,12 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 	c.mu.Lock()
 
 	// Convert page-local index to actual candidate index
-	actualIndex := index // The index from hit test is already 0-based within current page
+	actualIndex := (c.currentPage-1)*c.candidatesPerPage + index
 
-	c.logger.Debug("Candidate selected via mouse", "index", actualIndex)
+	c.logger.Debug("Candidate selected via mouse", "pageIndex", index, "actualIndex", actualIndex, "currentPage", c.currentPage)
 
 	if actualIndex < 0 || actualIndex >= len(c.candidates) {
-		c.logger.Warn("Invalid candidate index", "index", actualIndex, "candidateCount", len(c.candidates))
+		c.logger.Warn("Invalid candidate index", "actualIndex", actualIndex, "candidateCount", len(c.candidates))
 		c.mu.Unlock()
 		return
 	}
@@ -1227,6 +1227,13 @@ func (c *Coordinator) showUI() {
 		return
 	}
 
+	// When InlinePreedit is enabled and there are no candidates,
+	// hide the candidate window (only show the inline preedit in the application)
+	if c.config != nil && c.config.UI.InlinePreedit && len(c.candidates) == 0 {
+		c.hideUI()
+		return
+	}
+
 	// Get current page candidates
 	startIdx := (c.currentPage - 1) * c.candidatesPerPage
 	endIdx := startIdx + c.candidatesPerPage
@@ -1323,6 +1330,7 @@ func (c *Coordinator) showModeIndicator() {
 func (c *Coordinator) hideUI() {
 	if c.uiManager != nil {
 		c.uiManager.Hide()
+		c.uiManager.HideTooltip()
 	}
 }
 
