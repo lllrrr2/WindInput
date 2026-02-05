@@ -276,6 +276,10 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 			cfg.UI.StatusIndicatorOffsetX,
 			cfg.UI.StatusIndicatorOffsetY,
 		)
+		// 加载主题
+		if cfg.UI.Theme != "" {
+			c.uiManager.LoadTheme(cfg.UI.Theme)
+		}
 	}
 
 	return c
@@ -1878,6 +1882,10 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 			uiConfig.StatusIndicatorOffsetX,
 			uiConfig.StatusIndicatorOffsetY,
 		)
+		// 更新主题
+		if uiConfig.Theme != "" {
+			c.uiManager.LoadTheme(uiConfig.Theme)
+		}
 	}
 
 	c.logger.Debug("UI config updated", "candidatesPerPage", c.candidatesPerPage)

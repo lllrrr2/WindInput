@@ -83,9 +83,10 @@ type UIConfig struct {
 	HideCandidateWindow bool    `yaml:"hide_candidate_window" json:"hide_candidate_window"` // 调试：隐藏候选框（测试性能）
 	CandidateLayout     string  `yaml:"candidate_layout" json:"candidate_layout"`           // 候选布局：horizontal（横向）或 vertical（纵向）
 	// 状态提示配置
-	StatusIndicatorDuration int `yaml:"status_indicator_duration" json:"status_indicator_duration"` // 状态提示显示时长（毫秒），默认 800
-	StatusIndicatorOffsetX  int `yaml:"status_indicator_offset_x" json:"status_indicator_offset_x"` // 状态提示 X 偏移量
-	StatusIndicatorOffsetY  int `yaml:"status_indicator_offset_y" json:"status_indicator_offset_y"` // 状态提示 Y 偏移量
+	StatusIndicatorDuration int    `yaml:"status_indicator_duration" json:"status_indicator_duration"` // 状态提示显示时长（毫秒），默认 800
+	StatusIndicatorOffsetX  int    `yaml:"status_indicator_offset_x" json:"status_indicator_offset_x"` // 状态提示 X 偏移量
+	StatusIndicatorOffsetY  int    `yaml:"status_indicator_offset_y" json:"status_indicator_offset_y"` // 状态提示 Y 偏移量
+	Theme                   string `yaml:"theme" json:"theme"`                                         // 主题名称：default, dark 或自定义主题名
 }
 
 // ToolbarConfig contains toolbar settings
@@ -176,6 +177,7 @@ func DefaultConfig() *Config {
 			StatusIndicatorDuration: 800,          // 默认 800 毫秒
 			StatusIndicatorOffsetX:  0,            // 默认无偏移
 			StatusIndicatorOffsetY:  -30,          // 默认向上偏移，更靠近光标
+			Theme:                   "default",
 		},
 		Toolbar: ToolbarConfig{
 			Visible:   false,
