@@ -120,8 +120,8 @@ func (w *TooltipWindow) Create() error {
 	return nil
 }
 
-// Show shows the tooltip at the specified position with the given text
-func (w *TooltipWindow) Show(text string, x, y int) {
+// Show shows the tooltip centered horizontally at centerX, below y
+func (w *TooltipWindow) Show(text string, centerX, y int) {
 	if w.hwnd == 0 || text == "" {
 		return
 	}
@@ -136,6 +136,10 @@ func (w *TooltipWindow) Show(text string, x, y int) {
 	if img == nil {
 		return
 	}
+
+	// Center tooltip horizontally relative to the candidate
+	tooltipWidth := img.Bounds().Dx()
+	x := centerX - tooltipWidth/2
 
 	// Update and show
 	w.updateLayeredWindow(img, x, y)

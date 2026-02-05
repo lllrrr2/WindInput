@@ -276,6 +276,8 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 			cfg.UI.StatusIndicatorOffsetX,
 			cfg.UI.StatusIndicatorOffsetY,
 		)
+		// 设置编码提示延迟
+		c.uiManager.SetTooltipDelay(cfg.UI.TooltipDelay)
 		// 加载主题
 		if cfg.UI.Theme != "" {
 			c.uiManager.LoadTheme(cfg.UI.Theme)
@@ -329,9 +331,9 @@ func (c *Coordinator) setupCandidateCallbacks() {
 			// Run in goroutine to avoid blocking UI thread
 			go c.handleCandidateSelect(index)
 		},
-		OnHoverChange: func(index, mouseX, mouseY int) {
+		OnHoverChange: func(index, tooltipX, tooltipY int) {
 			// Run in goroutine to avoid blocking UI thread
-			go c.handleCandidateHoverChange(index, mouseX, mouseY)
+			go c.handleCandidateHoverChange(index, tooltipX, tooltipY)
 		},
 		OnMoveUp: func(index int) {
 			// Run in goroutine to avoid blocking UI thread
@@ -396,8 +398,8 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 }
 
 // handleCandidateHoverChange handles hover state change
-func (c *Coordinator) handleCandidateHoverChange(index, mouseX, mouseY int) {
-	c.logger.Debug("Candidate hover changed", "index", index, "mouseX", mouseX, "mouseY", mouseY)
+func (c *Coordinator) handleCandidateHoverChange(index, tooltipX, tooltipY int) {
+	c.logger.Debug("Candidate hover changed", "index", index, "tooltipX", tooltipX, "tooltipY", tooltipY)
 
 	// Refresh the candidate window to show/hide hover highlight
 	if c.uiManager != nil {
@@ -405,7 +407,7 @@ func (c *Coordinator) handleCandidateHoverChange(index, mouseX, mouseY int) {
 
 		// Show/hide tooltip for encoding lookup
 		if index >= 0 {
-			c.uiManager.ShowTooltipForCandidate(index, mouseX, mouseY)
+			c.uiManager.ShowTooltipForCandidate(index, tooltipX, tooltipY)
 		} else {
 			c.uiManager.HideTooltip()
 		}
@@ -1899,6 +1901,8 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 			uiConfig.StatusIndicatorOffsetX,
 			uiConfig.StatusIndicatorOffsetY,
 		)
+		// 设置编码提示延迟
+		c.uiManager.SetTooltipDelay(uiConfig.TooltipDelay)
 		// 更新主题
 		if uiConfig.Theme != "" {
 			c.uiManager.LoadTheme(uiConfig.Theme)

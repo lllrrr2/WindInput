@@ -278,10 +278,14 @@ type CandidateWindow struct {
 	closeCh  chan struct{}
 
 	// Mouse interaction support
-	hitRects      []CandidateRect // Bounding rectangles for hit testing
-	hoverIndex    int             // Currently hovered candidate index (-1 for none)
-	trackingMouse bool            // Whether mouse leave tracking is enabled
-	callbacks     *CandidateCallback
+	hitRects        []CandidateRect // Bounding rectangles for hit testing
+	hoverIndex      int             // Currently hovered candidate index (-1 for none)
+	trackingMouse   bool            // Whether mouse leave tracking is enabled
+	callbacks       *CandidateCallback
+	mouseHasMoved   bool // Whether mouse has physically moved since last content update
+	hasLastMousePos bool // Whether we have a stored previous mouse position
+	lastMouseX      int  // Last mouse X position (window-relative)
+	lastMouseY      int  // Last mouse Y position (window-relative)
 
 	// Custom popup menu (doesn't steal focus)
 	popupMenu       *PopupMenu
@@ -618,6 +622,17 @@ func (w *CandidateWindow) SetHitRects(rects []CandidateRect) {
 	w.mu.Unlock()
 }
 
+// ResetMouseTracking resets mouse movement tracking state.
+// Called when candidate content changes (not during hover refreshes)
+// so that tooltip won't appear until the mouse has actually moved.
+func (w *CandidateWindow) ResetMouseTracking() {
+	w.mu.Lock()
+	w.mouseHasMoved = false
+	w.hasLastMousePos = false
+	w.hoverIndex = -1
+	w.mu.Unlock()
+}
+
 // SetCallbacks sets the mouse event callbacks
 func (w *CandidateWindow) SetCallbacks(callbacks *CandidateCallback) {
 	w.mu.Lock()
@@ -698,12 +713,33 @@ func (w *CandidateWindow) handleMouseMove(lParam uintptr) {
 		procTrackMouseEvent.Call(uintptr(unsafe.Pointer(&tme)))
 		w.trackingMouse = true
 	}
+
+	// Detect real mouse movement: the first WM_MOUSEMOVE after content update
+	// only stores the position; subsequent moves with different coordinates
+	// confirm that the user is actually moving the mouse.
+	if w.hasLastMousePos {
+		if mouseX != w.lastMouseX || mouseY != w.lastMouseY {
+			w.mouseHasMoved = true
+		}
+	}
+	w.lastMouseX = mouseX
+	w.lastMouseY = mouseY
+	w.hasLastMousePos = true
+
 	hitRects := w.hitRects
 	prevHoverIndex := w.hoverIndex
 	callbacks := w.callbacks
+	mouseHasMoved := w.mouseHasMoved
 	windowX := w.x
 	windowY := w.y
 	w.mu.Unlock()
+
+	// Only process hover when the mouse has truly moved,
+	// preventing tooltip flicker when the cursor is stationary
+	// but candidates change underneath it during typing.
+	if !mouseHasMoved {
+		return
+	}
 
 	// Hit test against candidate rectangles
 	newHoverIndex := -1
@@ -721,13 +757,22 @@ func (w *CandidateWindow) handleMouseMove(lParam uintptr) {
 		w.hoverIndex = newHoverIndex
 		w.mu.Unlock()
 
-		// Calculate screen coordinates for tooltip
-		screenX := windowX + mouseX
-		screenY := windowY + mouseY
+		// Calculate tooltip position: centered below the candidate item
+		tooltipX := windowX
+		tooltipY := windowY
+		if newHoverIndex >= 0 {
+			for _, rect := range hitRects {
+				if rect.Index == newHoverIndex {
+					tooltipX = windowX + int(rect.X+rect.W/2)
+					tooltipY = windowY + int(rect.Y+rect.H) + 2
+					break
+				}
+			}
+		}
 
-		// Notify callback with screen coordinates
+		// Notify callback with tooltip position
 		if callbacks != nil && callbacks.OnHoverChange != nil {
-			callbacks.OnHoverChange(newHoverIndex, screenX, screenY)
+			callbacks.OnHoverChange(newHoverIndex, tooltipX, tooltipY)
 		}
 	}
 }
@@ -861,6 +906,8 @@ func (w *CandidateWindow) handleMouseLeave() {
 	prevHoverIndex := w.hoverIndex
 	w.hoverIndex = -1
 	w.trackingMouse = false
+	w.mouseHasMoved = false
+	w.hasLastMousePos = false
 	callbacks := w.callbacks
 	w.mu.Unlock()
 

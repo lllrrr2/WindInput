@@ -88,6 +88,14 @@ type Manager struct {
 	statusIndicatorDuration int // Duration in milliseconds
 	statusIndicatorOffsetX  int // X offset for status indicator
 	statusIndicatorOffsetY  int // Y offset for status indicator
+
+	// Tooltip delay config
+	tooltipDelay   int    // Delay in milliseconds before showing tooltip (0 = immediate)
+	tooltipVersion uint64 // Version counter for cancelling pending tooltip shows
+
+	// Track last rendered content to distinguish content updates from hover refreshes
+	lastRenderedInput string
+	lastRenderedPage  int
 }
 
 // NewManager creates a new UI manager
@@ -102,18 +110,17 @@ func NewManager(logger *slog.Logger) *Manager {
 	themeManager := theme.NewManager(logger)
 
 	return &Manager{
-		window:                  NewCandidateWindow(logger),
-		renderer:                NewRenderer(DefaultRenderConfig()),
-		toolbar:                 NewToolbarWindow(logger),
-		tooltip:                 NewTooltipWindow(logger),
-		themeManager:            themeManager,
-		logger:                  logger,
-		readyCh:                 make(chan struct{}),
-		cmdCh:                   make(chan UICommand, 100), // Buffered channel to avoid blocking IPC
-		cmdEvent:                event,
-		statusIndicatorDuration: 800, // Default 800ms
-		statusIndicatorOffsetX:  0,
-		statusIndicatorOffsetY:  5, // Slightly below cursor
+		window:       NewCandidateWindow(logger),
+		renderer:     NewRenderer(DefaultRenderConfig()),
+		toolbar:      NewToolbarWindow(logger),
+		tooltip:      NewTooltipWindow(logger),
+		themeManager: themeManager,
+		logger:       logger,
+		readyCh:      make(chan struct{}),
+		cmdCh:        make(chan UICommand, 100), // Buffered channel to avoid blocking IPC
+		cmdEvent:     event,
+		// 注意：statusIndicator* 和 tooltipDelay 的默认值统一由 config.DefaultConfig() 提供，
+		// 通过 coordinator 初始化时调用对应的 Set/Update 方法设置。
 	}
 }
 
@@ -429,6 +436,13 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, caretX,
 		m.window.ResetHoverIndex()
 		m.logger.Debug("Reset sticky state", "prevInput", prevInput, "newInput", input)
 	}
+	// Reset mouse tracking only when candidate content actually changes
+	// (not during hover refreshes which have the same input and page)
+	if input != m.lastRenderedInput || page != m.lastRenderedPage {
+		m.window.ResetMouseTracking()
+		m.lastRenderedInput = input
+		m.lastRenderedPage = page
+	}
 	currentStickyAbove := m.stickyAbove
 	// Get current hover index for rendering
 	hoverIndex := m.window.GetHoverIndex()
@@ -652,6 +666,14 @@ func (m *Manager) UpdateStatusIndicatorConfig(duration, offsetX, offsetY int) {
 	m.logger.Info("Status indicator config updated", "duration", duration, "offsetX", offsetX, "offsetY", offsetY)
 }
 
+// SetTooltipDelay 设置编码提示延迟显示时间（毫秒）
+func (m *Manager) SetTooltipDelay(delay int) {
+	m.mu.Lock()
+	m.tooltipDelay = delay
+	m.mu.Unlock()
+	m.logger.Info("Tooltip delay updated", "delay", delay)
+}
+
 // SetCandidateLayout 设置候选框布局模式
 func (m *Manager) SetCandidateLayout(layout string) {
 	if m.renderer != nil {
@@ -800,7 +822,7 @@ func (m *Manager) RefreshCandidates() {
 //  3. 可选：五笔拆字方法展示
 //
 // 目前 candidate.Comment 字段为空，因为引擎未返回 Hint 信息
-func (m *Manager) ShowTooltipForCandidate(pageIndex int, mouseX, mouseY int) {
+func (m *Manager) ShowTooltipForCandidate(pageIndex int, tooltipX, tooltipY int) {
 	m.mu.Lock()
 	if !m.ready || m.tooltip == nil {
 		m.mu.Unlock()
@@ -816,20 +838,43 @@ func (m *Manager) ShowTooltipForCandidate(pageIndex int, mouseX, mouseY int) {
 
 	candidate := m.candidates[pageIndex]
 	comment := candidate.Comment
+	delay := m.tooltipDelay
+
+	// Increment version to cancel any pending tooltip show
+	m.tooltipVersion++
+	version := m.tooltipVersion
 	m.mu.Unlock()
+
+	// Hide any currently visible tooltip immediately when switching candidates
+	m.tooltip.Hide()
 
 	// Only show tooltip if there's a comment (encoding info)
 	if comment == "" {
-		m.HideTooltip()
 		return
 	}
 
-	// Show tooltip below and to the right of the mouse cursor
-	m.tooltip.Show(comment, mouseX+15, mouseY+20)
+	// Show tooltip with delay
+	if delay <= 0 {
+		m.tooltip.Show(comment, tooltipX, tooltipY)
+		return
+	}
+	go func() {
+		time.Sleep(time.Duration(delay) * time.Millisecond)
+		m.mu.Lock()
+		if m.tooltipVersion != version {
+			m.mu.Unlock()
+			return // Cancelled: hover changed before delay elapsed
+		}
+		m.mu.Unlock()
+		m.tooltip.Show(comment, tooltipX, tooltipY)
+	}()
 }
 
-// HideTooltip hides the tooltip
+// HideTooltip hides the tooltip and cancels any pending delayed show
 func (m *Manager) HideTooltip() {
+	m.mu.Lock()
+	m.tooltipVersion++
+	m.mu.Unlock()
 	if m.tooltip != nil {
 		m.tooltip.Hide()
 	}
