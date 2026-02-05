@@ -1349,21 +1349,30 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 	return nil
 }
 
-// HandleFocusLost handles focus lost events
+// HandleFocusLost handles focus lost events (real focus change, e.g., user clicked another window)
 func (c *Coordinator) HandleFocusLost() {
-	c.logger.Debug("Focus lost, clearing state")
+	c.logger.Debug("Focus lost, clearing state and hiding toolbar")
 
-	// NOTE: Do NOT hide toolbar on focus lost!
-	// FocusLost is a temporary state - user might click outside the input field
-	// but still stay in the same application. Toolbar should remain visible.
-	// Only hide toolbar when:
-	// 1. IME is switched to another input method (HandleIMEDeactivated)
-	// 2. All TSF clients disconnect (HandleClientDisconnected)
+	// Hide toolbar on real focus lost (user switched to another window/app)
+	c.SetIMEActivated(false)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.clearState()
+}
+
+// HandleCompositionTerminated handles composition unexpectedly terminated events
+// This happens when the user clicks within the input field to change cursor position,
+// or when the application forcefully terminates the composition.
+// Unlike HandleFocusLost, this does NOT hide the toolbar since the user is still
+// in the same input field.
+func (c *Coordinator) HandleCompositionTerminated() {
+	c.logger.Debug("Composition terminated, clearing input state")
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Clear input state and hide candidate window
+	// Only clear input state and hide candidate window, keep toolbar visible
 	c.clearState()
 	c.hideUI()
 }

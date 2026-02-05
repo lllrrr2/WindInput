@@ -107,6 +107,10 @@ public:
     // Send focus gained notification (with optional caret position)
     BOOL SendFocusGained(int caretX = 0, int caretY = 0, int caretHeight = 0);
 
+    // Send composition unexpectedly terminated notification
+    // (e.g., user clicked in input field to change cursor position)
+    BOOL SendCompositionTerminated();
+
     // Send IME deactivated notification (when user switches to another IME)
     BOOL SendIMEDeactivated();
 

@@ -846,13 +846,13 @@ void CKeyEventSink::OnCompositionUnexpectedlyTerminated()
     _hasCandidates = FALSE;
 
     // Notify Go service to clear input buffer and hide candidate window
-    // This fixes the issue where candidate window stays open after user clicks
-    // in input field to change cursor position
+    // Use CompositionTerminated instead of FocusLost so that the toolbar stays visible
+    // (FocusLost would hide toolbar, but composition termination should not)
     CIPCClient* pIPCClient = _pTextService->GetIPCClient();
     if (pIPCClient != nullptr && pIPCClient->IsConnected())
     {
-        pIPCClient->SendFocusLost();
-        WIND_LOG_DEBUG(L"OnCompositionUnexpectedlyTerminated: Sent FocusLost to Go service\n");
+        pIPCClient->SendCompositionTerminated();
+        WIND_LOG_DEBUG(L"OnCompositionUnexpectedlyTerminated: Sent CompositionTerminated to Go service\n");
     }
 }
 

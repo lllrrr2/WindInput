@@ -347,6 +347,11 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 		s.handler.HandleFocusLost()
 		return s.codec.EncodeAck()
 
+	case ipc.CmdCompositionTerminated:
+		s.logger.Debug("Composition unexpectedly terminated", "clientID", clientID)
+		s.handler.HandleCompositionTerminated()
+		return s.codec.EncodeAck()
+
 	case ipc.CmdIMEActivated:
 		s.logger.Info("IME activated (user switched back to this IME)", "clientID", clientID, "processID", processID)
 		statusUpdate := s.handler.HandleIMEActivated()

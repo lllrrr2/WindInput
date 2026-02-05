@@ -95,6 +95,7 @@ type MessageHandler interface {
 	HandleKeyEvent(data KeyEventData) *KeyEventResult
 	HandleCaretUpdate(data CaretData) error
 	HandleFocusLost()
+	HandleCompositionTerminated()
 	HandleFocusGained() *StatusUpdateData
 	HandleIMEDeactivated()
 	HandleIMEActivated() *StatusUpdateData

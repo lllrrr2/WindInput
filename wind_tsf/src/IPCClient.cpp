@@ -598,6 +598,18 @@ BOOL CIPCClient::SendFocusLost()
     return _SendBinaryMessage(CMD_FOCUS_LOST, nullptr, 0, true /* async */);
 }
 
+BOOL CIPCClient::SendCompositionTerminated()
+{
+    if (!IsConnected())
+    {
+        return FALSE;
+    }
+
+    _LogDebug(L"Sending composition_terminated (async)");
+    // Send async - no response needed for composition terminated
+    return _SendBinaryMessage(CMD_COMPOSITION_TERMINATED, nullptr, 0, true /* async */);
+}
+
 BOOL CIPCClient::SendFocusGained(int caretX, int caretY, int caretHeight)
 {
     if (!_ShouldAttemptOperation())
