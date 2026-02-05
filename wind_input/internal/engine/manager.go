@@ -563,7 +563,7 @@ func (m *Manager) UpdateFilterMode(mode string) {
 }
 
 // UpdateWubiOptions 更新五笔引擎的选项（热更新）
-func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommit, punctCommit bool) {
+func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommit, punctCommit, showCodeHint, singleCodeInput bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -573,6 +573,8 @@ func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommi
 		m.wubiConfig.ClearOnEmptyAt4 = clearOnEmptyAt4
 		m.wubiConfig.TopCodeCommit = topCodeCommit
 		m.wubiConfig.PunctCommit = punctCommit
+		m.wubiConfig.ShowCodeHint = showCodeHint
+		m.wubiConfig.SingleCodeInput = singleCodeInput
 	}
 
 	// 更新所有已注册的五笔引擎的配置
@@ -583,12 +585,14 @@ func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommi
 				cfg.ClearOnEmptyAt4 = clearOnEmptyAt4
 				cfg.TopCodeCommit = topCodeCommit
 				cfg.PunctCommit = punctCommit
+				cfg.ShowCodeHint = showCodeHint
+				cfg.SingleCodeInput = singleCodeInput
 			}
 		}
 	}
 
-	log.Printf("[EngineManager] 更新五笔选项: autoCommitAt4=%v, clearOnEmptyAt4=%v, topCodeCommit=%v, punctCommit=%v",
-		autoCommitAt4, clearOnEmptyAt4, topCodeCommit, punctCommit)
+	log.Printf("[EngineManager] 更新五笔选项: autoCommitAt4=%v, clearOnEmptyAt4=%v, topCodeCommit=%v, punctCommit=%v, showCodeHint=%v, singleCodeInput=%v",
+		autoCommitAt4, clearOnEmptyAt4, topCodeCommit, punctCommit, showCodeHint, singleCodeInput)
 }
 
 // UpdatePinyinOptions 更新拼音引擎的选项（热更新）

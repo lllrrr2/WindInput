@@ -18,6 +18,9 @@ type Config struct {
 	TopCodeCommit   bool   // 五码顶字上屏
 	PunctCommit     bool   // 标点顶字上屏
 	FilterMode      string // 候选过滤模式
+	ShowCodeHint    bool   // 是否显示编码提示
+	SingleCodeInput bool   // 逐字键入模式（关闭前缀匹配）
+	DedupCandidates bool   // 候选去重（内部开关，未来可能开放给用户）
 }
 
 // DefaultConfig 返回默认配置
@@ -29,6 +32,8 @@ func DefaultConfig() *Config {
 		TopCodeCommit:   true,
 		PunctCommit:     true,
 		FilterMode:      "smart",
+		ShowCodeHint:    true,
+		DedupCandidates: true,
 	}
 }
 
@@ -88,28 +93,68 @@ func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candid
 	}
 
 	input = strings.ToLower(input)
+	inputLen := len(input)
 
-	// 精确匹配
-	candidates := e.codeTable.Lookup(input)
+	// Phase 1: 收集精确匹配
+	var exactCandidates []candidate.Candidate
+	if e.dictManager != nil {
+		if phraseLayer := e.dictManager.GetPhraseLayer(); phraseLayer != nil {
+			exactCandidates = append(exactCandidates, phraseLayer.Search(input, 0)...)
+		}
+		if userDict := e.dictManager.GetUserDict(); userDict != nil {
+			exactCandidates = append(exactCandidates, userDict.Search(input, 0)...)
+		}
+	}
+	exactCandidates = append(exactCandidates, e.codeTable.Lookup(input)...)
 
-	// 如果精确匹配为空，尝试前缀匹配
-	if len(candidates) == 0 {
-		candidates = e.codeTable.LookupPrefix(input)
+	// Phase 2: 收集前缀匹配
+	var prefixCandidates []candidate.Candidate
+	prefixEnabled := !e.config.SingleCodeInput && inputLen >= 1 && inputLen < e.config.MaxCodeLength
+	if prefixEnabled {
+		if e.dictManager != nil {
+			if phraseLayer := e.dictManager.GetPhraseLayer(); phraseLayer != nil {
+				for _, c := range phraseLayer.SearchPrefix(input, 0) {
+					if c.Code != input {
+						prefixCandidates = append(prefixCandidates, c)
+					}
+				}
+			}
+			if userDict := e.dictManager.GetUserDict(); userDict != nil {
+				for _, c := range userDict.SearchPrefix(input, 0) {
+					if c.Code != input {
+						prefixCandidates = append(prefixCandidates, c)
+					}
+				}
+			}
+		}
+		prefixCandidates = append(prefixCandidates, e.codeTable.LookupPrefixExcludeExact(input, 50)...)
 	}
 
-	if len(candidates) == 0 {
+	// Phase 3: 处理前缀候选
+	for i := range prefixCandidates {
+		if e.config.ShowCodeHint && len(prefixCandidates[i].Code) > inputLen {
+			prefixCandidates[i].Hint = prefixCandidates[i].Code[inputLen:]
+		}
+		prefixCandidates[i].Weight -= 2000000
+	}
+
+	// Phase 4: 合并 + 去重
+	allCandidates := append(exactCandidates, prefixCandidates...)
+	if e.config.DedupCandidates {
+		allCandidates = dedup(allCandidates)
+	}
+
+	if len(allCandidates) == 0 {
 		return nil, nil
 	}
 
-	// 排序（按权重降序）
-	sort.Sort(candidate.CandidateList(candidates))
-
-	// 限制数量
-	if maxCandidates > 0 && len(candidates) > maxCandidates {
-		candidates = candidates[:maxCandidates]
+	// Phase 5: 排序 + 截断
+	sort.Sort(candidate.CandidateList(allCandidates))
+	if maxCandidates > 0 && len(allCandidates) > maxCandidates {
+		allCandidates = allCandidates[:maxCandidates]
 	}
 
-	return candidates, nil
+	return allCandidates, nil
 }
 
 // ConvertEx 扩展转换，返回更多信息
@@ -123,62 +168,101 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	input = strings.ToLower(input)
 	inputLen := len(input)
 
-	var candidates []candidate.Candidate
+	// ========== Phase 1: 收集精确匹配 ==========
+	var exactCandidates []candidate.Candidate
 
-	// 查询策略：
-	// 1. 先查上层词库（短语、用户词）- 通过 DictManager 的上层
-	// 2. 再查五笔系统码表 - 直接使用 codeTable
-	// 这样避免了 DictManager 中其他引擎的系统词库干扰
-
-	// Step 1: 查询上层词库（短语、用户词）
 	if e.dictManager != nil {
-		// 只查询上层（PhraseLayer、UserDict），不查系统词库
 		if phraseLayer := e.dictManager.GetPhraseLayer(); phraseLayer != nil {
-			candidates = append(candidates, phraseLayer.Search(input, 0)...)
+			exactCandidates = append(exactCandidates, phraseLayer.Search(input, 0)...)
 		}
 		if userDict := e.dictManager.GetUserDict(); userDict != nil {
-			candidates = append(candidates, userDict.Search(input, 0)...)
+			exactCandidates = append(exactCandidates, userDict.Search(input, 0)...)
 		}
 	}
 
-	// Step 2: 查询五笔系统码表
 	if e.codeTable != nil {
-		systemCandidates := e.codeTable.Lookup(input)
-		if len(systemCandidates) == 0 {
-			systemCandidates = e.codeTable.LookupPrefix(input)
+		exactCandidates = append(exactCandidates, e.codeTable.Lookup(input)...)
+	}
+
+	// ========== Phase 2: 收集前缀匹配 ==========
+	var prefixCandidates []candidate.Candidate
+	prefixEnabled := !e.config.SingleCodeInput && inputLen >= 1 && inputLen < e.config.MaxCodeLength
+	if prefixEnabled {
+		if e.dictManager != nil {
+			if phraseLayer := e.dictManager.GetPhraseLayer(); phraseLayer != nil {
+				for _, c := range phraseLayer.SearchPrefix(input, 0) {
+					if c.Code != input {
+						prefixCandidates = append(prefixCandidates, c)
+					}
+				}
+			}
+			if userDict := e.dictManager.GetUserDict(); userDict != nil {
+				for _, c := range userDict.SearchPrefix(input, 0) {
+					if c.Code != input {
+						prefixCandidates = append(prefixCandidates, c)
+					}
+				}
+			}
 		}
-		candidates = append(candidates, systemCandidates...)
+		if e.codeTable != nil {
+			prefixCandidates = append(prefixCandidates, e.codeTable.LookupPrefixExcludeExact(input, 50)...)
+		}
+	}
+
+	// ========== Phase 3: 处理前缀候选 ==========
+	for i := range prefixCandidates {
+		if e.config.ShowCodeHint && len(prefixCandidates[i].Code) > inputLen {
+			prefixCandidates[i].Hint = prefixCandidates[i].Code[inputLen:]
+		}
+		prefixCandidates[i].Weight -= 2000000
+	}
+
+	// ========== Phase 4: 合并 + 去重 ==========
+	allCandidates := append(exactCandidates, prefixCandidates...)
+	if e.config.DedupCandidates {
+		allCandidates = dedup(allCandidates)
 	}
 
 	// 空码处理
-	if len(candidates) == 0 {
+	if len(allCandidates) == 0 {
 		result.IsEmpty = true
-		// 四码为空时清空
 		if e.config.ClearOnEmptyAt4 && inputLen >= e.config.MaxCodeLength {
 			result.ShouldClear = true
 		}
 		return result
 	}
 
-	// 排序（按权重降序）
-	sort.Sort(candidate.CandidateList(candidates))
+	// ========== Phase 5: 排序 + 过滤 + 截断 ==========
+	sort.Sort(candidate.CandidateList(allCandidates))
 
 	filterMode := "smart"
 	if e.config != nil && e.config.FilterMode != "" {
 		filterMode = e.config.FilterMode
 	}
-	candidates = candidate.FilterCandidates(candidates, filterMode)
+	allCandidates = candidate.FilterCandidates(allCandidates, filterMode)
 
-	// 限制数量
-	if maxCandidates > 0 && len(candidates) > maxCandidates {
-		candidates = candidates[:maxCandidates]
+	if maxCandidates > 0 && len(allCandidates) > maxCandidates {
+		allCandidates = allCandidates[:maxCandidates]
 	}
 
-	result.Candidates = candidates
+	result.Candidates = allCandidates
 
-	// 检查自动上屏条件
-	e.checkAutoCommit(result, input, candidates)
+	// 自动上屏检查仅考虑精确匹配数量
+	e.checkAutoCommit(result, input, exactCandidates)
 
+	return result
+}
+
+// dedup 按 text 去重，保留先出现的（精确匹配优先）
+func dedup(candidates []candidate.Candidate) []candidate.Candidate {
+	seen := make(map[string]struct{})
+	result := make([]candidate.Candidate, 0, len(candidates))
+	for _, c := range candidates {
+		if _, ok := seen[c.Text]; !ok {
+			seen[c.Text] = struct{}{}
+			result = append(result, c)
+		}
+	}
 	return result
 }
 

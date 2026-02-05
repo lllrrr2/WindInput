@@ -53,6 +53,8 @@ type WubiConfig struct {
 	ClearOnEmptyAt4 bool `yaml:"clear_on_empty_at_4" json:"clear_on_empty_at_4"`
 	TopCodeCommit   bool `yaml:"top_code_commit" json:"top_code_commit"`
 	PunctCommit     bool `yaml:"punct_commit" json:"punct_commit"`
+	ShowCodeHint    bool `yaml:"show_code_hint" json:"show_code_hint"`
+	SingleCodeInput bool `yaml:"single_code_input" json:"single_code_input"`
 }
 
 // HotkeyConfig contains hotkey settings
@@ -135,6 +137,7 @@ func DefaultConfig() *Config {
 				ClearOnEmptyAt4: false,
 				TopCodeCommit:   false,
 				PunctCommit:     true,
+				ShowCodeHint:    true,
 			},
 		},
 		Hotkeys: HotkeyConfig{

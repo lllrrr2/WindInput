@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
-	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/internal/control"
 	"github.com/huanfeng/wind_input/internal/coordinator"
 	"github.com/huanfeng/wind_input/internal/dict"
@@ -20,6 +19,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
 	"github.com/huanfeng/wind_input/internal/engine/wubi"
 	"github.com/huanfeng/wind_input/internal/ui"
+	"github.com/huanfeng/wind_input/pkg/config"
 	pkgcontrol "github.com/huanfeng/wind_input/pkg/control"
 )
 
@@ -281,6 +281,8 @@ func main() {
 		TopCodeCommit:   cfg.Engine.Wubi.TopCodeCommit,
 		PunctCommit:     cfg.Engine.Wubi.PunctCommit,
 		FilterMode:      cfg.Engine.FilterMode,
+		ShowCodeHint:    cfg.Engine.Wubi.ShowCodeHint,
+		SingleCodeInput: cfg.Engine.Wubi.SingleCodeInput,
 	}
 
 	// 设置引擎配置（用于动态切换）

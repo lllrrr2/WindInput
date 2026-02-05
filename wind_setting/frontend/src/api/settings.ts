@@ -1,6 +1,6 @@
 // Settings API 调用层
 
-const API_BASE = 'http://127.0.0.1:18923';
+const API_BASE = "http://127.0.0.1:18923";
 
 // API 响应类型
 export interface APIResponse<T = any> {
@@ -35,6 +35,8 @@ export interface WubiConfig {
   clear_on_empty_at_4: boolean;
   top_code_commit: boolean;
   punct_commit: boolean;
+  show_code_hint: boolean;
+  single_code_input: boolean;
 }
 
 // 引擎配置
@@ -145,12 +147,16 @@ export interface ConfigUpdateResponse {
 }
 
 // API 调用函数
-async function request<T>(method: string, path: string, body?: any): Promise<APIResponse<T>> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: any,
+): Promise<APIResponse<T>> {
   try {
     const options: RequestInit = {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     };
 
@@ -164,53 +170,65 @@ async function request<T>(method: string, path: string, body?: any): Promise<API
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : '网络请求失败',
+      error: error instanceof Error ? error.message : "网络请求失败",
     };
   }
 }
 
 // 健康检查
 export async function checkHealth(): Promise<APIResponse> {
-  return request('GET', '/api/health');
+  return request("GET", "/api/health");
 }
 
 // 获取配置
 export async function getConfig(): Promise<APIResponse<Config>> {
-  return request('GET', '/api/config');
+  return request("GET", "/api/config");
 }
 
 // 更新配置
-export async function updateConfig(config: Partial<Config>): Promise<APIResponse<ConfigUpdateResponse>> {
-  return request('PATCH', '/api/config', config);
+export async function updateConfig(
+  config: Partial<Config>,
+): Promise<APIResponse<ConfigUpdateResponse>> {
+  return request("PATCH", "/api/config", config);
 }
 
 // 获取状态
 export async function getStatus(): Promise<APIResponse<Status>> {
-  return request('GET', '/api/status');
+  return request("GET", "/api/status");
 }
 
 // 获取引擎列表
-export async function getEngineList(): Promise<APIResponse<{ engines: EngineInfo[]; current: string }>> {
-  return request('GET', '/api/engine/list');
+export async function getEngineList(): Promise<
+  APIResponse<{ engines: EngineInfo[]; current: string }>
+> {
+  return request("GET", "/api/engine/list");
 }
 
 // 切换引擎
-export async function switchEngine(type: string): Promise<APIResponse<{ previous: string; current: string; displayName: string }>> {
-  return request('POST', '/api/engine/switch', { type });
+export async function switchEngine(
+  type: string,
+): Promise<
+  APIResponse<{ previous: string; current: string; displayName: string }>
+> {
+  return request("POST", "/api/engine/switch", { type });
 }
 
 // 重载配置
-export async function reloadConfig(): Promise<APIResponse<{ reloaded: string[]; errors: string[] }>> {
-  return request('POST', '/api/config/reload');
+export async function reloadConfig(): Promise<
+  APIResponse<{ reloaded: string[]; errors: string[] }>
+> {
+  return request("POST", "/api/config/reload");
 }
 
 // 测试转换
 export async function testConvert(
   input: string,
-  engine: string = 'current',
-  filterMode: string = 'current'
-): Promise<APIResponse<{ candidates: any[]; engine: string; filterMode: string }>> {
-  return request('POST', '/api/test/convert', { input, engine, filterMode });
+  engine: string = "current",
+  filterMode: string = "current",
+): Promise<
+  APIResponse<{ candidates: any[]; engine: string; filterMode: string }>
+> {
+  return request("POST", "/api/test/convert", { input, engine, filterMode });
 }
 
 // 日志条目
@@ -221,17 +239,20 @@ export interface LogEntry {
 }
 
 // 获取日志
-export async function getLogs(level: string = 'all', filter: string = ''): Promise<APIResponse<{ logs: LogEntry[]; total: number }>> {
+export async function getLogs(
+  level: string = "all",
+  filter: string = "",
+): Promise<APIResponse<{ logs: LogEntry[]; total: number }>> {
   const params = new URLSearchParams();
-  if (level && level !== 'all') params.append('level', level);
-  if (filter) params.append('filter', filter);
+  if (level && level !== "all") params.append("level", level);
+  if (filter) params.append("filter", filter);
   const query = params.toString();
-  return request('GET', `/api/logs${query ? '?' + query : ''}`);
+  return request("GET", `/api/logs${query ? "?" + query : ""}`);
 }
 
 // 清空日志
 export async function clearLogs(): Promise<APIResponse> {
-  return request('DELETE', '/api/logs');
+  return request("DELETE", "/api/logs");
 }
 
 // 默认配置值（用于前端初始化）
@@ -244,13 +265,13 @@ export function getDefaultConfig(): Config {
       default_chinese_punct: true,
     },
     dictionary: {
-      system_dict: 'dict/pinyin/pinyin.txt',
-      user_dict: 'user_dict.txt',
-      pinyin_dict: 'dict/pinyin/pinyin.txt',
+      system_dict: "dict/pinyin/pinyin.txt",
+      user_dict: "user_dict.txt",
+      pinyin_dict: "dict/pinyin/pinyin.txt",
     },
     engine: {
-      type: 'wubi',
-      filter_mode: 'smart',
+      type: "wubi",
+      filter_mode: "smart",
       pinyin: {
         show_wubi_hint: true,
       },
@@ -259,26 +280,28 @@ export function getDefaultConfig(): Config {
         clear_on_empty_at_4: false,
         top_code_commit: false,
         punct_commit: true,
+        show_code_hint: true,
+        single_code_input: false,
       },
     },
     hotkeys: {
-      toggle_mode_keys: ['lshift', 'rshift'],
+      toggle_mode_keys: ["lshift", "rshift"],
       commit_on_switch: true,
-      switch_engine: 'ctrl+`',
-      toggle_full_width: 'shift+space',
-      toggle_punct: 'ctrl+.',
+      switch_engine: "ctrl+`",
+      toggle_full_width: "shift+space",
+      toggle_punct: "ctrl+.",
     },
     ui: {
       font_size: 18,
       candidates_per_page: 7,
-      font_path: '',
+      font_path: "",
       inline_preedit: true,
       hide_candidate_window: false,
-      candidate_layout: 'horizontal',
+      candidate_layout: "horizontal",
       status_indicator_duration: 800,
       status_indicator_offset_x: 0,
       status_indicator_offset_y: 0,
-      theme: 'default',
+      theme: "default",
     },
     toolbar: {
       visible: true,
@@ -289,11 +312,11 @@ export function getDefaultConfig(): Config {
       full_width: false,
       chinese_punctuation: true,
       punct_follow_mode: false,
-      select_key_groups: ['semicolon_quote'],
-      page_keys: ['pageupdown', 'minus_equal'],
+      select_key_groups: ["semicolon_quote"],
+      page_keys: ["pageupdown", "minus_equal"],
     },
     advanced: {
-      log_level: 'info',
+      log_level: "info",
     },
   };
 }

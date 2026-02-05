@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
-	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/hotkey"
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
+	"github.com/huanfeng/wind_input/pkg/config"
 )
 
 // Restart request channel - main should listen to this
@@ -1988,6 +1988,8 @@ func (c *Coordinator) UpdateEngineConfig(engineConfig *config.EngineConfig) {
 		engineConfig.Wubi.ClearOnEmptyAt4,
 		engineConfig.Wubi.TopCodeCommit,
 		engineConfig.Wubi.PunctCommit,
+		engineConfig.Wubi.ShowCodeHint,
+		engineConfig.Wubi.SingleCodeInput,
 	)
 	c.engineMgr.UpdatePinyinOptions(engineConfig.Pinyin.ShowWubiHint)
 

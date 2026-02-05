@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -315,6 +316,24 @@ func (ct *CodeTable) LookupPrefix(prefix string) []candidate.Candidate {
 		}
 	}
 
+	return results
+}
+
+// LookupPrefixExcludeExact 前缀匹配查找（排除精确匹配）
+func (ct *CodeTable) LookupPrefixExcludeExact(prefix string, limit int) []candidate.Candidate {
+	prefix = strings.ToLower(prefix)
+	var results []candidate.Candidate
+
+	for code, candidates := range ct.entries {
+		if code != prefix && strings.HasPrefix(code, prefix) {
+			results = append(results, candidates...)
+		}
+	}
+
+	sort.Sort(candidate.CandidateList(results))
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
 	return results
 }
 
