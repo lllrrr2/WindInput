@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/huanfeng/wind_input/pkg/theme"
@@ -631,3 +634,20 @@ func (a *App) GetThemePreview(themeName string) (map[string]interface{}, error) 
 	return preview, nil
 }
 
+// OpenLogFolder opens the log directory in the system file explorer.
+func (a *App) OpenLogFolder() error {
+	base := os.Getenv("APPDATA")
+	if base == "" {
+		return fmt.Errorf("APPDATA not set")
+	}
+	path := filepath.Join(base, "WindInput")
+	return exec.Command("explorer.exe", path).Start()
+}
+
+// OpenExternalURL opens an external URL in the default browser.
+func (a *App) OpenExternalURL(url string) error {
+	if url == "" {
+		return fmt.Errorf("empty url")
+	}
+	return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+}

@@ -125,7 +125,7 @@ func DefaultConfig() *Config {
 			PinyinDict: "dict/pinyin/pinyin.txt",
 		},
 		Engine: EngineConfig{
-			Type:       "pinyin",
+			Type:       "wubi",
 			FilterMode: "smart",
 			Pinyin: PinyinConfig{
 				ShowWubiHint: true,
@@ -133,7 +133,7 @@ func DefaultConfig() *Config {
 			Wubi: WubiConfig{
 				AutoCommitAt4:   false,
 				ClearOnEmptyAt4: false,
-				TopCodeCommit:   true,
+				TopCodeCommit:   false,
 				PunctCommit:     true,
 			},
 		},
@@ -146,17 +146,17 @@ func DefaultConfig() *Config {
 		},
 		UI: UIConfig{
 			FontSize:                18,
-			CandidatesPerPage:       9,
+			CandidatesPerPage:       7,
 			FontPath:                "",
 			InlinePreedit:           true,
 			CandidateLayout:         "horizontal",
 			StatusIndicatorDuration: 800,
 			StatusIndicatorOffsetX:  0,
-			StatusIndicatorOffsetY:  -30,
+			StatusIndicatorOffsetY:  0,
 			Theme:                   "default",
 		},
 		Toolbar: ToolbarConfig{
-			Visible:   false,
+			Visible:   true,
 			PositionX: 0,
 			PositionY: 0,
 		},

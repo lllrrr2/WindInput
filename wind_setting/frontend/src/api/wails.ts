@@ -143,6 +143,14 @@ export async function notifyReload(target: string): Promise<void> {
   return App.NotifyReload(target);
 }
 
+export async function openLogFolder(): Promise<void> {
+  return App.OpenLogFolder();
+}
+
+export async function openExternalURL(url: string): Promise<void> {
+  return App.OpenExternalURL(url);
+}
+
 export async function getServiceStatus(): Promise<ServiceStatus | null> {
   return App.GetServiceStatus();
 }
@@ -181,7 +189,7 @@ export function getDefaultConfig(): Config {
       pinyin_dict: 'dict/pinyin/pinyin.txt',
     },
     engine: {
-      type: 'pinyin',
+      type: 'wubi',
       filter_mode: 'smart',
       pinyin: {
         show_wubi_hint: true,
@@ -189,7 +197,7 @@ export function getDefaultConfig(): Config {
       wubi: {
         auto_commit_at_4: false,
         clear_on_empty_at_4: false,
-        top_code_commit: true,
+        top_code_commit: false,
         punct_commit: true,
       },
     },
@@ -202,14 +210,18 @@ export function getDefaultConfig(): Config {
     },
     ui: {
       font_size: 18,
-      candidates_per_page: 9,
+      candidates_per_page: 7,
       font_path: '',
       inline_preedit: true,
       hide_candidate_window: false,
+      candidate_layout: 'horizontal',
+      status_indicator_duration: 800,
+      status_indicator_offset_x: 0,
+      status_indicator_offset_y: 0,
       theme: 'default',
     },
     toolbar: {
-      visible: false,
+      visible: true,
       position_x: 0,
       position_y: 0,
     },

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, onUnmounted, nextTick } from 'vue';
+import { ref, onMounted, computed, watch, onUnmounted } from 'vue';
 import * as api from './api/settings';
 import * as wailsApi from './api/wails';
-import type { Config, Status, EngineInfo, LogEntry } from './api/settings';
+import type { Config, Status, EngineInfo } from './api/settings';
 import type { PhraseItem, UserWordItem, ShadowRuleItem, DictStats, FileChangeStatus, ThemeInfo, ThemePreview } from './api/wails';
 import { getDefaultConfig } from './api/settings';
 
@@ -16,6 +16,7 @@ const loading = ref(true);
 const error = ref('');
 const connected = ref(false);
 const activeTab = ref('general');
+const advancedSubTab = ref<'advanced' | 'test'>('advanced');
 const saving = ref(false);
 const saveMessage = ref('');
 const saveMessageType = ref<'success' | 'error'>('success');
@@ -37,13 +38,7 @@ const testFilterMode = ref('current');
 const testLoading = ref(false);
 
 // 日志页面状态
-const logs = ref<LogEntry[]>([]);
-const logLevel = ref('all');
-const logFilter = ref('');
-const logAutoScroll = ref(true);
-const logTotal = ref(0);
-const logContentRef = ref<HTMLElement | null>(null);
-let logTimer: number | null = null;
+const logPath = '%APPDATA%\\WindInput\\';
 
 // 词库管理状态
 const dictSubTab = ref<'phrases' | 'userdict' | 'shadow'>('phrases');
@@ -72,29 +67,76 @@ const fileChangeStatus = ref<FileChangeStatus | null>(null);
 const showFileChangeAlert = ref(false);
 let fileCheckTimer: number | null = null;
 
-// 服务运行状态
-const serviceRunning = ref(false);
-
 // 主题相关状态
 const availableThemes = ref<ThemeInfo[]>([]);
 const themePreview = ref<ThemePreview | null>(null);
 const themeLoading = ref(false);
+const themeSelectOpen = ref(false);
+const themeDropdownRef = ref<HTMLElement | null>(null);
+const inputModeSelectOpen = ref(false);
+const inputModeDropdownRef = ref<HTMLElement | null>(null);
+const repoUrl = 'https://github.com/huanfeng/WindInput';
+
+const appIconUrl = new URL('./assets/images/logo-universal.png', import.meta.url).href;
 
 // 重新组织的标签页 - 按用户视角划分
 const tabs = [
   { id: 'general', label: '常用', icon: '🏠' },
   { id: 'input', label: '输入', icon: '⌨' },
+  { id: 'hotkey', label: '按键', icon: '🎮' },
   { id: 'appearance', label: '外观', icon: '🎨' },
   { id: 'dictionary', label: '词库', icon: '📚' },
-  { id: 'hotkey', label: '按键', icon: '🎮' },
-  { id: 'test', label: '测试', icon: '🧪' },
   { id: 'advanced', label: '高级', icon: '🛠' },
   { id: 'about', label: '关于', icon: 'ℹ' },
 ];
 
-// 是否显示底部操作栏
-const showActionBar = computed(() => {
-  return !['about', 'dictionary', 'test'].includes(activeTab.value);
+const inputModeOptions = computed(() => {
+  const base = engines.value.length > 0
+    ? engines.value.map(engine => ({
+      value: engine.type,
+      label: engine.displayName,
+      description: engine.description,
+      disabled: false,
+    }))
+    : [
+      { value: 'wubi', label: '五笔输入', description: '86版五笔', disabled: false },
+      { value: 'pinyin', label: '拼音输入', description: '全拼输入法', disabled: false },
+    ];
+
+  const preferredOrder = ['wubi', 'pinyin'];
+  const ordered = [...base].sort((a, b) => {
+    const ai = preferredOrder.indexOf(a.value);
+    const bi = preferredOrder.indexOf(b.value);
+    if (ai === -1 && bi === -1) return a.label.localeCompare(b.label, 'zh-Hans-CN');
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  return [
+    ...ordered,
+    { value: 'shuangpin', label: '双拼输入', description: '开发中', disabled: true },
+    { value: 'mixed', label: '混合输入', description: '开发中', disabled: true },
+  ];
+});
+
+const currentInputMode = computed(() => {
+  return inputModeOptions.value.find(option => option.value === formData.value.engine.type);
+});
+
+const themeOptions = computed(() => {
+  return availableThemes.value.map(theme => ({
+    name: theme.name,
+    label: theme.display_name || theme.name,
+    description: theme.author ? `作者 ${theme.author}` : '暂无描述',
+    version: theme.version || '',
+    isActive: theme.is_active,
+    isBuiltin: theme.is_builtin,
+  }));
+});
+
+const currentThemeOption = computed(() => {
+  return themeOptions.value.find(option => option.name === formData.value.ui.theme);
 });
 
 // 检查快捷键冲突
@@ -195,22 +237,19 @@ async function loadDataFromWails() {
       checkConflicts();
     }
 
-    // 检查输入法服务是否运行
-    serviceRunning.value = await wailsApi.checkServiceRunning();
-
     // 获取引擎列表（从配置推断）
     engines.value = [
-      {
-        type: 'pinyin',
-        displayName: '拼音输入',
-        description: '全拼输入法',
-        isActive: config.value?.engine?.type === 'pinyin',
-      },
       {
         type: 'wubi',
         displayName: '五笔输入',
         description: '86版五笔',
         isActive: config.value?.engine?.type === 'wubi',
+      },
+      {
+        type: 'pinyin',
+        displayName: '拼音输入',
+        description: '全拼输入法',
+        isActive: config.value?.engine?.type === 'pinyin',
       },
     ];
 
@@ -321,22 +360,11 @@ async function saveConfig() {
 // 切换引擎
 async function handleSwitchEngine(type: string) {
   try {
-    if (isWailsEnv.value) {
-      // 在 Wails 环境中，修改配置中的引擎类型并保存
-      formData.value.engine.type = type;
-      await saveConfig();
-      // 更新引擎列表状态
-      engines.value = engines.value.map(e => ({
-        ...e,
-        isActive: e.type === type
-      }));
-    } else {
-      const res = await api.switchEngine(type);
-      if (res.success) {
-        formData.value.engine.type = type;
-        await loadData();
-      }
-    }
+    formData.value.engine.type = type;
+    engines.value = engines.value.map(e => ({
+      ...e,
+      isActive: e.type === type,
+    }));
   } catch (e) {
     console.error('切换引擎失败', e);
   }
@@ -372,7 +400,6 @@ async function handleReload() {
 async function refreshStatus() {
   try {
     if (isWailsEnv.value) {
-      serviceRunning.value = await wailsApi.checkServiceRunning();
       const serviceStatus = await wailsApi.getServiceStatus();
       if (serviceStatus) {
         // 转换为前端期望的格式
@@ -408,14 +435,54 @@ async function refreshStatus() {
 }
 
 // 重置为当前配置
-function resetToDefault() {
-  if (config.value) {
-    formData.value = JSON.parse(JSON.stringify(config.value));
-    checkConflicts();
-    saveMessageType.value = 'success';
-    saveMessage.value = '已重置为当前配置';
-    setTimeout(() => { saveMessage.value = ''; }, 2000);
+async function resetCurrentPageDefaults() {
+  const defaults = getDefaultConfig();
+  let changed = true;
+
+  switch (activeTab.value) {
+    case 'general':
+      formData.value.startup = { ...defaults.startup };
+      formData.value.engine.type = defaults.engine.type;
+      break;
+    case 'input':
+      formData.value.engine = {
+        ...formData.value.engine,
+        filter_mode: defaults.engine.filter_mode,
+        pinyin: { ...defaults.engine.pinyin },
+        wubi: { ...defaults.engine.wubi },
+      };
+      formData.value.input = {
+        ...formData.value.input,
+        punct_follow_mode: defaults.input.punct_follow_mode,
+      };
+      break;
+    case 'hotkey':
+      formData.value.hotkeys = { ...defaults.hotkeys };
+      formData.value.input = {
+        ...formData.value.input,
+        select_key_groups: [...defaults.input.select_key_groups],
+        page_keys: [...defaults.input.page_keys],
+      };
+      break;
+    case 'appearance':
+      formData.value.ui = { ...defaults.ui };
+      formData.value.toolbar = { ...defaults.toolbar };
+      if (isWailsEnv.value) {
+        await loadThemePreview(formData.value.ui.theme);
+      }
+      break;
+    case 'advanced':
+      formData.value.advanced = { ...defaults.advanced };
+      break;
+    default:
+      changed = false;
+      break;
   }
+
+  checkConflicts();
+  saveMessageType.value = changed ? 'success' : 'error';
+  saveMessage.value = changed ? '已恢复本页默认设置' : '本页没有可恢复的设置';
+  setTimeout(() => { saveMessage.value = ''; }, 2000);
 }
 
 // 加载可用主题列表
@@ -455,6 +522,33 @@ async function loadThemePreview(themeName: string) {
 async function onThemeSelect(themeName: string) {
   formData.value.ui.theme = themeName;
   await loadThemePreview(themeName);
+  themeSelectOpen.value = false;
+}
+
+async function onInputModeSelect(mode: string) {
+  formData.value.engine.type = mode;
+  await handleSwitchEngine(mode);
+  inputModeSelectOpen.value = false;
+}
+
+async function handleOpenLogFolder() {
+  try {
+    if (isWailsEnv.value) {
+      await wailsApi.openLogFolder();
+    }
+  } catch (e) {
+    console.error('打开日志目录失败', e);
+  }
+}
+
+async function handleOpenExternalLink(url: string) {
+  try {
+    if (isWailsEnv.value) {
+      await wailsApi.openExternalURL(url);
+    }
+  } catch (e) {
+    console.error('打开链接失败', e);
+  }
 }
 
 // 测试输入
@@ -482,51 +576,7 @@ watch([testEngine, testFilterMode], () => {
   if (testInput.value) handleTestInput();
 });
 
-// 日志相关
-async function loadLogs() {
-  try {
-    const res = await api.getLogs(logLevel.value, logFilter.value);
-    if (res.success && res.data) {
-      logs.value = res.data.logs || [];
-      logTotal.value = res.data.total || 0;
-      if (logAutoScroll.value) {
-        nextTick(() => {
-          if (logContentRef.value) {
-            logContentRef.value.scrollTop = logContentRef.value.scrollHeight;
-          }
-        });
-      }
-    }
-  } catch (e) {
-    console.error('加载日志失败', e);
-  }
-}
-
-async function handleClearLogs() {
-  try {
-    await api.clearLogs();
-    logs.value = [];
-    logTotal.value = 0;
-  } catch (e) {
-    console.error('清空日志失败', e);
-  }
-}
-
-watch([logLevel, logFilter], loadLogs);
-
-watch(activeTab, (tab) => {
-  if (tab === 'advanced') {
-    loadLogs();
-    if (logTimer) clearInterval(logTimer);
-    logTimer = window.setInterval(loadLogs, 2000);
-  } else {
-    if (logTimer) {
-      clearInterval(logTimer);
-      logTimer = null;
-    }
-  }
-
-  // 切换到词库页面时加载数据
+watch([activeTab, advancedSubTab], ([tab]) => {
   if (tab === 'dictionary') {
     loadDictData();
   }
@@ -540,18 +590,16 @@ async function loadDictData() {
 
   dictLoading.value = true;
   try {
-    const [phrasesData, userDictData, shadowData, stats, running] = await Promise.all([
+    const [phrasesData, userDictData, shadowData, stats] = await Promise.all([
       wailsApi.getPhrases(),
       wailsApi.getUserDict(),
       wailsApi.getShadowRules(),
       wailsApi.getUserDictStats(),
-      wailsApi.checkServiceRunning(),
     ]);
     phrases.value = phrasesData || [];
     userDict.value = userDictData || [];
     shadowRules.value = shadowData || [];
     dictStats.value = stats || { word_count: 0, phrase_count: 0, shadow_count: 0 };
-    serviceRunning.value = running;
   } catch (e) {
     console.error('加载词库数据失败', e);
     showDictMessage('加载词库数据失败', 'error');
@@ -705,17 +753,32 @@ function getShadowActionLabel(action: string): string {
   return labels[action] || action;
 }
 
-onMounted(() => {
-  loadData();
+onMounted(async () => {
+  await loadData();
+  if (isWailsEnv.value) {
+    await refreshStatus();
+  }
 
   // 定期检查文件变化
   fileCheckTimer = window.setInterval(checkFileChanges, 5000);
+
+  document.addEventListener('click', handleDocumentClick);
 });
 
 onUnmounted(() => {
-  if (logTimer) clearInterval(logTimer);
   if (fileCheckTimer) clearInterval(fileCheckTimer);
+  document.removeEventListener('click', handleDocumentClick);
 });
+
+function handleDocumentClick(event: MouseEvent) {
+  const target = event.target as Node;
+  if (themeDropdownRef.value && !themeDropdownRef.value.contains(target)) {
+    themeSelectOpen.value = false;
+  }
+  if (inputModeDropdownRef.value && !inputModeDropdownRef.value.contains(target)) {
+    inputModeSelectOpen.value = false;
+  }
+}
 </script>
 
 <template>
@@ -723,7 +786,15 @@ onUnmounted(() => {
     <aside class="sidebar">
       <div class="logo">
         <span class="logo-icon">🌬</span>
-        <span class="logo-text">WindInput</span>
+        <div class="logo-title">
+          <span class="logo-text">WindInput</span>
+          <span class="logo-version" v-if="status">v{{ status.service.version }}</span>
+        </div>
+        <span
+          class="status-dot-inline"
+          :class="connected ? 'connected' : 'disconnected'"
+          :title="connected ? '已连接' : '未连接'"
+        ></span>
       </div>
       <nav class="nav">
         <button
@@ -737,9 +808,16 @@ onUnmounted(() => {
         </button>
       </nav>
       <div class="sidebar-footer">
-        <div :class="['status-badge', connected ? 'connected' : 'disconnected']">
-          <span class="status-dot"></span>
-          {{ connected ? '已连接' : '未连接' }}
+        <div class="sidebar-message">
+          <span v-if="saveMessage" :class="['message', saveMessageType]">
+            {{ saveMessage }}
+          </span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="btn" @click="resetCurrentPageDefaults">恢复本页默认</button>
+          <button class="btn btn-primary" @click="saveConfig" :disabled="saving || hotkeyConflicts.length > 0">
+            {{ saving ? '保存中...' : '保存设置' }}
+          </button>
         </div>
       </div>
     </aside>
@@ -767,34 +845,42 @@ onUnmounted(() => {
           <!-- 输入模式 -->
           <div class="settings-card">
             <div class="card-title">输入模式</div>
-            <div class="engine-cards">
-              <div
-                v-for="engine in engines"
-                :key="engine.type"
-                :class="['engine-card', { active: engine.isActive }]"
-                @click="handleSwitchEngine(engine.type)"
-              >
-                <div class="engine-icon">{{ engine.type === 'pinyin' ? '拼' : '五' }}</div>
-                <div class="engine-info">
-                  <div class="engine-name">{{ engine.type === 'pinyin' ? '拼音输入' : '五笔输入' }}</div>
-                  <div class="engine-desc">{{ engine.description }}</div>
-                </div>
-                <div v-if="engine.isActive" class="engine-check">✓</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>输入方案</label>
+                <p class="setting-hint">{{ currentInputMode?.description || '选择适合的输入方案' }}</p>
               </div>
-              <!-- 预留：双拼 -->
-              <div class="engine-card disabled">
-                <div class="engine-icon engine-icon-disabled">双</div>
-                <div class="engine-info">
-                  <div class="engine-name">双拼输入</div>
-                  <div class="engine-desc">开发中...</div>
-                </div>
-              </div>
-              <!-- 预留：混输 -->
-              <div class="engine-card disabled">
-                <div class="engine-icon engine-icon-disabled">混</div>
-                <div class="engine-info">
-                  <div class="engine-name">混合输入</div>
-                  <div class="engine-desc">开发中...</div>
+              <div class="setting-control">
+                <div class="theme-dropdown input-mode-dropdown" ref="inputModeDropdownRef">
+                  <button class="theme-select select-strong" type="button" @click="inputModeSelectOpen = !inputModeSelectOpen">
+                    <div class="theme-select-main">
+                      <div class="theme-select-title">{{ currentInputMode?.label || '选择输入方案' }}</div>
+                      <div class="theme-select-sub">
+                        <span>{{ currentInputMode?.description || '暂无描述' }}</span>
+                      </div>
+                    </div>
+                    <span class="theme-select-arrow">▾</span>
+                  </button>
+
+                  <div v-if="inputModeSelectOpen" class="theme-options">
+                    <button
+                      v-for="option in inputModeOptions"
+                      :key="option.value"
+                      type="button"
+                      class="theme-option"
+                      :class="{ selected: formData.engine.type === option.value }"
+                      :disabled="option.disabled"
+                      @click="!option.disabled && onInputModeSelect(option.value)"
+                    >
+                      <div class="theme-option-title">
+                        <span class="theme-option-name">{{ option.label }}</span>
+                        <span v-if="option.disabled" class="theme-badge builtin">开发中</span>
+                      </div>
+                      <div class="theme-option-sub">
+                        <span>{{ option.description }}</span>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -990,40 +1076,66 @@ onUnmounted(() => {
         <section v-if="activeTab === 'appearance'" class="section">
           <div class="section-header">
             <h2>外观设置</h2>
-            <p class="section-desc">定制候选框的视觉呈现</p>
+            <p class="section-desc">定制候选窗口的视觉呈现</p>
           </div>
 
           <!-- 主题选择 -->
           <div class="settings-card" v-if="isWailsEnv">
             <div class="card-title">主题</div>
-            <div class="theme-selector">
-              <div class="theme-list">
-                <div
-                  v-for="theme in availableThemes"
-                  :key="theme.name"
-                  class="theme-card"
-                  :class="{ 'theme-card-selected': formData.ui.theme === theme.name, 'theme-card-active': theme.is_active }"
-                  @click="onThemeSelect(theme.name)"
-                >
-                  <div class="theme-card-header">
-                    <span class="theme-name">{{ theme.display_name || theme.name }}</span>
-                    <span v-if="theme.is_builtin" class="theme-badge builtin">内置</span>
-                    <span v-if="theme.is_active" class="theme-badge active">当前</span>
-                  </div>
-                  <div class="theme-card-meta" v-if="theme.author">
-                    <span class="theme-author">{{ theme.author }}</span>
-                    <span v-if="theme.version" class="theme-version">v{{ theme.version }}</span>
+            <div class="setting-item align-start">
+              <div class="setting-info">
+                <label>主题选择</label>
+                <p class="setting-hint">显示主题作者与版本信息</p>
+              </div>
+              <div class="setting-control">
+                <div class="theme-dropdown" ref="themeDropdownRef">
+                  <button class="theme-select select-strong" type="button" @click="themeSelectOpen = !themeSelectOpen">
+                    <div class="theme-select-main">
+                      <div class="theme-select-title">{{ currentThemeOption?.label || '选择主题' }}</div>
+                      <div class="theme-select-sub">
+                        <span>{{ currentThemeOption?.description || '暂无描述' }}</span>
+                        <span v-if="currentThemeOption?.version" class="theme-select-version">
+                          v{{ currentThemeOption?.version }}
+                        </span>
+                      </div>
+                    </div>
+                    <span class="theme-select-arrow">▾</span>
+                  </button>
+
+                  <div v-if="themeSelectOpen" class="theme-options">
+                    <button
+                      v-for="theme in themeOptions"
+                      :key="theme.name"
+                      type="button"
+                      class="theme-option"
+                      :class="{ selected: formData.ui.theme === theme.name }"
+                      @click="onThemeSelect(theme.name)"
+                    >
+                      <div class="theme-option-title">
+                        <span class="theme-option-name">{{ theme.label }}</span>
+                        <span v-if="theme.isBuiltin" class="theme-badge builtin">内置</span>
+                        <span v-if="theme.isActive" class="theme-badge active">当前</span>
+                      </div>
+                      <div class="theme-option-sub">
+                        <span>{{ theme.description }}</span>
+                        <span v-if="theme.version" class="theme-option-version">v{{ theme.version }}</span>
+                      </div>
+                    </button>
+                    <div v-if="themeOptions.length === 0" class="theme-option-empty">暂无主题</div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <!-- 主题预览 -->
-              <div class="theme-preview" v-if="themePreview">
-                <div class="preview-title">预览</div>
-                <div class="preview-content">
-                  <!-- 候选窗口预览 -->
-                  <div class="preview-section">
-                    <div class="preview-label">候选窗口</div>
+            <div class="setting-item align-start" v-if="themePreview">
+              <div class="setting-info">
+                <label>主题预览</label>
+                <p class="setting-hint">候选窗口与工具栏预览</p>
+              </div>
+              <div class="setting-control">
+                <div class="theme-preview preview-rows">
+                  <div class="preview-row">
+                    <div class="preview-row-label">候选窗口</div>
                     <div
                       class="preview-candidate-window"
                       :style="{
@@ -1063,9 +1175,8 @@ onUnmounted(() => {
                     </div>
                   </div>
 
-                  <!-- 工具栏预览 -->
-                  <div class="preview-section">
-                    <div class="preview-label">工具栏</div>
+                  <div class="preview-row">
+                    <div class="preview-row-label">工具栏</div>
                     <div
                       class="preview-toolbar"
                       :style="{
@@ -1088,7 +1199,6 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
-
               </div>
             </div>
           </div>
@@ -1122,6 +1232,18 @@ onUnmounted(() => {
               </div>
               <div class="setting-control">
                 <input type="text" v-model="formData.ui.font_path" class="input" placeholder="字体文件路径" />
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>隐藏候选窗口</label>
+                <p class="setting-hint">隐藏候选窗口渲染</p>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="formData.ui.hide_candidate_window" />
+                  <span class="slider"></span>
+                </label>
               </div>
             </div>
           </div>
@@ -1182,7 +1304,7 @@ onUnmounted(() => {
                 <p class="setting-hint">状态提示相对光标的垂直偏移（负值=向上）</p>
               </div>
               <div class="setting-control range-control">
-                <input type="range" min="-100" max="50" step="5" v-model.number="formData.ui.status_indicator_offset_y" />
+                <input type="range" min="-100" max="100" step="5" v-model.number="formData.ui.status_indicator_offset_y" />
                 <span class="range-value">{{ formData.ui.status_indicator_offset_y }}px</span>
               </div>
             </div>
@@ -1204,21 +1326,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="settings-card">
-            <div class="card-title">调试选项</div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>隐藏候选框</label>
-                <p class="setting-hint">禁用候选框渲染，用于性能测试对比</p>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input type="checkbox" v-model="formData.ui.hide_candidate_window" />
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-          </div>
+          
         </section>
 
         <!-- ==================== 词库管理 ==================== -->
@@ -1247,26 +1355,6 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 词库统计 -->
-          <div class="dict-stats-bar" v-if="isWailsEnv">
-            <div class="stat-chip">
-              <span class="stat-chip-label">短语</span>
-              <span class="stat-chip-value">{{ dictStats.phrase_count }}</span>
-            </div>
-            <div class="stat-chip">
-              <span class="stat-chip-label">用户词</span>
-              <span class="stat-chip-value">{{ dictStats.word_count }}</span>
-            </div>
-            <div class="stat-chip">
-              <span class="stat-chip-label">调整规则</span>
-              <span class="stat-chip-value">{{ dictStats.shadow_count }}</span>
-            </div>
-            <div class="stat-chip" :class="serviceRunning ? 'stat-running' : 'stat-stopped'">
-              <span class="stat-chip-label">输入法服务</span>
-              <span class="stat-chip-value">{{ serviceRunning ? '运行中' : '未运行' }}</span>
-            </div>
-          </div>
-
           <!-- 消息提示 -->
           <div v-if="dictMessage" :class="['dict-message', dictMessageType]">
             {{ dictMessage }}
@@ -1277,15 +1365,15 @@ onUnmounted(() => {
             <button
               :class="['dict-tab', { active: dictSubTab === 'phrases' }]"
               @click="dictSubTab = 'phrases'"
-            >用户短语</button>
+            >用户短语 ({{ dictStats.phrase_count }})</button>
             <button
               :class="['dict-tab', { active: dictSubTab === 'userdict' }]"
               @click="dictSubTab = 'userdict'"
-            >用户词库</button>
+            >用户词库 ({{ dictStats.word_count }})</button>
             <button
               :class="['dict-tab', { active: dictSubTab === 'shadow' }]"
               @click="dictSubTab = 'shadow'"
-            >候选调整</button>
+            >候选调整 ({{ dictStats.shadow_count }})</button>
           </div>
 
           <!-- 非 Wails 环境提示 -->
@@ -1617,114 +1705,109 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- ==================== 测试页面 ==================== -->
-        <section v-if="activeTab === 'test'" class="section">
-          <div class="section-header">
-            <h2>码表测试</h2>
-            <p class="section-desc">在此测试输入法候选词，无需切换系统输入法</p>
-          </div>
-
-          <div class="settings-card">
-            <div class="test-options">
-              <div class="test-option">
-                <label>引擎</label>
-                <select v-model="testEngine" class="select select-sm">
-                  <option value="current">当前引擎</option>
-                  <option value="pinyin">拼音</option>
-                  <option value="wubi">五笔</option>
-                </select>
-              </div>
-              <div class="test-option">
-                <label>过滤</label>
-                <select v-model="testFilterMode" class="select select-sm">
-                  <option value="current">当前设置</option>
-                  <option value="smart">智能模式</option>
-                  <option value="general">仅通用字</option>
-                  <option value="gb18030">全部字符</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="test-input-wrap">
-              <input
-                type="text"
-                v-model="testInput"
-                class="test-input"
-                placeholder="输入编码进行测试..."
-                @keydown.enter.prevent
-              />
-              <span v-if="testLoading" class="test-loading">加载中...</span>
-            </div>
-
-            <div class="test-candidates-wrap" v-if="testCandidates.length > 0">
-              <div class="test-candidates">
-                <div class="test-candidate" v-for="(cand, idx) in testCandidates" :key="idx">
-                  <span class="cand-index">{{ idx + 1 }}.</span>
-                  <span class="cand-text">{{ cand.text }}</span>
-                  <span class="cand-code" v-if="cand.code">{{ cand.code }}</span>
-                  <span class="cand-common" v-if="cand.isCommon">通用</span>
-                  <span class="cand-rare" v-else>生僻</span>
-                </div>
-              </div>
-            </div>
-            <div class="test-empty" v-else-if="testInput && !testLoading">
-              无匹配候选词
-            </div>
-          </div>
-        </section>
-
         <!-- ==================== 高级设置 ==================== -->
         <section v-if="activeTab === 'advanced'" class="section section-full">
           <div class="section-header">
             <h2>高级设置</h2>
-            <p class="section-desc">故障排查与调试选项</p>
+            <p class="section-desc">故障排查、调试与测试工具</p>
           </div>
 
-          <div class="settings-card">
-            <div class="card-title">日志设置</div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>日志级别</label>
-                <p class="setting-hint">更改日志级别需要重启服务才能生效</p>
-              </div>
-              <div class="setting-control">
-                <select v-model="formData.advanced.log_level" class="select">
-                  <option value="debug">Debug（调试）</option>
-                  <option value="info">Info（信息）</option>
-                  <option value="warn">Warn（警告）</option>
-                  <option value="error">Error（错误）</option>
-                </select>
-              </div>
-            </div>
+          <div class="advanced-tabs">
+            <button
+              class="advanced-tab"
+              :class="{ active: advancedSubTab === 'advanced' }"
+              @click="advancedSubTab = 'advanced'"
+            >
+              高级
+            </button>
+            <button
+              class="advanced-tab"
+              :class="{ active: advancedSubTab === 'test' }"
+              @click="advancedSubTab = 'test'"
+            >
+              测试
+            </button>
           </div>
 
-          <div class="settings-card log-card">
-            <div class="card-title">调试日志 <span class="log-count">共 {{ logTotal }} 条</span></div>
-            <div class="log-toolbar">
-              <select v-model="logLevel" class="select select-sm">
-                <option value="all">全部级别</option>
-                <option value="DEBUG">DEBUG</option>
-                <option value="INFO">INFO</option>
-                <option value="WARN">WARN</option>
-                <option value="ERROR">ERROR</option>
-              </select>
-              <input type="text" v-model="logFilter" class="input input-sm" placeholder="搜索日志..." />
-              <label class="checkbox-inline">
-                <input type="checkbox" v-model="logAutoScroll" />
-                自动滚动
-              </label>
-              <button class="btn btn-sm" @click="loadLogs">刷新</button>
-              <button class="btn btn-sm" @click="handleClearLogs">清空</button>
-            </div>
-            <div class="log-content" ref="logContentRef">
-              <div v-for="(log, idx) in logs" :key="idx" :class="['log-line', 'log-' + log.level.toLowerCase()]">
-                <span class="log-time">{{ log.time }}</span>
-                <span class="log-level">{{ log.level }}</span>
-                <span class="log-msg">{{ log.message }}</span>
+          <template v-if="advancedSubTab === 'advanced'">
+            <div class="settings-card">
+              <div class="card-title">日志设置</div>
+              <div class="setting-item">
+                <div class="setting-info">
+                  <label>日志级别</label>
+                  <p class="setting-hint">更改日志级别需要重启服务才能生效</p>
+                </div>
+                <div class="setting-control">
+                  <select v-model="formData.advanced.log_level" class="select">
+                    <option value="debug">Debug（调试）</option>
+                    <option value="info">Info（信息）</option>
+                    <option value="warn">Warn（警告）</option>
+                    <option value="error">Error（错误）</option>
+                  </select>
+                </div>
               </div>
-              <div v-if="logs.length === 0" class="log-empty">暂无日志</div>
+              <div class="setting-item">
+                <div class="setting-info">
+                  <label>日志文件位置</label>
+                  <p class="setting-hint">{{ logPath }}</p>
+                </div>
+                <div class="setting-control">
+                  <button class="btn btn-sm" @click="handleOpenLogFolder">打开文件夹</button>
+                </div>
+              </div>
             </div>
-          </div>
+          </template>
+
+          <template v-else>
+            <div class="settings-card">
+              <div class="card-title">码表测试</div>
+              <div class="test-options">
+                <div class="test-option">
+                  <label>引擎</label>
+                  <select v-model="testEngine" class="select select-sm">
+                    <option value="current">当前引擎</option>
+                    <option value="pinyin">拼音</option>
+                    <option value="wubi">五笔</option>
+                  </select>
+                </div>
+                <div class="test-option">
+                  <label>过滤</label>
+                  <select v-model="testFilterMode" class="select select-sm">
+                    <option value="current">当前设置</option>
+                    <option value="smart">智能模式</option>
+                    <option value="general">仅通用字</option>
+                    <option value="gb18030">全部字符</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="test-input-wrap">
+                <input
+                  type="text"
+                  v-model="testInput"
+                  class="test-input"
+                  placeholder="输入编码进行测试..."
+                  @keydown.enter.prevent
+                />
+                <span v-if="testLoading" class="test-loading">加载中...</span>
+              </div>
+
+              <div class="test-candidates-wrap" v-if="testCandidates.length > 0">
+                <div class="test-candidates">
+                  <div class="test-candidate" v-for="(cand, idx) in testCandidates" :key="idx">
+                    <span class="cand-index">{{ idx + 1 }}.</span>
+                    <span class="cand-text">{{ cand.text }}</span>
+                    <span class="cand-code" v-if="cand.code">{{ cand.code }}</span>
+                    <span class="cand-common" v-if="cand.isCommon">通用</span>
+                    <span class="cand-rare" v-else>生僻</span>
+                  </div>
+                </div>
+              </div>
+              <div class="test-empty" v-else-if="testInput && !testLoading">
+                无匹配候选词
+              </div>
+            </div>
+          </template>
         </section>
 
         <!-- ==================== 关于 ==================== -->
@@ -1735,70 +1818,31 @@ onUnmounted(() => {
           </div>
 
           <div class="settings-card about-card" v-if="status">
-            <div class="about-header">
-              <div class="about-icon-wrap">🌬</div>
+            <div class="about-simple">
+              <div class="about-icon-wrap">
+                <img :src="appIconUrl" alt="WindInput" />
+              </div>
               <div class="about-title">
                 <h3>{{ status.service.name }}</h3>
-                <p>版本 {{ status.service.version }}</p>
+                <p>{{ status.service.version }}</p>
               </div>
-            </div>
-            <div class="about-stats">
-              <div class="stat-item">
-                <span class="stat-label">运行时间</span>
-                <span class="stat-value">{{ status.service.uptime }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">当前引擎</span>
-                <span class="stat-value">{{ status.engine.info }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">内存使用</span>
-                <span class="stat-value">{{ status.memory.allocMB }}</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">系统内存</span>
-                <span class="stat-value">{{ status.memory.sysMB }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="about-actions">
-            <button class="btn" @click="handleReload">重载配置</button>
-            <button class="btn" @click="refreshStatus">刷新状态</button>
-          </div>
-
-          <div class="settings-card about-links">
-            <div class="about-link-item">
-              <span class="about-link-icon">📋</span>
-              <div class="about-link-info">
-                <span class="about-link-title">项目主页</span>
-                <span class="about-link-desc">查看源代码和文档</span>
-              </div>
-            </div>
-            <div class="about-link-item">
-              <span class="about-link-icon">🐛</span>
-              <div class="about-link-info">
-                <span class="about-link-title">反馈问题</span>
-                <span class="about-link-desc">报告 Bug 或提出建议</span>
+              <div class="about-links-inline">
+                <button class="link-button modern-link" @click="handleOpenExternalLink(repoUrl)">
+                  <span class="link-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.58 2 12.26c0 4.58 2.87 8.46 6.84 9.83.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.39-3.37-1.39-.45-1.2-1.1-1.52-1.1-1.52-.9-.64.07-.63.07-.63 1 .07 1.52 1.06 1.52 1.06.89 1.56 2.34 1.11 2.9.85.09-.67.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.08 0-1.12.39-2.03 1.02-2.75-.1-.26-.44-1.3.1-2.71 0 0 .84-.27 2.75 1.03.8-.23 1.66-.35 2.51-.35.85 0 1.71.12 2.51.35 1.9-1.3 2.74-1.03 2.74-1.03.54 1.41.2 2.45.1 2.71.63.72 1.02 1.63 1.02 2.75 0 3.95-2.35 4.82-4.58 5.07.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.8 0 .27.18.6.69.49 3.97-1.37 6.83-5.25 6.83-9.83C22 6.58 17.52 2 12 2z"/>
+                    </svg>
+                  </span>
+                  <div class="link-text">
+                    <span class="link-title">GitHub 项目主页</span>
+                    <span class="link-desc">{{ repoUrl }}</span>
+                  </div>
+                </button>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- 底部操作栏 -->
-        <div class="action-bar" v-if="showActionBar">
-          <div class="action-message">
-            <span v-if="saveMessage" :class="['message', saveMessageType]">
-              {{ saveMessage }}
-            </span>
-          </div>
-          <div class="action-buttons">
-            <button class="btn" @click="resetToDefault">重置</button>
-            <button class="btn btn-primary" @click="saveConfig" :disabled="saving || hotkeyConflicts.length > 0">
-              {{ saving ? '保存中...' : '保存设置' }}
-            </button>
-          </div>
-        </div>
       </div>
     </main>
   </div>
@@ -1835,7 +1879,20 @@ body {
   border-bottom: 1px solid #e5e7eb;
 }
 .logo-icon { font-size: 24px; }
+.logo-title { display: flex; flex-direction: column; gap: 2px; }
 .logo-text { font-size: 16px; font-weight: 600; color: #1f2937; }
+.logo-version { font-size: 11px; color: #9ca3af; }
+.status-dot-inline {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-left: auto;
+  position: relative;
+  top: 1px;
+  background: #9ca3af;
+}
+.status-dot-inline.connected { background: #16a34a; }
+.status-dot-inline.disconnected { background: #dc2626; }
 
 .nav { flex: 1; padding: 12px; overflow-y: auto; }
 .nav-item {
@@ -1857,25 +1914,35 @@ body {
 .nav-item.active { background: #eff6ff; color: #2563eb; font-weight: 500; }
 .nav-icon { font-size: 16px; width: 20px; text-align: center; }
 
-.sidebar-footer { padding: 16px; border-top: 1px solid #e5e7eb; }
-.status-badge {
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid #e5e7eb;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  padding: 6px 12px;
-  border-radius: 20px;
+  flex-direction: column;
+  gap: 12px;
 }
-.status-badge.connected { background: #dcfce7; color: #166534; }
-.status-badge.disconnected { background: #fee2e2; color: #991b1b; }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sidebar-actions .btn {
+  width: 100%;
+  justify-content: center;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.sidebar-message .message {
+  display: inline-block;
+  width: 100%;
+}
 
 /* Main */
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.content { flex: 1; padding: 24px 32px; overflow-y: auto; padding-bottom: 80px; }
+.content { flex: 1; padding: 24px 32px; overflow-y: auto; }
 
 /* Section */
-.section { max-width: 700px; width: 100%; }
+.section { max-width: none; width: 100%; }
 .section-full { max-width: none; }
 .section-header { margin-bottom: 20px; }
 .section-header h2 { font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 4px; text-align: left; }
@@ -1889,7 +1956,17 @@ body {
   margin-bottom: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
-.card-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; }
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 16px;
+  text-align: left;
+  padding: 4px 8px;
+  border-left: 3px solid #2563eb;
+  border-radius: 0;
+  background: transparent;
+}
 
 /* Setting Item */
 .setting-item {
@@ -1900,6 +1977,7 @@ body {
   border-bottom: 1px solid #f3f4f6;
   gap: 16px;
 }
+.setting-item.align-start { align-items: flex-start; }
 .setting-item:last-child { border-bottom: none; padding-bottom: 0; }
 .setting-item:first-child { padding-top: 0; }
 .setting-item.item-disabled { opacity: 0.5; }
@@ -2098,7 +2176,7 @@ input:checked + .slider:before { transform: translateX(20px); }
 .warning-list { font-size: 13px; color: #b45309; margin: 0; padding-left: 16px; }
 
 /* Dictionary */
-.section-wide { max-width: 900px; }
+.section-wide { max-width: none; }
 .dict-info { margin-bottom: 16px; }
 .dict-item {
   display: flex;
@@ -2304,25 +2382,9 @@ input:checked + .slider:before { transform: translateX(20px); }
 .warning-card .warning-text { flex: 1; }
 .warning-card .warning-desc { font-size: 12px; color: #b45309; margin-top: 2px; }
 
-/* Action Bar */
-.action-bar {
-  position: fixed;
-  bottom: 0;
-  left: 200px;
-  right: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 32px;
-  background: #fff;
-  border-top: 1px solid #e5e7eb;
-  z-index: 100;
-}
-.action-message { flex: 1; }
 .message { font-size: 13px; padding: 6px 12px; border-radius: 6px; }
 .message.success { background: #dcfce7; color: #166534; }
 .message.error { background: #fee2e2; color: #991b1b; }
-.action-buttons { display: flex; gap: 10px; }
 
 .btn {
   padding: 8px 16px;
@@ -2393,34 +2455,102 @@ input:checked + .slider:before { transform: translateX(20px); }
 .log-error .log-level { color: #dc2626; }
 .log-empty { color: #9ca3af; text-align: center; padding: 32px; }
 
+/* Advanced Tabs */
+.advanced-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.advanced-tab {
+  padding: 10px 18px;
+  border: none;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  font-size: 14px;
+}
+.advanced-tab:hover { color: #374151; }
+.advanced-tab.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
+}
+
 /* About Page */
 .about-card { padding: 24px; }
-.about-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-.about-icon-wrap { font-size: 48px; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 12px; flex-shrink: 0; }
-.about-title { text-align: left; }
-.about-title h3 { font-size: 18px; font-weight: 600; margin: 0; color: #1f2937; }
-.about-title p { color: #6b7280; margin: 4px 0 0; }
-.about-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
-.stat-item { padding: 12px 16px; background: #f9fafb; border-radius: 8px; text-align: left; }
-.stat-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; }
-.stat-value { font-size: 14px; font-weight: 500; color: #1f2937; }
-.about-actions { display: flex; gap: 12px; margin-bottom: 16px; }
-.about-links { padding: 0; }
-.about-link-item {
+.about-simple {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.about-icon-wrap {
+  width: 96px;
+  height: 96px;
+  background: #f3f4f6;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
+}
+.about-icon-wrap img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+.about-title h3 { font-size: 22px; font-weight: 700; margin: 0; color: #111827; }
+.about-title p { color: #9ca3af; margin: 6px 0 0; font-size: 13px; }
+.about-links-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 420px;
+}
+.link-button {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: #111827;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  cursor: pointer;
-  transition: background 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
-.about-link-item:last-child { border-bottom: none; }
-.about-link-item:hover { background: #f9fafb; }
-.about-link-icon { font-size: 20px; }
-.about-link-info { flex: 1; text-align: left; }
-.about-link-title { display: block; font-weight: 500; color: #1f2937; }
-.about-link-desc { font-size: 12px; color: #9ca3af; }
+.link-button:hover {
+  border-color: #cbd5f5;
+  box-shadow: 0 8px 20px rgba(37,99,235,0.08);
+  transform: translateY(-1px);
+}
+.modern-link .link-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #111827;
+  color: #fff;
+  flex-shrink: 0;
+}
+.modern-link .link-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.modern-link .link-title { font-weight: 600; font-size: 14px; color: #111827; }
+.modern-link .link-desc { color: #6b7280; font-size: 12px; }
 
 /* Loading & Error */
 .loading {
@@ -2455,115 +2585,107 @@ input:checked + .slider:before { transform: translateX(20px); }
 .error-icon { font-size: 48px; }
 .error-panel p { color: #6b7280; max-width: 300px; }
 
-/* Theme Selector */
-.theme-selector {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.theme-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 200px;
-}
-
-.theme-card {
-  padding: 12px 16px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s;
-  background: #fff;
-}
-
-.theme-card:hover {
-  border-color: #93c5fd;
-  background: #f8fafc;
-}
-
-.theme-card-selected {
-  border-color: #3b82f6;
-  background: #eff6ff;
-}
-
-.theme-card-active {
-  border-color: #22c55e;
-}
-
-.theme-card-header {
+/* Theme Dropdown */
+.theme-dropdown { position: relative; }
+.theme-dropdown,
+.input-mode-dropdown { min-width: 320px; }
+.input-mode-dropdown { min-width: 360px; }
+.theme-select {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+.select-strong { border-width: 2px; }
+.theme-select:hover { border-color: #cbd5f5; }
+.theme-select:focus { outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); border-color: #2563eb; }
+.theme-select-main { display: flex; flex-direction: column; gap: 4px; }
+.theme-select-title { font-weight: 600; color: #111827; }
+.theme-select-sub { font-size: 12px; color: #6b7280; display: flex; gap: 8px; align-items: center; }
+.theme-select-version { font-weight: 600; color: #2563eb; }
+.theme-select-arrow { color: #6b7280; font-size: 14px; }
 
-.theme-name {
-  font-weight: 500;
-  color: #1f2937;
+.theme-options {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+  min-width: 320px;
 }
-
+.theme-option {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.theme-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.theme-option:hover { background: #f9fafb; }
+.theme-option.selected { border-color: #93c5fd; background: #eff6ff; }
+.theme-option-title { display: flex; align-items: center; gap: 8px; }
+.theme-option-name { font-weight: 600; color: #111827; }
+.theme-option-sub { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; }
+.theme-option-version { font-weight: 600; color: #2563eb; }
+.theme-option-empty { padding: 12px; color: #9ca3af; font-size: 12px; }
 .theme-badge {
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 4px;
-  font-weight: 500;
+  font-weight: 600;
 }
-
-.theme-badge.builtin {
-  background: #e5e7eb;
-  color: #6b7280;
-}
-
-.theme-badge.active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.theme-card-meta {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #9ca3af;
-  display: flex;
-  gap: 8px;
-}
+.theme-badge.builtin { background: #e5e7eb; color: #6b7280; }
+.theme-badge.active { background: #dcfce7; color: #166534; }
 
 .theme-preview {
-  flex: 1;
-  min-width: 280px;
   background: #f9fafb;
   border-radius: 8px;
   padding: 16px;
 }
-
-.preview-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.preview-content {
+.theme-preview.preview-rows {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
-
-.preview-section {
+.preview-row {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
 }
-
-.preview-label {
+.preview-row-label {
   font-size: 12px;
   color: #6b7280;
+  width: 80px;
+  flex-shrink: 0;
+  text-align: left;
 }
 
 .preview-candidate-window {
-  display: flex;
+  display: inline-flex;
   gap: 12px;
   padding: 10px 14px;
   border: 1px solid #ccc;
@@ -2599,7 +2721,7 @@ input:checked + .slider:before { transform: translateX(20px); }
 }
 
 .preview-toolbar {
-  display: flex;
+  display: inline-flex;
   gap: 6px;
   padding: 6px 10px;
   border: 1px solid #ccc;
@@ -2621,13 +2743,7 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .sidebar { width: 60px; min-width: 60px; }
-  .logo-text { display: none; }
-  .nav-label { display: none; }
-  .nav-item { justify-content: center; padding: 12px; }
-  .action-bar { left: 60px; }
   .content { padding: 16px; }
-  .theme-selector { flex-direction: column; }
   .theme-preview { min-width: auto; }
 }
 </style>
