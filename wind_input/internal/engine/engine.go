@@ -48,4 +48,10 @@ type ConvertResult struct {
 	ShouldClear  bool   // 是否应该清空
 	ToEnglish    bool   // 是否转为英文
 	NewInput     string // 新的输入（用于顶码场景）
+
+	// 拼音专用字段
+	PreeditDisplay     string   // 预编辑区显示文本（如 "ni'hao'zh"）
+	CompletedSyllables []string // 已完成的音节（如 ["ni", "hao"]）
+	PartialSyllable    string   // 未完成的音节（如 "zh"）
+	HasPartial         bool     // 是否有未完成音节
 }

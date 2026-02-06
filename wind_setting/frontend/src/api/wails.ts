@@ -184,9 +184,9 @@ export function getDefaultConfig(): Config {
       default_chinese_punct: true,
     },
     dictionary: {
-      system_dict: 'dict/pinyin/pinyin.txt',
+      system_dict: 'dict/wubi/wubi86.txt',
       user_dict: 'user_dict.txt',
-      pinyin_dict: 'dict/pinyin/pinyin.txt',
+      pinyin_dict: 'dict/pinyin',
     },
     engine: {
       type: 'wubi',

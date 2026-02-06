@@ -68,6 +68,9 @@ Desktop.ini
 *.bak
 *.old_*
 
+# Generated dictionary files
+/dict/pinyin/unigram.txt
+
 # Logs
 *.log
 

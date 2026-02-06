@@ -113,13 +113,28 @@ REM 创建词库目录
 if not exist "%INSTALL_DIR%\dict\pinyin" mkdir "%INSTALL_DIR%\dict\pinyin"
 if not exist "%INSTALL_DIR%\dict\wubi" mkdir "%INSTALL_DIR%\dict\wubi"
 
-REM 从 build 复制拼音词库
-if exist "%BUILD_DIR%\dict\pinyin\pinyin.txt" (
-    copy /Y "%BUILD_DIR%\dict\pinyin\pinyin.txt" "%INSTALL_DIR%\dict\pinyin\pinyin.txt" >nul
-    echo   - 拼音词库: pinyin.txt
+REM 从 build 复制拼音词库（Rime 格式）
+if exist "%BUILD_DIR%\dict\pinyin\8105.dict.yaml" (
+    copy /Y "%BUILD_DIR%\dict\pinyin\8105.dict.yaml" "%INSTALL_DIR%\dict\pinyin\8105.dict.yaml" >nul
+    echo   - 拼音单字词库: 8105.dict.yaml
 ) else (
-    echo [警告] build 目录中未找到拼音词库
+    echo [警告] build 目录中未找到拼音单字词库
     echo        请先运行 build_all.bat
+)
+if exist "%BUILD_DIR%\dict\pinyin\base.dict.yaml" (
+    copy /Y "%BUILD_DIR%\dict\pinyin\base.dict.yaml" "%INSTALL_DIR%\dict\pinyin\base.dict.yaml" >nul
+    echo   - 拼音基础词库: base.dict.yaml
+) else (
+    echo [警告] build 目录中未找到拼音基础词库
+    echo        请先运行 build_all.bat
+)
+
+REM 从 build 复制 Unigram 语言模型
+if exist "%BUILD_DIR%\dict\pinyin\unigram.txt" (
+    copy /Y "%BUILD_DIR%\dict\pinyin\unigram.txt" "%INSTALL_DIR%\dict\pinyin\unigram.txt" >nul
+    echo   - 语言模型: unigram.txt
+) else (
+    echo [提示] Unigram 语言模型不存在,智能组句功能不可用
 )
 
 REM 从 build 复制五笔词库
@@ -177,7 +192,9 @@ echo 已安装组件:
 echo - wind_tsf.dll (TSF 桥接)
 echo - wind_input.exe (输入法服务)
 echo - wind_setting.exe (设置界面)
-echo - dict\pinyin\pinyin.txt (拼音词库)
+echo - dict\pinyin\8105.dict.yaml (拼音单字词库)
+echo - dict\pinyin\base.dict.yaml (拼音基础词库)
+echo - dict\pinyin\unigram.txt (语言模型)
 echo - dict\wubi\wubi86.txt (五笔86词库)
 echo - dict\common_chars.txt (常用字表)
 echo.

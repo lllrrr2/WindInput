@@ -1,0 +1,241 @@
+package pinyin
+
+import (
+	"sort"
+
+	"github.com/huanfeng/wind_input/internal/candidate"
+)
+
+// ============================================================
+// Ranker 候选排序器
+// 负责对词库查询结果进行排序和评分
+// ============================================================
+
+// RankerConfig 排序器配置
+type RankerConfig struct {
+	// 词频权重
+	FreqWeight float64
+
+	// 词长加成（每个字符的加成）
+	LengthBonus int
+
+	// 完整匹配加成
+	ExactMatchBonus int
+
+	// 用户词库加成
+	UserDictBonus int
+
+	// 短语词库加成
+	PhraseDictBonus int
+
+	// 启用语言模型评分
+	UseLM bool
+}
+
+// DefaultRankerConfig 默认排序器配置
+func DefaultRankerConfig() *RankerConfig {
+	return &RankerConfig{
+		FreqWeight:      1.0,
+		LengthBonus:     10000,
+		ExactMatchBonus: 50000,
+		UserDictBonus:   100000,
+		PhraseDictBonus: 20000,
+		UseLM:           false,
+	}
+}
+
+// Ranker 候选排序器
+type Ranker struct {
+	config  *RankerConfig
+	unigram *UnigramModel
+	bigram  *BigramModel
+}
+
+// NewRanker 创建排序器
+func NewRanker(config *RankerConfig) *Ranker {
+	if config == nil {
+		config = DefaultRankerConfig()
+	}
+	return &Ranker{
+		config: config,
+	}
+}
+
+// SetUnigram 设置 Unigram 语言模型
+func (r *Ranker) SetUnigram(m *UnigramModel) {
+	r.unigram = m
+}
+
+// SetBigram 设置 Bigram 语言模型
+func (r *Ranker) SetBigram(m *BigramModel) {
+	r.bigram = m
+}
+
+// RankInput 排序输入参数
+type RankInput struct {
+	Entries      []LexiconEntry
+	ParseResult  *ParseResult
+	IsExactMatch bool
+	PreviousWord string // 上一个词（用于 bigram）
+}
+
+// Rank 对候选词进行排序
+// 返回排序后的 candidate.Candidate 列表
+func (r *Ranker) Rank(input *RankInput) []candidate.Candidate {
+	if input == nil || len(input.Entries) == 0 {
+		return nil
+	}
+
+	// 计算每个候选的得分
+	scored := make([]scoredCandidate, 0, len(input.Entries))
+	for _, entry := range input.Entries {
+		score := r.computeScore(entry, input)
+		scored = append(scored, scoredCandidate{
+			entry: entry,
+			score: score,
+		})
+	}
+
+	// 按得分降序排序
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	// 转换为 candidate.Candidate
+	candidates := make([]candidate.Candidate, 0, len(scored))
+	for _, sc := range scored {
+		cand := candidate.Candidate{
+			Text:     sc.entry.Text,
+			Code:     joinSyllables(sc.entry.Syllables),
+			Weight:   int(sc.score),
+			IsCommon: sc.entry.Freq > 10000, // 简化判断
+		}
+		candidates = append(candidates, cand)
+	}
+
+	return candidates
+}
+
+// RankEntriesToCandidates 简化版排序，直接从 LexiconEntry 转换
+func (r *Ranker) RankEntriesToCandidates(entries []LexiconEntry, isExactMatch bool) []candidate.Candidate {
+	return r.Rank(&RankInput{
+		Entries:      entries,
+		IsExactMatch: isExactMatch,
+	})
+}
+
+// scoredCandidate 带分数的候选
+type scoredCandidate struct {
+	entry LexiconEntry
+	score float64
+}
+
+// computeScore 计算候选得分
+func (r *Ranker) computeScore(entry LexiconEntry, input *RankInput) float64 {
+	score := float64(entry.Freq) * r.config.FreqWeight
+
+	// 词长加成
+	charCount := len([]rune(entry.Text))
+	score += float64(charCount * r.config.LengthBonus)
+
+	// 来源加成
+	switch entry.Source {
+	case SourceUser:
+		score += float64(r.config.UserDictBonus)
+	case SourcePhrase:
+		score += float64(r.config.PhraseDictBonus)
+	}
+
+	// 完整匹配加成
+	if input.IsExactMatch {
+		score += float64(r.config.ExactMatchBonus)
+	}
+
+	// 语言模型评分
+	if r.config.UseLM && r.unigram != nil {
+		lmScore := r.computeLMScore(entry, input)
+		score += lmScore * 10000 // 缩放 LM 分数
+	}
+
+	return score
+}
+
+// computeLMScore 计算语言模型得分
+func (r *Ranker) computeLMScore(entry LexiconEntry, input *RankInput) float64 {
+	if r.unigram == nil {
+		return 0
+	}
+
+	// Unigram 得分
+	unigramScore := r.unigram.LogProb(entry.Text)
+
+	// Bigram 得分（如果有上文）
+	if r.bigram != nil && input.PreviousWord != "" {
+		bigramScore := r.bigram.LogProb(input.PreviousWord, entry.Text)
+		// 混合 unigram 和 bigram
+		return 0.3*unigramScore + 0.7*bigramScore
+	}
+
+	return unigramScore
+}
+
+// joinSyllables 将音节列表拼接为字符串
+func joinSyllables(syllables []string) string {
+	if len(syllables) == 0 {
+		return ""
+	}
+	result := syllables[0]
+	for i := 1; i < len(syllables); i++ {
+		result += syllables[i]
+	}
+	return result
+}
+
+// ============================================================
+// 候选去重与合并
+// ============================================================
+
+// DeduplicateCandidates 对候选词去重，保留权重最高的
+func DeduplicateCandidates(candidates []candidate.Candidate) []candidate.Candidate {
+	seen := make(map[string]int) // text -> index
+	result := make([]candidate.Candidate, 0, len(candidates))
+
+	for _, cand := range candidates {
+		if idx, exists := seen[cand.Text]; exists {
+			// 已存在，保留权重更高的
+			if cand.Weight > result[idx].Weight {
+				result[idx] = cand
+			}
+		} else {
+			seen[cand.Text] = len(result)
+			result = append(result, cand)
+		}
+	}
+
+	return result
+}
+
+// MergeCandidates 合并多个候选列表，去重并重新排序
+func MergeCandidates(lists ...[]candidate.Candidate) []candidate.Candidate {
+	// 计算总容量
+	total := 0
+	for _, list := range lists {
+		total += len(list)
+	}
+
+	// 合并
+	merged := make([]candidate.Candidate, 0, total)
+	for _, list := range lists {
+		merged = append(merged, list...)
+	}
+
+	// 去重
+	deduped := DeduplicateCandidates(merged)
+
+	// 重新按权重排序
+	sort.Slice(deduped, func(i, j int) bool {
+		return deduped[i].Weight > deduped[j].Weight
+	})
+
+	return deduped
+}

@@ -11,14 +11,10 @@ type Dict interface {
 
 	// LookupPhrase 查找短语
 	LookupPhrase(syllables []string) []candidate.Candidate
-
-	// Load 加载词库
-	Load(path string) error
 }
 
-// Entry 词库条目
-type Entry struct {
-	Pinyin string
-	Text   string
-	Weight int
+// PrefixSearchable 支持前缀搜索的词库接口（可选扩展）
+// 拼音引擎通过类型断言使用：if ps, ok := d.(PrefixSearchable); ok { ... }
+type PrefixSearchable interface {
+	LookupPrefix(prefix string, limit int) []candidate.Candidate
 }

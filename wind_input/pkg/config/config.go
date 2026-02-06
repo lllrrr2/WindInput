@@ -44,7 +44,9 @@ type EngineConfig struct {
 
 // PinyinConfig 拼音引擎配置
 type PinyinConfig struct {
-	ShowWubiHint bool `yaml:"show_wubi_hint" json:"show_wubi_hint"`
+	ShowWubiHint    bool   `yaml:"show_wubi_hint" json:"show_wubi_hint"`
+	UseSmartCompose bool   `yaml:"use_smart_compose" json:"use_smart_compose"`
+	CandidateOrder  string `yaml:"candidate_order" json:"candidate_order"` // 候选排序：char_first/phrase_first/smart
 }
 
 // WubiConfig 五笔引擎配置
@@ -123,15 +125,16 @@ func DefaultConfig() *Config {
 			DefaultChinesePunct: true,
 		},
 		Dictionary: DictionaryConfig{
-			SystemDict: "dict/pinyin/pinyin.txt",
+			SystemDict: "dict/wubi/wubi86.txt",
 			UserDict:   UserDictFile,
-			PinyinDict: "dict/pinyin/pinyin.txt",
+			PinyinDict: "dict/pinyin",
 		},
 		Engine: EngineConfig{
 			Type:       "wubi",
 			FilterMode: "smart",
 			Pinyin: PinyinConfig{
-				ShowWubiHint: true,
+				ShowWubiHint:    true,
+				UseSmartCompose: true,
 			},
 			Wubi: WubiConfig{
 				AutoCommitAt4:   false,
@@ -318,7 +321,7 @@ func UpdateEngineType(engineType string) error {
 	case "wubi":
 		cfg.Dictionary.SystemDict = "dict/wubi/wubi86.txt"
 	case "pinyin":
-		cfg.Dictionary.SystemDict = "dict/pinyin/pinyin.txt"
+		cfg.Dictionary.SystemDict = "dict/pinyin"
 	}
 
 	return Save(cfg)

@@ -3,10 +3,11 @@ package ui
 
 // Candidate represents a candidate word
 type Candidate struct {
-	Text    string
-	Index   int
-	Comment string
-	Weight  int
+	Text           string
+	Index          int
+	Comment        string
+	Weight         int
+	ConsumedLength int // 该候选消耗的输入长度（拼音部分上屏用）
 }
 
 // CandidateRect represents the bounding rectangle of a candidate item

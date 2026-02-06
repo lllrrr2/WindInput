@@ -114,7 +114,7 @@ func (m *Manager) ConvertEx(input string, maxCandidates int) *ConvertResult {
 		return &ConvertResult{}
 	}
 
-	// 如果是扩展引擎，使用扩展功能
+	// 五笔引擎：使用五笔扩展功能
 	if wubiEngine, ok := engine.(*wubi.Engine); ok {
 		wubiResult := wubiEngine.ConvertEx(input, maxCandidates)
 		return &ConvertResult{
@@ -125,6 +125,23 @@ func (m *Manager) ConvertEx(input string, maxCandidates int) *ConvertResult {
 			ShouldClear:  wubiResult.ShouldClear,
 			ToEnglish:    wubiResult.ToEnglish,
 		}
+	}
+
+	// 拼音引擎：使用新的 ConvertEx 方法
+	if pinyinEngine, ok := engine.(*pinyin.Engine); ok {
+		pinyinResult := pinyinEngine.ConvertEx(input, maxCandidates)
+		result := &ConvertResult{
+			Candidates:     pinyinResult.Candidates,
+			IsEmpty:        pinyinResult.IsEmpty,
+			PreeditDisplay: pinyinResult.PreeditDisplay,
+		}
+		// 填充组合态信息
+		if pinyinResult.Composition != nil {
+			result.CompletedSyllables = pinyinResult.Composition.CompletedSyllables
+			result.PartialSyllable = pinyinResult.Composition.PartialSyllable
+			result.HasPartial = pinyinResult.Composition.HasPartial()
+		}
+		return result
 	}
 
 	// 普通引擎
@@ -204,36 +221,41 @@ func (m *Manager) initPinyinEngine(dictPath, wubiDictPath string, config *pinyin
 	// 确定使用哪个词库
 	var d dict.Dict
 
-	if m.dictManager != nil {
-		// 使用 DictManager 管理的 CompositeDict
-		// 先加载系统词库并注册
-		simpleDict := dict.NewSimpleDict()
-		if dictPath != "" {
-			if err := simpleDict.Load(dictPath); err != nil {
-				return fmt.Errorf("加载拼音词库失败: %w", err)
-			}
+	// 加载拼音词库（从 Rime dict.yaml 格式加载）
+	pinyinDict := dict.NewPinyinDict()
+	if dictPath != "" {
+		if err := pinyinDict.LoadRimeDir(dictPath); err != nil {
+			return fmt.Errorf("加载拼音词库失败: %w", err)
 		}
+		log.Printf("[EngineManager] 拼音词库加载成功，词条数: %d", pinyinDict.EntryCount())
+	}
 
+	if m.dictManager != nil {
 		// 注册系统词库到 DictManager
-		systemLayer := dict.NewSimpleDictLayer("pinyin-system", dict.LayerTypeSystem, simpleDict)
+		systemLayer := dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict)
 		m.dictManager.RegisterSystemLayer("pinyin-system", systemLayer)
 
 		// 使用 CompositeDict
 		d = m.dictManager.GetCompositeDict()
 		log.Printf("[EngineManager] 拼音引擎使用 CompositeDict")
 	} else {
-		// 回退：直接使用 SimpleDict
-		simpleDict := dict.NewSimpleDict()
-		if dictPath != "" {
-			if err := simpleDict.Load(dictPath); err != nil {
-				return fmt.Errorf("加载拼音词库失败: %w", err)
-			}
-		}
-		d = simpleDict
+		// 回退：直接使用 PinyinDict
+		d = pinyinDict
 	}
 
 	// 创建引擎
 	engine := pinyin.NewEngineWithConfig(d, config)
+
+	// 加载 Unigram 语言模型
+	unigramPath := "dict/pinyin/unigram.txt"
+	if m.exeDir != "" {
+		unigramPath = m.exeDir + "/" + unigramPath
+	}
+	if err := engine.LoadUnigram(unigramPath); err != nil {
+		log.Printf("[EngineManager] 加载 Unigram 模型失败（智能组句不可用）: %v", err)
+	} else {
+		log.Printf("[EngineManager] Unigram 语言模型加载成功")
+	}
 
 	// 如果启用五笔反查，加载五笔码表
 	if config != nil && config.ShowWubiHint && wubiDictPath != "" {
@@ -401,7 +423,7 @@ func (m *Manager) ToggleEngine() (EngineType, error) {
 func (m *Manager) loadPinyinEngineLocked() error {
 	dictPath := m.pinyinDictPath
 	if dictPath == "" {
-		dictPath = "dict/pinyin/pinyin.txt"
+		dictPath = "dict/pinyin"
 	}
 
 	fullPath := dictPath
@@ -412,26 +434,22 @@ func (m *Manager) loadPinyinEngineLocked() error {
 	// 确定使用哪个词库
 	var d dict.Dict
 
-	if m.dictManager != nil {
-		// 使用 DictManager
-		simpleDict := dict.NewSimpleDict()
-		if err := simpleDict.Load(fullPath); err != nil {
-			return fmt.Errorf("加载拼音词库失败: %w", err)
-		}
+	// 加载拼音词库（从 Rime dict.yaml 格式加载）
+	pinyinDict := dict.NewPinyinDict()
+	if err := pinyinDict.LoadRimeDir(fullPath); err != nil {
+		return fmt.Errorf("加载拼音词库失败: %w", err)
+	}
+	log.Printf("[EngineManager] 拼音词库加载成功，词条数: %d", pinyinDict.EntryCount())
 
+	if m.dictManager != nil {
 		// 注册系统词库
-		systemLayer := dict.NewSimpleDictLayer("pinyin-system", dict.LayerTypeSystem, simpleDict)
+		systemLayer := dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict)
 		m.dictManager.RegisterSystemLayer("pinyin-system", systemLayer)
 		d = m.dictManager.GetCompositeDict()
-		log.Printf("[EngineManager] 拼音引擎使用 CompositeDict，词条数: %d", simpleDict.EntryCount())
+		log.Printf("[EngineManager] 拼音引擎使用 CompositeDict")
 	} else {
-		// 回退：直接使用 SimpleDict
-		simpleDict := dict.NewSimpleDict()
-		if err := simpleDict.Load(fullPath); err != nil {
-			return fmt.Errorf("加载拼音词库失败: %w", err)
-		}
-		d = simpleDict
-		log.Printf("[EngineManager] 拼音引擎加载成功，词条数: %d", simpleDict.EntryCount())
+		// 回退：直接使用 PinyinDict
+		d = pinyinDict
 	}
 
 	// 创建引擎
@@ -440,6 +458,17 @@ func (m *Manager) loadPinyinEngineLocked() error {
 		config = &pinyin.Config{ShowWubiHint: true, FilterMode: "smart"}
 	}
 	engine := pinyin.NewEngineWithConfig(d, config)
+
+	// 加载 Unigram 语言模型
+	unigramPath := "dict/pinyin/unigram.txt"
+	if m.exeDir != "" {
+		unigramPath = m.exeDir + "/" + unigramPath
+	}
+	if err := engine.LoadUnigram(unigramPath); err != nil {
+		log.Printf("[EngineManager] 加载 Unigram 模型失败（智能组句不可用）: %v", err)
+	} else {
+		log.Printf("[EngineManager] Unigram 语言模型加载成功")
+	}
 
 	// 如果启用五笔反查，加载五笔码表
 	if config.ShowWubiHint && m.wubiDictPath != "" {

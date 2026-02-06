@@ -31,6 +31,11 @@ var wholeSyllables = []string{
 	"ye", "yue", "yuan", "yin", "yun", "ying",
 }
 
+const (
+	maxSyllablesCount = 10 // 最多 10 个音节
+	maxResults        = 5  // 最多 5 种分割方式
+)
+
 // ParseSyllables 解析拼音为音节列表
 // 例如: "nihao" -> ["ni", "hao"]
 func ParseSyllables(pinyin string) [][]string {
@@ -49,6 +54,16 @@ func ParseSyllables(pinyin string) [][]string {
 
 // parseSyllablesRecursive 递归解析音节
 func parseSyllablesRecursive(pinyin string, start int, current []string, results *[][]string) {
+	// 剪枝：结果数量限制
+	if len(*results) >= maxResults {
+		return
+	}
+
+	// 剪枝：音节数量限制
+	if len(current) >= maxSyllablesCount {
+		return
+	}
+
 	if start >= len(pinyin) {
 		if len(current) > 0 {
 			// 复制当前结果
@@ -61,6 +76,9 @@ func parseSyllablesRecursive(pinyin string, start int, current []string, results
 
 	// 尝试匹配整体认读音节（优先）
 	for _, syllable := range wholeSyllables {
+		if len(*results) >= maxResults {
+			return
+		}
 		if start+len(syllable) <= len(pinyin) &&
 			pinyin[start:start+len(syllable)] == syllable {
 			parseSyllablesRecursive(pinyin, start+len(syllable),
@@ -70,6 +88,9 @@ func parseSyllablesRecursive(pinyin string, start int, current []string, results
 
 	// 尝试匹配声母+韵母
 	for _, sm := range shengmu {
+		if len(*results) >= maxResults {
+			return
+		}
 		if start+len(sm) > len(pinyin) {
 			continue
 		}
@@ -79,6 +100,9 @@ func parseSyllablesRecursive(pinyin string, start int, current []string, results
 
 		smEnd := start + len(sm)
 		for _, ym := range yunmu {
+			if len(*results) >= maxResults {
+				return
+			}
 			if smEnd+len(ym) > len(pinyin) {
 				continue
 			}
@@ -94,6 +118,9 @@ func parseSyllablesRecursive(pinyin string, start int, current []string, results
 
 	// 尝试匹配单个韵母（零声母）
 	for _, ym := range yunmu {
+		if len(*results) >= maxResults {
+			return
+		}
 		if start+len(ym) <= len(pinyin) &&
 			pinyin[start:start+len(ym)] == ym {
 			parseSyllablesRecursive(pinyin, start+len(ym),

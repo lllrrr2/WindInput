@@ -1159,13 +1159,33 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 		return nil
 	}
 
-	candidate := c.candidates[index]
-	originalText := candidate.Text
+	cand := c.candidates[index]
+	originalText := cand.Text
 	text := originalText
 
 	// Apply full-width conversion if enabled
 	if c.fullWidth {
 		text = transform.ToFullWidth(text)
+	}
+
+	// 拼音引擎部分上屏：候选消耗的输入长度小于缓冲区长度时，保留剩余部分
+	isPinyin := c.engineMgr != nil && c.engineMgr.GetCurrentType() == engine.EngineTypePinyin
+	if isPinyin && cand.ConsumedLength > 0 && cand.ConsumedLength < len(c.inputBuffer) {
+		remaining := c.inputBuffer[cand.ConsumedLength:]
+		c.logger.Debug("Partial commit (pinyin)", "index", index, "text", text,
+			"consumed", cand.ConsumedLength, "remaining", remaining)
+
+		// 更新缓冲区为剩余部分，重新触发候选更新
+		c.inputBuffer = remaining
+		c.currentPage = 1
+		c.updateCandidates()
+		c.showUI()
+
+		return &bridge.KeyEventResult{
+			Type:           bridge.ResponseTypeInsertText,
+			Text:           text,
+			NewComposition: remaining,
+		}
 	}
 
 	c.logger.Debug("Candidate selected", "index", index, "original", originalText, "output", text, "fullWidth", c.fullWidth)
@@ -1200,9 +1220,10 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 	c.candidates = make([]ui.Candidate, len(result.Candidates))
 	for i, ec := range result.Candidates {
 		cand := ui.Candidate{
-			Text:   ec.Text,
-			Index:  i + 1,
-			Weight: ec.Weight,
+			Text:           ec.Text,
+			Index:          i + 1,
+			Weight:         ec.Weight,
+			ConsumedLength: ec.ConsumedLength,
 		}
 		// 如果有提示信息（如反查编码），添加到注释
 		if ec.Hint != "" {
@@ -1556,6 +1577,7 @@ func (c *Coordinator) HandleCommitRequest(data bridge.CommitRequestData) *bridge
 			result := c.handleNumberKeyInternal(num)
 			if result != nil {
 				text = result.Text
+				newComposition = result.NewComposition
 			}
 		}
 	}
@@ -1633,14 +1655,33 @@ func (c *Coordinator) selectCandidateInternal(index int) *bridge.KeyEventResult 
 		return nil
 	}
 
-	candidate := c.candidates[index]
+	cand := c.candidates[index]
 	c.logger.Debug("Candidate selected (internal)", "index", index)
 
-	text := candidate.Text
+	text := cand.Text
 
 	// Apply full-width conversion if enabled
 	if c.fullWidth {
 		text = transform.ToFullWidth(text)
+	}
+
+	// 拼音引擎部分上屏
+	isPinyin := c.engineMgr != nil && c.engineMgr.GetCurrentType() == engine.EngineTypePinyin
+	if isPinyin && cand.ConsumedLength > 0 && cand.ConsumedLength < len(c.inputBuffer) {
+		remaining := c.inputBuffer[cand.ConsumedLength:]
+		c.logger.Debug("Partial commit internal (pinyin)", "index", index, "text", text,
+			"consumed", cand.ConsumedLength, "remaining", remaining)
+
+		c.inputBuffer = remaining
+		c.currentPage = 1
+		c.updateCandidates()
+		c.showUI()
+
+		return &bridge.KeyEventResult{
+			Type:           bridge.ResponseTypeInsertText,
+			Text:           text,
+			NewComposition: remaining,
+		}
 	}
 
 	c.clearState()

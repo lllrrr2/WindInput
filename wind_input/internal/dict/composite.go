@@ -211,7 +211,9 @@ func (c *CompositeDict) GetLayersByType(layerType LayerType) []DictLayer {
 
 // Lookup 实现 dict.Dict 接口
 func (c *CompositeDict) Lookup(pinyin string) []candidate.Candidate {
-	return c.Search(pinyin, 0)
+	results := c.Search(pinyin, 0)
+	// log.Printf("[CompositeDict] Lookup: pinyin=%q results=%d", pinyin, len(results))
+	return results
 }
 
 // LookupPhrase 实现 dict.Dict 接口
@@ -230,8 +232,7 @@ func (c *CompositeDict) LookupPhrase(syllables []string) []candidate.Candidate {
 	return c.Search(code, 0)
 }
 
-// Load 实现 dict.Dict 接口（CompositeDict 不需要从文件加载）
-func (c *CompositeDict) Load(path string) error {
-	// CompositeDict 的层由 DictManager 管理，不需要直接加载
-	return nil
+// LookupPrefix 实现 dict.PrefixSearchable 接口
+func (c *CompositeDict) LookupPrefix(prefix string, limit int) []candidate.Candidate {
+	return c.SearchPrefix(prefix, limit)
 }

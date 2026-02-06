@@ -85,7 +85,7 @@ func GetWubiDictPath() string {
 	return "dict/wubi/wubi86.txt"
 }
 
-// GetPinyinDictPath returns the path to the pinyin dictionary
+// GetPinyinDictPath returns the path to the pinyin dictionary directory
 func GetPinyinDictPath() string {
-	return "dict/pinyin/pinyin.txt"
+	return "dict/pinyin"
 }

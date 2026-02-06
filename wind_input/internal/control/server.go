@@ -314,7 +314,7 @@ func (s *Server) handleReloadAll() string {
 	if len(errors) > 0 {
 		errMsg := strings.Join(errors, "; ")
 		s.logger.Error("Partial reload failures", "errors", errMsg)
-		return control.ErrorResponse(fmt.Errorf(errMsg))
+		return control.ErrorResponse(fmt.Errorf("%s", errMsg))
 	}
 
 	s.logger.Info("All configs and dicts reloaded via control pipe")

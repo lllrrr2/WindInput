@@ -1,0 +1,382 @@
+package pinyin
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/huanfeng/wind_input/internal/dict"
+)
+
+func createTestDictForEx(t *testing.T) dict.Dict {
+	t.Helper()
+	tmpDir := t.TempDir()
+
+	// 注意：故意让 "赭石" 权重高于 "这是" 来测试排序
+	content := `# Rime dictionary
+---
+name: test
+version: "1.0"
+sort: by_weight
+...
+啊	a	1000
+爱	ai	1000
+你	ni	1000
+妮	ni	500
+好	hao	1000
+号	hao	500
+你好	ni hao	800
+我	wo	1000
+么	me	900
+们	men	1000
+我们	wo men	800
+是	shi	1000
+石	shi	900
+时	shi	850
+事	shi	800
+使	shi	700
+的	de	1000
+中	zhong	1000
+国	guo	1000
+中国	zhong guo	800
+知	zhi	1000
+之	zhi	900
+道	dao	1000
+知道	zhi dao	800
+张	zhang	900
+找	zhao	900
+这	zhe	1000
+赭	zhe	100
+赭石	zhe shi	600
+这事	zhe shi	500
+这时	zhe shi	550
+这是	zhe shi	700
+这使	zhe shi	400
+真	zhen	900
+正	zheng	900
+周	zhou	900
+住	zhu	900
+麽	me	100
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "8105.dict.yaml"), []byte(content), 0644); err != nil {
+		t.Fatalf("写入测试文件失败: %v", err)
+	}
+
+	d := dict.NewPinyinDict()
+	if err := d.LoadRimeDir(tmpDir); err != nil {
+		t.Fatalf("加载词库失败: %v", err)
+	}
+	return d
+}
+
+func TestEngineConvertEx(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	tests := []struct {
+		input          string
+		wantPreedit    string
+		wantContain    string
+		wantHasPartial bool
+	}{
+		{
+			input:          "nihao",
+			wantPreedit:    "ni'hao",
+			wantContain:    "你好",
+			wantHasPartial: false,
+		},
+		{
+			input:          "zhongguo",
+			wantPreedit:    "zhong'guo",
+			wantContain:    "中国",
+			wantHasPartial: false,
+		},
+		{
+			input:          "women",
+			wantPreedit:    "wo'men",
+			wantContain:    "我们",
+			wantHasPartial: false,
+		},
+		{
+			input:          "nihaozh",
+			wantPreedit:    "ni'hao'zh",
+			wantHasPartial: true,
+		},
+		{
+			input:          "zh",
+			wantPreedit:    "zh",
+			wantHasPartial: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := engine.ConvertEx(tt.input, 10)
+
+			// 检查组合态
+			if result.Composition == nil {
+				t.Fatal("ConvertEx returned nil Composition")
+			}
+
+			// 检查预编辑文本
+			if result.PreeditDisplay != tt.wantPreedit {
+				t.Errorf("ConvertEx(%q) PreeditDisplay = %q, want %q",
+					tt.input, result.PreeditDisplay, tt.wantPreedit)
+			}
+
+			// 检查是否有未完成音节
+			if result.Composition.HasPartial() != tt.wantHasPartial {
+				t.Errorf("ConvertEx(%q) HasPartial() = %v, want %v",
+					tt.input, result.Composition.HasPartial(), tt.wantHasPartial)
+			}
+
+			// 检查候选词
+			if tt.wantContain != "" {
+				found := false
+				for _, c := range result.Candidates {
+					if c.Text == tt.wantContain {
+						found = true
+						break
+					}
+				}
+				if !found {
+					var texts []string
+					for _, c := range result.Candidates {
+						texts = append(texts, c.Text)
+					}
+					t.Errorf("ConvertEx(%q) missing %q, got %v",
+						tt.input, tt.wantContain, texts)
+				}
+			}
+		})
+	}
+}
+
+// TestEngineConvertExRanking 测试排序：常用词应优先于生僻词
+func TestEngineConvertExRanking(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	// 构建一个简单的 Unigram 模型，模拟真实字频
+	// 常见字（这、是、事、时）频率高，生僻字（赭）频率低
+	unigram := NewUnigramModel()
+	charFreqs := map[string]float64{
+		"这": 900000, "是": 850000, "事": 500000, "时": 600000,
+		"使": 300000, "赭": 1000, "石": 200000,
+		"我": 950000, "们": 400000, "你": 920000, "好": 700000,
+		"中": 800000, "国": 750000, "知": 500000, "道": 450000,
+		"张": 350000, "找": 300000, "真": 550000, "正": 520000,
+		"周": 300000, "住": 280000, "之": 600000, "啊": 200000,
+		"爱": 300000, "妮": 50000, "号": 200000, "的": 980000,
+		"么": 400000, "麽": 10000, "wo": 0, "me": 0,
+	}
+	unigram.LoadFromFreqMap(charFreqs)
+	engine.SetUnigram(unigram)
+
+	// 测试 "zheshi"：词库中 "赭石" 在 "这是" 前面（行号更小），
+	// 但 "这是" 应该排在更前面（使用单字频率排序）
+	result := engine.ConvertEx("zheshi", 10)
+
+	if len(result.Candidates) == 0 {
+		t.Fatal("ConvertEx('zheshi') returned no candidates")
+	}
+
+	// 打印前5个候选便于调试
+	for i, c := range result.Candidates {
+		if i >= 5 {
+			break
+		}
+		t.Logf("zheshi candidate[%d]: %s (weight=%d)", i, c.Text, c.Weight)
+	}
+
+	// 所有精确匹配的2字词应在单字之前
+	firstSingleCharIdx := -1
+	lastPhraseIdx := -1
+	for i, c := range result.Candidates {
+		if len([]rune(c.Text)) == 1 {
+			if firstSingleCharIdx == -1 {
+				firstSingleCharIdx = i
+			}
+		} else {
+			lastPhraseIdx = i
+		}
+	}
+	if firstSingleCharIdx >= 0 && lastPhraseIdx >= 0 && firstSingleCharIdx < lastPhraseIdx {
+		t.Errorf("Single char appears before a phrase: singleAt=%d, phraseAt=%d", firstSingleCharIdx, lastPhraseIdx)
+	}
+}
+
+// TestEngineConvertExPrefixPrediction 测试前缀预测："wome" 应包含 "我们"
+func TestEngineConvertExPrefixPrediction(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	// 输入 "wome"（还没输完 "women"），应该通过前缀匹配找到 "我们"
+	result := engine.ConvertEx("wome", 10)
+
+	for i, c := range result.Candidates {
+		if i >= 5 {
+			break
+		}
+		t.Logf("wome candidate[%d]: %s (weight=%d)", i, c.Text, c.Weight)
+	}
+
+	// "我们" 应该在候选列表中
+	found := false
+	foundIdx := -1
+	for i, c := range result.Candidates {
+		if c.Text == "我们" {
+			found = true
+			foundIdx = i
+			break
+		}
+	}
+	if !found {
+		var texts []string
+		for _, c := range result.Candidates {
+			texts = append(texts, c.Text)
+		}
+		t.Fatalf("ConvertEx('wome') should contain '我们', got %v", texts)
+	}
+
+	// "我们" 应该排在前3名
+	if foundIdx > 2 {
+		t.Errorf("'我们' should be in top 3, but at position %d", foundIdx)
+	}
+}
+
+func TestEngineConvertExEmpty(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	result := engine.ConvertEx("", 10)
+
+	if !result.IsEmpty {
+		t.Error("ConvertEx('') should return IsEmpty=true")
+	}
+
+	if len(result.Candidates) != 0 {
+		t.Errorf("ConvertEx('') should return no candidates, got %d", len(result.Candidates))
+	}
+}
+
+func TestEngineParseInput(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	tests := []struct {
+		input       string
+		wantPreedit string
+	}{
+		{"nihao", "ni'hao"},
+		{"nihaozh", "ni'hao'zh"},
+		{"zh", "zh"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		comp := engine.ParseInput(tt.input)
+		if comp.PreeditText != tt.wantPreedit {
+			t.Errorf("ParseInput(%q) PreeditText = %q, want %q",
+				tt.input, comp.PreeditText, tt.wantPreedit)
+		}
+	}
+}
+
+func TestEngineGetPossibleSyllables(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	tests := []struct {
+		prefix      string
+		wantContain []string
+	}{
+		{"zh", []string{"zha", "zhe", "zhi", "zhong", "zhou", "zhu"}},
+		{"ni", []string{"ni", "nian", "niao", "nie", "nin", "ning", "niu"}},
+	}
+
+	for _, tt := range tests {
+		results := engine.GetPossibleSyllables(tt.prefix)
+		resultSet := make(map[string]bool)
+		for _, r := range results {
+			resultSet[r] = true
+		}
+
+		for _, want := range tt.wantContain {
+			if !resultSet[want] {
+				t.Errorf("GetPossibleSyllables(%q) missing %q, got %v",
+					tt.prefix, want, results)
+			}
+		}
+	}
+}
+
+func TestEngineIsValidSyllable(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	validSyllables := []string{"ni", "hao", "zhong", "guo", "wo", "men"}
+	for _, s := range validSyllables {
+		if !engine.IsValidSyllable(s) {
+			t.Errorf("IsValidSyllable(%q) = false, want true", s)
+		}
+	}
+
+	invalidSyllables := []string{"zh", "ng", "xyz"}
+	for _, s := range invalidSyllables {
+		if engine.IsValidSyllable(s) {
+			t.Errorf("IsValidSyllable(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestEngineIsValidSyllablePrefix(t *testing.T) {
+	d := createTestDictForEx(t)
+	engine := NewEngine(d)
+
+	validPrefixes := []string{"zh", "sh", "ch", "n", "h", "z"}
+	for _, s := range validPrefixes {
+		if !engine.IsValidSyllablePrefix(s) {
+			t.Errorf("IsValidSyllablePrefix(%q) = false, want true", s)
+		}
+	}
+}
+
+func BenchmarkEngineConvertEx(b *testing.B) {
+	tmpDir := b.TempDir()
+
+	content := `# Rime dictionary
+---
+name: bench
+version: "1.0"
+sort: by_weight
+...
+你	ni	1000
+好	hao	1000
+你好	ni hao	800
+中	zhong	1000
+国	guo	1000
+中国	zhong guo	800
+我	wo	1000
+们	men	1000
+我们	wo men	800
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "8105.dict.yaml"), []byte(content), 0644); err != nil {
+		b.Fatalf("写入测试文件失败: %v", err)
+	}
+
+	d := dict.NewPinyinDict()
+	if err := d.LoadRimeDir(tmpDir); err != nil {
+		b.Fatalf("加载词库失败: %v", err)
+	}
+
+	engine := NewEngine(d)
+	inputs := []string{"nihao", "zhongguo", "women", "nihaozh"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, input := range inputs {
+			engine.ConvertEx(input, 10)
+		}
+	}
+}

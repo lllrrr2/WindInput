@@ -269,8 +269,10 @@ func main() {
 
 	// 解析拼音配置
 	pinyinConfig := &pinyin.Config{
-		ShowWubiHint: cfg.Engine.Pinyin.ShowWubiHint,
-		FilterMode:   cfg.Engine.FilterMode,
+		ShowWubiHint:    cfg.Engine.Pinyin.ShowWubiHint,
+		FilterMode:      cfg.Engine.FilterMode,
+		UseSmartCompose: cfg.Engine.Pinyin.UseSmartCompose,
+		CandidateOrder:  cfg.Engine.Pinyin.CandidateOrder,
 	}
 
 	// 解析五笔配置（以默认配置为基础，覆盖用户设置，避免遗漏新增字段）

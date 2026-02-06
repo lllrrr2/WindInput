@@ -18,7 +18,7 @@ if /I "%~1"=="debug" set "WAILS_MODE=debug"
 if /I "%~1"=="release" set "WAILS_MODE=release"
 if /I "%~1"=="skip" set "WAILS_MODE=skip"
 
-echo [1/5] 构建 Go 服务(wind_input.exe)...
+echo [1/6] 构建 Go 服务(wind_input.exe)...
 if not exist "%SCRIPT_DIR%build" mkdir "%SCRIPT_DIR%build"
 cd "%SCRIPT_DIR%wind_input"
 go build -o ../build/wind_input.exe ./cmd/service
@@ -30,7 +30,7 @@ if %errorLevel% neq 0 (
 echo Go 服务构建成功
 echo.
 
-echo [2/5] 构建 C++ DLL(wind_tsf.dll)...
+echo [2/6] 构建 C++ DLL(wind_tsf.dll)...
 if not exist "%SCRIPT_DIR%wind_tsf\build" mkdir "%SCRIPT_DIR%wind_tsf\build"
 cd "%SCRIPT_DIR%wind_tsf\build"
 if not exist "%SCRIPT_DIR%wind_tsf\build\CMakeCache.txt" (
@@ -45,7 +45,7 @@ if %errorLevel% neq 0 (
 echo C++ DLL 构建成功
 echo.
 
-echo [3/5] 构建设置界面(wind_setting.exe)...
+echo [3/6] 构建设置界面(wind_setting.exe)...
 if /I "%WAILS_MODE%"=="skip" (
     echo [提示] 已按参数跳过 Wails 构建
 ) else (
@@ -77,17 +77,62 @@ if /I "%WAILS_MODE%"=="skip" (
 )
 echo.
 
-echo [4/5] 复制词库到 build 目录...
+echo [4/6] 下载拼音词库(rime-ice)...
+cd "%SCRIPT_DIR%"
+if not exist "%SCRIPT_DIR%build\dict\rime" mkdir "%SCRIPT_DIR%build\dict\rime"
+
+set "RIME_BASE_URL=https://raw.githubusercontent.com/iDvel/rime-ice/main/cn_dicts"
+set "RIME_DIR=%SCRIPT_DIR%build\dict\rime"
+
+call :download_rime_file 8105.dict.yaml "单字词库, 约112KB"
+if errorlevel 1 exit /b 1
+call :download_rime_file base.dict.yaml "基础词库, 约16MB"
+if errorlevel 1 exit /b 1
+call :download_rime_file tencent.dict.yaml "腾讯词频, 约17MB"
+if errorlevel 1 exit /b 1
+echo.
+
+echo [5/6] 准备词库文件...
 cd "%SCRIPT_DIR%"
 if not exist "%SCRIPT_DIR%build\dict\pinyin" mkdir "%SCRIPT_DIR%build\dict\pinyin"
 if not exist "%SCRIPT_DIR%build\dict\wubi" mkdir "%SCRIPT_DIR%build\dict\wubi"
 
-REM 复制拼音词库
-if exist "%SCRIPT_DIR%ref\简全拼音库5.0.txt" (
-    copy /Y "%SCRIPT_DIR%ref\简全拼音库5.0.txt" "%SCRIPT_DIR%build\dict\pinyin\pinyin.txt" >nul
-    echo   - 已复制拼音词库
+REM 复制拼音词库（Rime 格式）
+if exist "%RIME_DIR%\8105.dict.yaml" (
+    copy /Y "%RIME_DIR%\8105.dict.yaml" "%SCRIPT_DIR%build\dict\pinyin\8105.dict.yaml" >nul
+    echo   - 已复制拼音单字词库 8105.dict.yaml
 ) else (
-    echo [警告] ref 目录中未找到拼音词库
+    echo [警告] 未找到 8105.dict.yaml
+)
+if exist "%RIME_DIR%\base.dict.yaml" (
+    copy /Y "%RIME_DIR%\base.dict.yaml" "%SCRIPT_DIR%build\dict\pinyin\base.dict.yaml" >nul
+    echo   - 已复制拼音基础词库 base.dict.yaml
+) else (
+    echo [警告] 未找到 base.dict.yaml
+)
+
+REM 生成 Unigram 语言模型（如果不存在）
+if not exist "%SCRIPT_DIR%dict\pinyin" mkdir "%SCRIPT_DIR%dict\pinyin"
+if not exist "%SCRIPT_DIR%dict\pinyin\unigram.txt" (
+    echo   - 生成 Unigram 语言模型...
+    cd "%SCRIPT_DIR%wind_input"
+    go run ./cmd/gen_unigram -rime "%RIME_DIR%" -output "%SCRIPT_DIR%dict\pinyin\unigram.txt"
+    if errorlevel 1 (
+        echo [警告] Unigram 生成失败,智能组句功能不可用
+    ) else (
+        echo   - Unigram 语言模型生成成功
+    )
+    cd "%SCRIPT_DIR%"
+) else (
+    echo   - Unigram 语言模型已存在
+)
+
+REM 复制 Unigram 语言模型
+if exist "%SCRIPT_DIR%dict\pinyin\unigram.txt" (
+    copy /Y "%SCRIPT_DIR%dict\pinyin\unigram.txt" "%SCRIPT_DIR%build\dict\pinyin\unigram.txt" >nul
+    echo   - 已复制 Unigram 语言模型
+) else (
+    echo [提示] Unigram 语言模型不存在,智能组句功能不可用
 )
 
 REM 复制五笔词库
@@ -107,7 +152,7 @@ if exist "%SCRIPT_DIR%dict\common_chars.txt" (
 )
 echo.
 
-echo [5/5] 检查输出文件...
+echo [6/6] 检查输出文件...
 if not exist "%SCRIPT_DIR%build\wind_tsf.dll" (
     echo [错误] 未找到 wind_tsf.dll
     pause
@@ -129,9 +174,13 @@ echo 输出文件:
 echo - build\wind_tsf.dll(TSF 桥接)
 echo - build\wind_input.exe(输入法服务)
 echo - build\wind_setting.exe(设置界面)
-echo - build\dict\pinyin\pinyin.txt(拼音词库)
+echo - build\dict\pinyin\8105.dict.yaml(拼音单字词库)
+echo - build\dict\pinyin\base.dict.yaml(拼音基础词库)
+echo - build\dict\pinyin\unigram.txt(Unigram 语言模型)
 echo - build\dict\wubi\wubi86.txt(五笔词库)
 echo - build\dict\common_chars.txt(常用字表)
+echo.
+echo 词库来源: 雾凇拼音 rime-ice (https://github.com/iDvel/rime-ice)
 echo.
 echo 开发调试:
 echo   cd build ^&^& wind_input.exe -log debug
@@ -144,4 +193,21 @@ echo   build_all.bat -wails-debug   (默认)
 echo   build_all.bat -wails-release
 echo   build_all.bat -wails-skip
 echo.
+goto :eof
 
+REM ======== 子例程 ========
+
+:download_rime_file
+REM 参数: %1=文件名  %2=描述
+if exist "%RIME_DIR%\%~1" (
+    echo   - %~1 已存在,跳过下载
+    exit /b 0
+)
+echo   - 下载 %~1 (%~2)...
+powershell -Command "Invoke-WebRequest -Uri '%RIME_BASE_URL%/%~1' -OutFile '%RIME_DIR%\%~1' -UseBasicParsing"
+if errorlevel 1 (
+    echo [错误] 下载 %~1 失败
+    pause
+    exit /b 1
+)
+exit /b 0
