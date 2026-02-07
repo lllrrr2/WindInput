@@ -1080,6 +1080,8 @@ func (c *Coordinator) handleCursorLeft() *bridge.KeyEventResult {
 				CaretPos: c.displayCursorPos(),
 			}
 		}
+		// InlinePreedit 关闭时，刷新候选窗口中的光标位置
+		c.showUI()
 	}
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 }
@@ -1098,6 +1100,8 @@ func (c *Coordinator) handleCursorRight() *bridge.KeyEventResult {
 				CaretPos: c.displayCursorPos(),
 			}
 		}
+		// InlinePreedit 关闭时，刷新候选窗口中的光标位置
+		c.showUI()
 	}
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 }
@@ -1115,6 +1119,8 @@ func (c *Coordinator) handleCursorHome() *bridge.KeyEventResult {
 			CaretPos: c.displayCursorPos(),
 		}
 	}
+	// InlinePreedit 关闭时，刷新候选窗口中的光标位置
+	c.showUI()
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 }
 
@@ -1131,6 +1137,8 @@ func (c *Coordinator) handleCursorEnd() *bridge.KeyEventResult {
 			CaretPos: c.displayCursorPos(),
 		}
 	}
+	// InlinePreedit 关闭时，刷新候选窗口中的光标位置
+	c.showUI()
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 }
 
@@ -1470,6 +1478,7 @@ func (c *Coordinator) showUI() {
 	c.uiManager.ShowCandidates(
 		displayCandidates,
 		c.compositionText(),
+		c.displayCursorPos(),
 		caretX,
 		caretY,
 		caretHeight,
@@ -3137,6 +3146,7 @@ func (c *Coordinator) showTempEnglishUI() {
 	c.uiManager.ShowCandidates(
 		nil, // 无候选词
 		c.tempEnglishBuffer,
+		len(c.tempEnglishBuffer), // 光标在末尾
 		caretX,
 		caretY,
 		caretHeight,

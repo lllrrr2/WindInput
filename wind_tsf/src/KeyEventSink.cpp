@@ -145,10 +145,11 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
         HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
 
         if (keyType == HotkeyType::Backspace || keyType == HotkeyType::Enter ||
-            keyType == HotkeyType::Escape || keyType == HotkeyType::Space)
+            keyType == HotkeyType::Escape || keyType == HotkeyType::Space ||
+            keyType == HotkeyType::CursorKey)
         {
             // Only intercept if we have composition or active input session
-            // Space should only be intercepted when there are candidates to select
+            // These keys should pass through when there's no active input
             if (hasInputSession)
             {
                 *pfEaten = TRUE;
@@ -299,9 +300,10 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     {
         HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
 
-        // Backspace, Enter, Escape should only be intercepted when there's an active composition or input session
+        // Backspace, Enter, Escape, CursorKey should only be intercepted when there's an active composition or input session
         // Otherwise they should pass through to the application
-        if (keyType == HotkeyType::Backspace || keyType == HotkeyType::Enter || keyType == HotkeyType::Escape)
+        if (keyType == HotkeyType::Backspace || keyType == HotkeyType::Enter ||
+            keyType == HotkeyType::Escape || keyType == HotkeyType::CursorKey)
         {
             isInputKey = hasInputSession;  // Only intercept if we have composition or input session
         }

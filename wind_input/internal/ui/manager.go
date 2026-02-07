@@ -16,6 +16,7 @@ type UICommand struct {
 	Type        string // "show", "hide", "mode", "toolbar_show", "toolbar_hide", "toolbar_update", "settings", "hide_menu"
 	Candidates  []Candidate
 	Input       string
+	CursorPos   int // Cursor position within Input (display position, for rendering cursor indicator)
 	X, Y        int // Caret position (original, not adjusted)
 	CaretHeight int // Height of the caret for position adjustment
 	Page        int
@@ -248,7 +249,7 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 			return
 		}
 		m.currentInputSession = cmd.InputSession
-		m.doShowCandidates(cmd.Candidates, cmd.Input, cmd.X, cmd.Y, cmd.CaretHeight, cmd.Page, cmd.TotalPages)
+		m.doShowCandidates(cmd.Candidates, cmd.Input, cmd.CursorPos, cmd.X, cmd.Y, cmd.CaretHeight, cmd.Page, cmd.TotalPages)
 	case "hide":
 		// Update current session to the hide command's session
 		m.currentInputSession = cmd.InputSession
@@ -373,7 +374,7 @@ func (m *Manager) ToolbarMenuContainsPoint(screenX, screenY int) bool {
 // Parameters:
 //   - caretX, caretY: the caret position (where input is happening)
 //   - caretHeight: height of the caret/cursor
-func (m *Manager) ShowCandidates(candidates []Candidate, input string, caretX, caretY, caretHeight, page, totalPages int) error {
+func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos, caretX, caretY, caretHeight, page, totalPages int) error {
 	m.mu.Lock()
 	if !m.ready {
 		m.mu.Unlock()
@@ -390,7 +391,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, caretX, c
 	currentSession := m.inputSession
 	m.mu.Unlock()
 
-	m.logger.Debug("Queuing ShowCandidates", "input", input, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight, "session", currentSession)
+	m.logger.Debug("Queuing ShowCandidates", "input", input, "cursorPos", cursorPos, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight, "session", currentSession)
 
 	// Send command to UI thread (non-blocking due to buffered channel)
 	select {
@@ -398,6 +399,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, caretX, c
 		Type:         "show",
 		Candidates:   candidates,
 		Input:        input,
+		CursorPos:    cursorPos,
 		X:            caretX,
 		Y:            caretY,
 		CaretHeight:  caretHeight,
@@ -418,7 +420,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, caretX, c
 
 // doShowCandidates actually shows candidates (called from UI thread)
 // Parameters caretX, caretY, caretHeight are the original caret position info.
-func (m *Manager) doShowCandidates(candidates []Candidate, input string, caretX, caretY, caretHeight, page, totalPages int) {
+func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorPos, caretX, caretY, caretHeight, page, totalPages int) {
 	// Debug: skip rendering if hide_candidate_window is enabled
 	if m.hideCandidateWindow {
 		m.logger.Debug("doShowCandidates skipped (hide_candidate_window enabled)")
@@ -450,7 +452,7 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, caretX,
 
 	// Render first to get actual window size (with hover highlight)
 	m.logger.Debug("Rendering candidates...", "hoverIndex", hoverIndex)
-	img, renderResult := m.renderer.RenderCandidates(candidates, input, page, totalPages, hoverIndex)
+	img, renderResult := m.renderer.RenderCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex)
 	windowWidth := img.Bounds().Dx()
 	windowHeight := img.Bounds().Dy()
 	m.logger.Debug("Render complete", "width", windowWidth, "height", windowHeight)

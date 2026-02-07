@@ -19,6 +19,7 @@ enum class HotkeyType {
     Space,
     Tab,
     PageKey,        // Page up/down
+    CursorKey,      // Cursor movement (Left/Right/Home/End)
     SelectKey,      // Select candidate 2/3
 };
 

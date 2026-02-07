@@ -258,18 +258,18 @@ func (r *Renderer) ensureFontLoaded() {
 // Optimized to minimize font loading operations
 // hoverIndex: index of the hovered candidate (-1 for none)
 // Returns the rendered image and candidate bounding rectangles for hit testing
-func (r *Renderer) RenderCandidates(candidates []Candidate, input string, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
+func (r *Renderer) RenderCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 
 	// Choose layout based on config
 	if cfg.Layout == "horizontal" {
-		return r.renderHorizontalCandidates(candidates, input, page, totalPages, hoverIndex)
+		return r.renderHorizontalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex)
 	}
-	return r.renderVerticalCandidates(candidates, input, page, totalPages, hoverIndex)
+	return r.renderVerticalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex)
 }
 
 // renderVerticalCandidates renders candidates in vertical layout (traditional style)
-func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
+func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 	scale := GetDPIScale()
 
@@ -326,11 +326,27 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		r.drawRoundedRect(dc, cfg.Padding, y, width-cfg.Padding*2-2, inputHeight, 4*scale)
 		dc.Fill()
 
-		// Draw input text
+		// Draw input text and cursor
 		if mainFace != nil {
 			dc.SetFontFace(mainFace)
+			textX := cfg.Padding + 8*scale
+			textY := y + inputHeight/2 + cfg.FontSize/3
+
 			dc.SetColor(cfg.InputTextColor)
-			dc.DrawString(input, cfg.Padding+8*scale, y+inputHeight/2+cfg.FontSize/3)
+			dc.DrawString(input, textX, textY)
+
+			// Draw cursor indicator
+			if cursorPos >= 0 && cursorPos <= len(input) {
+				cursorText := input[:cursorPos]
+				cursorX, _ := dc.MeasureString(cursorText)
+				cursorDrawX := textX + cursorX
+				cursorTopY := y + 4*scale
+				cursorBottomY := y + inputHeight - 4*scale
+				dc.SetColor(cfg.InputTextColor)
+				dc.SetLineWidth(1.5 * scale)
+				dc.DrawLine(cursorDrawX, cursorTopY, cursorDrawX, cursorBottomY)
+				dc.Stroke()
+			}
 		}
 		y += inputHeight + 4*scale
 	}
@@ -430,7 +446,7 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 }
 
 // renderHorizontalCandidates renders candidates in horizontal layout (modern style)
-func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input string, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
+func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 	scale := GetDPIScale()
 
@@ -557,8 +573,24 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 
 		if mainFace != nil {
 			dc.SetFontFace(mainFace)
+			textX := cfg.Padding + 8*scale
+			textY := y + inputHeight/2 + cfg.FontSize/3
+
 			dc.SetColor(cfg.InputTextColor)
-			dc.DrawString(input, cfg.Padding+8*scale, y+inputHeight/2+cfg.FontSize/3)
+			dc.DrawString(input, textX, textY)
+
+			// Draw cursor indicator
+			if cursorPos >= 0 && cursorPos <= len(input) {
+				cursorText := input[:cursorPos]
+				cursorXOffset, _ := dc.MeasureString(cursorText)
+				cursorDrawX := textX + cursorXOffset
+				cursorTopY := y + 3*scale
+				cursorBottomY := y + inputHeight - 3*scale
+				dc.SetColor(cfg.InputTextColor)
+				dc.SetLineWidth(1.5 * scale)
+				dc.DrawLine(cursorDrawX, cursorTopY, cursorDrawX, cursorBottomY)
+				dc.Stroke()
+			}
 		}
 		y += inputHeight + 4*scale
 	}
