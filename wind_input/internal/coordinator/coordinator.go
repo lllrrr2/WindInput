@@ -70,12 +70,14 @@ type Coordinator struct {
 	imeActivated       bool // true = IME is activated (has focus)
 
 	// Input state
-	inputBuffer       string
-	inputCursorPos    int // 光标在 inputBuffer 中的字节位置（0 = 最左，len(inputBuffer) = 最右）
-	candidates        []ui.Candidate
-	currentPage       int
-	totalPages        int
-	candidatesPerPage int
+	inputBuffer        string
+	inputCursorPos     int    // 光标在 inputBuffer 中的字节位置（0 = 最左，len(inputBuffer) = 最右）
+	preeditDisplay     string // 带音节分隔符的显示文本（如 "zhong'guo"），五笔时为空
+	syllableBoundaries []int  // 音节边界在 inputBuffer 中的位置（如 [5] 表示位置 5 处有分隔符）
+	candidates         []ui.Candidate
+	currentPage        int
+	totalPages         int
+	candidatesPerPage  int
 
 	// 临时英文模式状态
 	tempEnglishMode   bool   // 是否处于临时英文模式
@@ -1002,8 +1004,8 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	if c.config != nil && c.config.UI.InlinePreedit {
 		return &bridge.KeyEventResult{
 			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.inputBuffer,
-			CaretPos: c.inputCursorPos,
+			Text:     c.compositionText(),
+			CaretPos: c.displayCursorPos(),
 		}
 	}
 
@@ -1038,8 +1040,8 @@ func (c *Coordinator) handleBackspace() *bridge.KeyEventResult {
 		if c.config != nil && c.config.UI.InlinePreedit {
 			return &bridge.KeyEventResult{
 				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.inputBuffer,
-				CaretPos: c.inputCursorPos,
+				Text:     c.compositionText(),
+				CaretPos: c.displayCursorPos(),
 			}
 		}
 
@@ -1074,8 +1076,8 @@ func (c *Coordinator) handleCursorLeft() *bridge.KeyEventResult {
 		if c.config != nil && c.config.UI.InlinePreedit {
 			return &bridge.KeyEventResult{
 				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.inputBuffer,
-				CaretPos: c.inputCursorPos,
+				Text:     c.compositionText(),
+				CaretPos: c.displayCursorPos(),
 			}
 		}
 	}
@@ -1092,8 +1094,8 @@ func (c *Coordinator) handleCursorRight() *bridge.KeyEventResult {
 		if c.config != nil && c.config.UI.InlinePreedit {
 			return &bridge.KeyEventResult{
 				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.inputBuffer,
-				CaretPos: c.inputCursorPos,
+				Text:     c.compositionText(),
+				CaretPos: c.displayCursorPos(),
 			}
 		}
 	}
@@ -1109,8 +1111,8 @@ func (c *Coordinator) handleCursorHome() *bridge.KeyEventResult {
 	if c.config != nil && c.config.UI.InlinePreedit {
 		return &bridge.KeyEventResult{
 			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.inputBuffer,
-			CaretPos: c.inputCursorPos,
+			Text:     c.compositionText(),
+			CaretPos: c.displayCursorPos(),
 		}
 	}
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
@@ -1125,8 +1127,8 @@ func (c *Coordinator) handleCursorEnd() *bridge.KeyEventResult {
 	if c.config != nil && c.config.UI.InlinePreedit {
 		return &bridge.KeyEventResult{
 			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.inputBuffer,
-			CaretPos: c.inputCursorPos,
+			Text:     c.compositionText(),
+			CaretPos: c.displayCursorPos(),
 		}
 	}
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
@@ -1301,6 +1303,51 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 	}
 }
 
+// compositionText 返回当前应显示的组合文本。
+// 拼音模式返回带音节分隔符的文本（如 "zhong'guo"），五笔或未解析时 fallback 到 inputBuffer。
+func (c *Coordinator) compositionText() string {
+	if c.preeditDisplay != "" {
+		return c.preeditDisplay
+	}
+	return c.inputBuffer
+}
+
+// calcSyllableBoundaries 从已完成音节和部分音节计算边界位置。
+// 边界位置是 inputBuffer 中每对相邻音节段之间的字节偏移。
+// 例如 ["zhong", "guo"] partial="" → [5]；["ni", "hao"] partial="zh" → [2, 5]
+func (c *Coordinator) calcSyllableBoundaries(completedSyllables []string, partialSyllable string) []int {
+	segments := make([]string, 0, len(completedSyllables)+1)
+	segments = append(segments, completedSyllables...)
+	if partialSyllable != "" {
+		segments = append(segments, partialSyllable)
+	}
+	if len(segments) <= 1 {
+		return nil
+	}
+	boundaries := make([]int, 0, len(segments)-1)
+	pos := 0
+	for i := 0; i < len(segments)-1; i++ {
+		pos += len(segments[i])
+		boundaries = append(boundaries, pos)
+	}
+	return boundaries
+}
+
+// displayCursorPos 将 inputCursorPos（基于 inputBuffer 的字节位置）映射到 preeditDisplay 中的显示位置。
+// 公式：displayPos = inputCursorPos + count(boundary <= inputCursorPos)
+func (c *Coordinator) displayCursorPos() int {
+	if c.preeditDisplay == "" {
+		return c.inputCursorPos
+	}
+	offset := 0
+	for _, b := range c.syllableBoundaries {
+		if b <= c.inputCursorPos {
+			offset++
+		}
+	}
+	return c.inputCursorPos + offset
+}
+
 func (c *Coordinator) updateCandidates() {
 	c.updateCandidatesEx()
 }
@@ -1317,6 +1364,15 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 
 	// 使用扩展转换获取更多信息
 	result := c.engineMgr.ConvertEx(c.inputBuffer, 50)
+
+	// 更新预编辑显示状态
+	c.preeditDisplay = result.PreeditDisplay
+	if c.preeditDisplay != "" {
+		c.syllableBoundaries = c.calcSyllableBoundaries(
+			result.CompletedSyllables, result.PartialSyllable)
+	} else {
+		c.syllableBoundaries = nil
+	}
 
 	// Convert to UI candidates
 	c.candidates = make([]ui.Candidate, len(result.Candidates))
@@ -1413,7 +1469,7 @@ func (c *Coordinator) showUI() {
 
 	c.uiManager.ShowCandidates(
 		displayCandidates,
-		c.inputBuffer,
+		c.compositionText(),
 		caretX,
 		caretY,
 		caretHeight,
@@ -1462,6 +1518,8 @@ func (c *Coordinator) hideUI() {
 func (c *Coordinator) clearState() {
 	c.inputBuffer = ""
 	c.inputCursorPos = 0
+	c.preeditDisplay = ""
+	c.syllableBoundaries = nil
 	c.tempEnglishMode = false
 	c.tempEnglishBuffer = ""
 	c.candidates = nil
