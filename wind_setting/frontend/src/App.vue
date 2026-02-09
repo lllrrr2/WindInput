@@ -883,6 +883,16 @@ onMounted(async () => {
   await loadData();
   if (isWailsEnv.value) {
     await refreshStatus();
+
+    // 检查命令行指定的启动页面
+    try {
+      const page = await wailsApi.getStartPage();
+      if (page) {
+        activeTab.value = page;
+      }
+    } catch (e) {
+      // 忽略错误，使用默认页面
+    }
   }
 
   // 定期检查文件变化

@@ -206,6 +206,11 @@ export async function getThemePreview(
   return preview as unknown as ThemePreview;
 }
 
+// 启动页面
+export async function getStartPage(): Promise<string> {
+  return App.GetStartPage();
+}
+
 // 默认配置
 export function getDefaultConfig(): Config {
   return new config.Config({

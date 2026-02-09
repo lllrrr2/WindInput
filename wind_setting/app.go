@@ -21,6 +21,9 @@ import (
 type App struct {
 	ctx context.Context
 
+	// 启动页面（通过命令行参数指定）
+	startPage string
+
 	// 编辑器
 	configEditor   *editor.ConfigEditor
 	phraseEditor   *editor.PhraseEditor
@@ -39,6 +42,11 @@ func NewApp() *App {
 	return &App{
 		controlClient: control.NewClient(),
 	}
+}
+
+// GetStartPage 获取启动页面（供前端调用）
+func (a *App) GetStartPage() string {
+	return a.startPage
 }
 
 // startup is called when the app starts
