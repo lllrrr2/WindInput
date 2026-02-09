@@ -137,18 +137,31 @@ func (e *Engine) GetBinaryUnigramModel() *BinaryUnigramModel {
 }
 
 // LoadWubiTable 加载五笔码表（用于反查）
+// 不再立即构建反向索引，改为首次查询时懒构建
 func (e *Engine) LoadWubiTable(path string) error {
 	ct, err := dict.LoadCodeTable(path)
 	if err != nil {
 		return err
 	}
 	e.wubiTable = ct
-	e.wubiReverse = ct.BuildReverseIndex()
+	e.wubiReverse = nil // 延迟构建
 	return nil
+}
+
+// ReleaseWubiHint 释放五笔反查资源
+func (e *Engine) ReleaseWubiHint() {
+	e.wubiReverse = nil
+	log.Printf("[PinyinEngine] 五笔反向索引已释放")
 }
 
 // lookupWubiCode 查找汉字的五笔编码
 func (e *Engine) lookupWubiCode(text string) string {
+	// 懒构建反向索引
+	if e.wubiReverse == nil && e.wubiTable != nil {
+		log.Printf("[PinyinEngine] 懒构建五笔反向索引...")
+		e.wubiReverse = e.wubiTable.BuildReverseIndex()
+		log.Printf("[PinyinEngine] 五笔反向索引构建完成")
+	}
 	if e.wubiReverse == nil {
 		return ""
 	}

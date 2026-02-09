@@ -13,6 +13,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
+	"github.com/huanfeng/wind_input/internal/dict/binformat"
 )
 
 // CodeTableHeader 码表头信息
@@ -32,6 +33,7 @@ type CodeTable struct {
 	Header     CodeTableHeader
 	entries    map[string][]candidate.Candidate // code -> candidates
 	entryOrder int                              // 用于跟踪词条顺序，作为默认权重
+	binReader  *binformat.DictReader            // 二进制模式读取器（mmap）
 }
 
 // NewCodeTable 创建新的码表
@@ -39,6 +41,30 @@ func NewCodeTable() *CodeTable {
 	return &CodeTable{
 		entries: make(map[string][]candidate.Candidate),
 	}
+}
+
+// LoadBinary 加载二进制格式码表（mmap 模式）
+func (ct *CodeTable) LoadBinary(wdbPath string) error {
+	reader, err := binformat.OpenDict(wdbPath)
+	if err != nil {
+		return fmt.Errorf("打开二进制码表失败: %w", err)
+	}
+	ct.binReader = reader
+	ct.entries = nil // 释放内存模式数据
+	return nil
+}
+
+// IsBinaryMode 判断是否为二进制模式
+func (ct *CodeTable) IsBinaryMode() bool {
+	return ct.binReader != nil
+}
+
+// Close 关闭码表资源（二进制模式下释放 mmap）
+func (ct *CodeTable) Close() error {
+	if ct.binReader != nil {
+		return ct.binReader.Close()
+	}
+	return nil
 }
 
 // LoadCodeTable 加载码表文件
@@ -301,12 +327,18 @@ func (ct *CodeTable) parseEntryLine(line string) bool {
 
 // Lookup 查找编码对应的候选词
 func (ct *CodeTable) Lookup(code string) []candidate.Candidate {
+	if ct.binReader != nil {
+		return ct.binReader.Lookup(code)
+	}
 	code = strings.ToLower(code)
 	return ct.entries[code]
 }
 
 // LookupPrefix 前缀匹配查找
 func (ct *CodeTable) LookupPrefix(prefix string) []candidate.Candidate {
+	if ct.binReader != nil {
+		return ct.binReader.LookupPrefix(prefix, 0)
+	}
 	prefix = strings.ToLower(prefix)
 	var results []candidate.Candidate
 
@@ -321,6 +353,9 @@ func (ct *CodeTable) LookupPrefix(prefix string) []candidate.Candidate {
 
 // LookupPrefixExcludeExact 前缀匹配查找（排除精确匹配）
 func (ct *CodeTable) LookupPrefixExcludeExact(prefix string, limit int) []candidate.Candidate {
+	if ct.binReader != nil {
+		return ct.binReader.LookupPrefixExcludeExact(prefix, limit)
+	}
 	prefix = strings.ToLower(prefix)
 	var results []candidate.Candidate
 
@@ -339,6 +374,9 @@ func (ct *CodeTable) LookupPrefixExcludeExact(prefix string, limit int) []candid
 
 // EntryCount 返回词条数量
 func (ct *CodeTable) EntryCount() int {
+	if ct.binReader != nil {
+		return ct.binReader.EntryCount()
+	}
 	count := 0
 	for _, candidates := range ct.entries {
 		count += len(candidates)
@@ -350,6 +388,9 @@ func (ct *CodeTable) EntryCount() int {
 func (ct *CodeTable) GetMaxCodeLength() int {
 	if ct.Header.CodeLength > 0 {
 		return ct.Header.CodeLength
+	}
+	if ct.binReader != nil {
+		return 0
 	}
 	// 如果头部没有指定，从数据中推断
 	maxLen := 0
@@ -383,12 +424,28 @@ func (ct *CodeTable) IsPinyin() bool {
 
 // GetEntries 获取所有条目（用于反向查找）
 func (ct *CodeTable) GetEntries() map[string][]candidate.Candidate {
+	if ct.binReader != nil {
+		// 二进制模式下构建 map（仅用于转换时，正常运行不走此路径）
+		result := make(map[string][]candidate.Candidate)
+		ct.binReader.ForEachEntry(func(code string, entries []candidate.Candidate) {
+			result[code] = entries
+		})
+		return result
+	}
 	return ct.entries
 }
 
 // BuildReverseIndex 构建反向索引（文字 -> 编码）
 func (ct *CodeTable) BuildReverseIndex() map[string][]string {
 	reverseIndex := make(map[string][]string)
+	if ct.binReader != nil {
+		ct.binReader.ForEachEntry(func(code string, entries []candidate.Candidate) {
+			for _, cand := range entries {
+				reverseIndex[cand.Text] = append(reverseIndex[cand.Text], code)
+			}
+		})
+		return reverseIndex
+	}
 	for code, candidates := range ct.entries {
 		for _, cand := range candidates {
 			reverseIndex[cand.Text] = append(reverseIndex[cand.Text], code)

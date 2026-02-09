@@ -189,6 +189,54 @@ func (r *DictReader) EntryCount() int {
 	return int(r.header.KeyCount)
 }
 
+// LookupPrefixExcludeExact 前缀查找（跳过 code == prefix 的精确匹配）
+func (r *DictReader) LookupPrefixExcludeExact(prefix string, limit int) []candidate.Candidate {
+	prefix = strings.ToLower(prefix)
+	if len(prefix) == 0 {
+		return nil
+	}
+
+	keyCount := int(r.header.KeyCount)
+	lo := sort.Search(keyCount, func(i int) bool {
+		code := r.readKeyCode(i)
+		return code >= prefix
+	})
+
+	var results []candidate.Candidate
+	for i := lo; i < keyCount; i++ {
+		code := r.readKeyCode(i)
+		if !strings.HasPrefix(code, prefix) {
+			break
+		}
+		if code == prefix {
+			continue
+		}
+		entries := r.readEntries(i)
+		results = append(results, entries...)
+		if limit > 0 && len(results) >= limit*2 {
+			break
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return candidate.Better(results[i], results[j])
+	})
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+	return results
+}
+
+// ForEachEntry 顺序遍历所有条目（供 BuildReverseIndex 等使用）
+func (r *DictReader) ForEachEntry(fn func(code string, entries []candidate.Candidate)) {
+	keyCount := int(r.header.KeyCount)
+	for i := 0; i < keyCount; i++ {
+		code := r.readKeyCode(i)
+		entries := r.readEntries(i)
+		fn(code, entries)
+	}
+}
+
 // ---- 内部方法 ----
 
 // readString 从 StringPool 安全读取字符串

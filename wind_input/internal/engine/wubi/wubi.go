@@ -5,6 +5,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/dict"
@@ -54,7 +55,7 @@ func NewEngine(config *Config) *Engine {
 	}
 }
 
-// LoadCodeTable 加载主码表
+// LoadCodeTable 加载主码表（文本格式）
 func (e *Engine) LoadCodeTable(path string) error {
 	ct, err := dict.LoadCodeTable(path)
 	if err != nil {
@@ -68,6 +69,27 @@ func (e *Engine) LoadCodeTable(path string) error {
 	}
 
 	return nil
+}
+
+// LoadCodeTableBinary 加载二进制格式码表（mmap 模式）
+func (e *Engine) LoadCodeTableBinary(wdbPath string) error {
+	ct := dict.NewCodeTable()
+	if err := ct.LoadBinary(wdbPath); err != nil {
+		return err
+	}
+	e.codeTable = ct
+	return nil
+}
+
+// RestoreCodeTableHeader 从 meta 信息恢复 CodeTable 的 Header
+func (e *Engine) RestoreCodeTableHeader(header dict.CodeTableHeader) {
+	if e.codeTable == nil {
+		return
+	}
+	e.codeTable.Header = header
+	if header.CodeLength > 0 && header.CodeLength < e.config.MaxCodeLength {
+		e.config.MaxCodeLength = header.CodeLength
+	}
 }
 
 // ConvertResult 转换结果
@@ -96,12 +118,10 @@ func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candid
 	inputLen := len(input)
 
 	// Phase 1: 收集精确匹配
-	var exactCandidates []candidate.Candidate
+	exactCandidates := make([]candidate.Candidate, 0, 32)
 	if e.dictManager != nil {
 		if phraseLayer := e.dictManager.GetPhraseLayer(); phraseLayer != nil {
-			// 查询普通短语
 			exactCandidates = append(exactCandidates, phraseLayer.Search(input, 0)...)
-			// 查询命令（uuid, date 等）——命令仅通过 SearchCommand 访问
 			exactCandidates = append(exactCandidates, phraseLayer.SearchCommand(input, 0)...)
 		}
 		if userDict := e.dictManager.GetUserDict(); userDict != nil {
@@ -111,7 +131,7 @@ func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candid
 	exactCandidates = append(exactCandidates, e.codeTable.Lookup(input)...)
 
 	// Phase 2: 收集前缀匹配
-	var prefixCandidates []candidate.Candidate
+	prefixCandidates := make([]candidate.Candidate, 0, 64)
 	prefixEnabled := !e.config.SingleCodeInput && inputLen >= 1 && inputLen < e.config.MaxCodeLength
 	if prefixEnabled {
 		if e.dictManager != nil {
@@ -172,7 +192,7 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	inputLen := len(input)
 
 	// ========== Phase 1: 收集精确匹配 ==========
-	var exactCandidates []candidate.Candidate
+	exactCandidates := make([]candidate.Candidate, 0, 32)
 
 	if e.dictManager != nil {
 		if phraseLayer := e.dictManager.GetPhraseLayer(); phraseLayer != nil {
@@ -191,7 +211,7 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	}
 
 	// ========== Phase 2: 收集前缀匹配 ==========
-	var prefixCandidates []candidate.Candidate
+	prefixCandidates := make([]candidate.Candidate, 0, 64)
 	prefixEnabled := !e.config.SingleCodeInput && inputLen >= 1 && inputLen < e.config.MaxCodeLength
 	if prefixEnabled {
 		if e.dictManager != nil {
@@ -259,9 +279,15 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	return result
 }
 
+var seenPool = sync.Pool{New: func() any { return make(map[string]struct{}, 64) }}
+
 // dedup 按 text 去重，保留先出现的（精确匹配优先）
 func dedup(candidates []candidate.Candidate) []candidate.Candidate {
-	seen := make(map[string]struct{})
+	seen := seenPool.Get().(map[string]struct{})
+	// 清空复用的 map
+	for k := range seen {
+		delete(seen, k)
+	}
 	result := make([]candidate.Candidate, 0, len(candidates))
 	for _, c := range candidates {
 		if _, ok := seen[c.Text]; !ok {
@@ -269,6 +295,7 @@ func dedup(candidates []candidate.Candidate) []candidate.Candidate {
 			result = append(result, c)
 		}
 	}
+	seenPool.Put(seen)
 	return result
 }
 

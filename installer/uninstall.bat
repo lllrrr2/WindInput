@@ -64,7 +64,7 @@ for %%f in ("%INSTALL_DIR%\*.bak") do (
     del /F "%%f" >nul 2>&1
 )
 
-echo [5/5] 移除目录...
+echo [5/6] 移除目录...
 REM 删除开始菜单快捷方式
 del /F "%ProgramData%\Microsoft\Windows\Start Menu\Programs\WindInput 设置.lnk" >nul 2>&1
 REM 删除词库目录
@@ -74,6 +74,18 @@ if exist "%INSTALL_DIR%\dict" (
 
 REM 尝试删除安装目录(如有残留文件会失败)
 rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1
+
+echo [6/6] 清理缓存目录...
+REM 清理词库缓存（wdb 运行时转换缓存）
+set "CACHE_DIR=%LOCALAPPDATA%\WindInput\cache"
+if exist "%CACHE_DIR%" (
+    rmdir /S /Q "%CACHE_DIR%" >nul 2>&1
+    echo   - 已清理词库缓存
+)
+REM 如果 WindInput 目录为空则删除
+if exist "%LOCALAPPDATA%\WindInput" (
+    rmdir "%LOCALAPPDATA%\WindInput" >nul 2>&1
+)
 
 REM 检查目录是否仍然存在
 if exist "%INSTALL_DIR%" (

@@ -154,7 +154,7 @@ if not exist "%UNIGRAM_SRC%" (
 echo   - 生成 pinyin.wdb + unigram.wdb ...
 go run ./cmd/gen_bindict -dict "%PINYIN_DICT_DIR%" -unigram "%UNIGRAM_SRC%" -out "%PINYIN_DICT_DIR%"
 if errorlevel 1 (
-    echo [警告] .wdb 生成失败,运行时将 fallback 到 YAML 加载（内存占用较高）
+    echo [警告] .wdb 生成失败,运行时将自动从源文件转换（首次启动稍慢）
 ) else (
     echo   - pinyin.wdb 生成成功
     echo   - unigram.wdb 生成成功
@@ -170,6 +170,19 @@ if exist "%SCRIPT_DIR%ref\极爽词库6.txt" (
     echo   - 已复制五笔词库
 ) else (
     echo [警告] ref 目录中未找到五笔词库
+)
+
+REM 预编译五笔二进制词库（加速首次启动）
+if exist "%SCRIPT_DIR%build\dict\wubi\wubi86.txt" (
+    echo   - 生成 wubi.wdb ...
+    cd "%SCRIPT_DIR%wind_input"
+    go run ./cmd/gen_wubi_wdb -src "%SCRIPT_DIR%build\dict\wubi\wubi86.txt" -out "%SCRIPT_DIR%build\dict\wubi"
+    if errorlevel 1 (
+        echo [提示] wubi.wdb 生成失败,运行时将自动转换
+    ) else (
+        echo   - wubi.wdb 生成成功
+    )
+    cd "%SCRIPT_DIR%"
 )
 
 REM 复制常用字表
@@ -205,10 +218,11 @@ echo - build\wind_input.exe(输入法服务)
 echo - build\wind_setting.exe(设置界面)
 echo - build\dict\pinyin\pinyin.wdb(预编译拼音词库)
 echo - build\dict\pinyin\unigram.wdb(预编译语言模型)
-echo - build\dict\pinyin\8105.dict.yaml(拼音单字词库, fallback)
-echo - build\dict\pinyin\base.dict.yaml(拼音基础词库, fallback)
-echo - build\dict\pinyin\unigram.txt(Unigram 语言模型, fallback)
-echo - build\dict\wubi\wubi86.txt(五笔词库)
+echo - build\dict\pinyin\8105.dict.yaml(拼音单字词库, wdb 转换源)
+echo - build\dict\pinyin\base.dict.yaml(拼音基础词库, wdb 转换源)
+echo - build\dict\pinyin\unigram.txt(Unigram 语言模型, wdb 转换源)
+echo - build\dict\wubi\wubi86.txt(五笔词库, wdb 转换源)
+echo - build\dict\wubi\wubi.wdb(预编译五笔词库)
 echo - build\dict\common_chars.txt(常用字表)
 echo.
 echo 词库来源: 雾凇拼音 rime-ice (https://github.com/iDvel/rime-ice)
