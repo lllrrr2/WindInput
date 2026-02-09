@@ -11,9 +11,26 @@ type UserDictEditor struct {
 	data *dictfile.UserDictData
 }
 
-// NewUserDictEditor 创建用户词库编辑器
+// NewUserDictEditor 创建用户词库编辑器（根据当前引擎类型加载对应词库）
 func NewUserDictEditor() (*UserDictEditor, error) {
-	path, err := config.GetUserDictPath()
+	// 读取配置确定当前引擎类型
+	cfg, err := config.Load()
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+	return NewUserDictEditorForEngine(cfg.Engine.Type)
+}
+
+// NewUserDictEditorForEngine 根据引擎类型创建用户词库编辑器
+func NewUserDictEditorForEngine(engineType string) (*UserDictEditor, error) {
+	var path string
+	var err error
+	switch engineType {
+	case "pinyin":
+		path, err = config.GetPinyinUserDictPath()
+	default:
+		path, err = config.GetWubiUserDictPath()
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -29,9 +29,11 @@ type StartupConfig struct {
 
 // DictionaryConfig contains dictionary settings
 type DictionaryConfig struct {
-	SystemDict string `yaml:"system_dict" json:"system_dict"`
-	UserDict   string `yaml:"user_dict" json:"user_dict"`
-	PinyinDict string `yaml:"pinyin_dict" json:"pinyin_dict"`
+	SystemDict     string `yaml:"system_dict" json:"system_dict"`
+	UserDict       string `yaml:"user_dict,omitempty" json:"user_dict,omitempty"` // Deprecated: kept for backward compatibility
+	PinyinUserDict string `yaml:"pinyin_user_dict" json:"pinyin_user_dict"`
+	WubiUserDict   string `yaml:"wubi_user_dict" json:"wubi_user_dict"`
+	PinyinDict     string `yaml:"pinyin_dict" json:"pinyin_dict"`
 }
 
 // EngineConfig 引擎配置
@@ -138,9 +140,10 @@ func DefaultConfig() *Config {
 			DefaultChinesePunct: true,
 		},
 		Dictionary: DictionaryConfig{
-			SystemDict: "dict/wubi/wubi86.txt",
-			UserDict:   UserDictFile,
-			PinyinDict: "dict/pinyin",
+			SystemDict:     "dict/wubi/wubi86.txt",
+			PinyinUserDict: PinyinUserDictFile,
+			WubiUserDict:   WubiUserDictFile,
+			PinyinDict:     "dict/pinyin",
 		},
 		Engine: EngineConfig{
 			Type:       "wubi",

@@ -198,9 +198,12 @@ func TestWubiWithDictManager(t *testing.T) {
 
 	// 创建 DictManager
 	dm := dict.NewDictManager(tmpDir)
-	if err := dm.Initialize(); err != nil {
+	pinyinPath := filepath.Join(tmpDir, "pinyin_user_words.txt")
+	wubiPath := filepath.Join(tmpDir, "wubi_user_words.txt")
+	if err := dm.Initialize(pinyinPath, wubiPath); err != nil {
 		t.Fatalf("初始化 DictManager 失败: %v", err)
 	}
+	dm.SetActiveEngine("wubi")
 	defer dm.Close()
 
 	// 添加测试用户词

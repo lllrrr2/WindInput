@@ -20,7 +20,9 @@ export interface StartupConfig {
 // 词库配置
 export interface DictionaryConfig {
   system_dict: string;
-  user_dict: string;
+  user_dict?: string;
+  pinyin_user_dict: string;
+  wubi_user_dict: string;
   pinyin_dict: string;
 }
 
@@ -266,7 +268,8 @@ export function getDefaultConfig(): Config {
     },
     dictionary: {
       system_dict: "dict/wubi/wubi86.txt",
-      user_dict: "user_dict.txt",
+      pinyin_user_dict: "pinyin_user_words.txt",
+      wubi_user_dict: "wubi_user_words.txt",
       pinyin_dict: "dict/pinyin",
     },
     engine: {

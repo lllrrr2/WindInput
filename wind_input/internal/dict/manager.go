@@ -18,9 +18,12 @@ type DictManager struct {
 	dataDir string
 
 	// 各层词库
-	phraseLayer *PhraseLayer // Lv1: 特殊短语
-	shadowLayer *ShadowLayer // Lv2: 用户修正
-	userDict    *UserDict    // Lv3: 用户造词
+	phraseLayer    *PhraseLayer // Lv1: 特殊短语
+	shadowLayer    *ShadowLayer // Lv2: 用户修正
+	pinyinUserDict *UserDict    // Lv3: 拼音用户造词
+	wubiUserDict   *UserDict    // Lv3: 五笔用户造词
+	activeUserDict *UserDict    // 指向当前活跃的用户词库
+	activeEngine   string       // 当前活跃引擎类型: "pinyin" or "wubi"
 
 	// 聚合词库
 	compositeDict *CompositeDict
@@ -41,7 +44,7 @@ func NewDictManager(dataDir string) *DictManager {
 }
 
 // Initialize 初始化所有词库层
-func (dm *DictManager) Initialize() error {
+func (dm *DictManager) Initialize(pinyinUserDictPath, wubiUserDictPath string) error {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 
@@ -68,15 +71,26 @@ func (dm *DictManager) Initialize() error {
 	// Shadow 层作为规则提供者，不作为搜索层
 	dm.compositeDict.SetShadowProvider(dm.shadowLayer)
 
-	// 3. 初始化用户词库层 (Lv3)
-	userDictPath := filepath.Join(dm.dataDir, "user_words.txt")
-	dm.userDict = NewUserDict("user", userDictPath)
-	if err := dm.userDict.Load(); err != nil {
-		log.Printf("[DictManager] 加载用户词库失败: %v", err)
+	// 3. 初始化拼音用户词库层 (Lv3)
+	dm.pinyinUserDict = NewUserDict("pinyin_user", pinyinUserDictPath)
+	if err := dm.pinyinUserDict.Load(); err != nil {
+		log.Printf("[DictManager] 加载拼音用户词库失败: %v", err)
 	} else {
-		log.Printf("[DictManager] 用户词库加载成功: %d 词条", dm.userDict.EntryCount())
+		log.Printf("[DictManager] 拼音用户词库加载成功: %d 词条", dm.pinyinUserDict.EntryCount())
 	}
-	dm.compositeDict.AddLayer(dm.userDict)
+
+	// 4. 初始化五笔用户词库层 (Lv3)
+	dm.wubiUserDict = NewUserDict("wubi_user", wubiUserDictPath)
+	if err := dm.wubiUserDict.Load(); err != nil {
+		log.Printf("[DictManager] 加载五笔用户词库失败: %v", err)
+	} else {
+		log.Printf("[DictManager] 五笔用户词库加载成功: %d 词条", dm.wubiUserDict.EntryCount())
+	}
+
+	// 默认激活五笔用户词库（将在 SetActiveEngine 中正确设置）
+	dm.activeUserDict = dm.wubiUserDict
+	dm.activeEngine = "wubi"
+	dm.compositeDict.AddLayer(dm.activeUserDict)
 
 	return nil
 }
@@ -111,11 +125,47 @@ func (dm *DictManager) GetCompositeDict() *CompositeDict {
 	return dm.compositeDict
 }
 
-// GetUserDict 获取用户词库（用于添加用户词）
+// GetUserDict 获取当前活跃的用户词库（用于添加用户词）
 func (dm *DictManager) GetUserDict() *UserDict {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
-	return dm.userDict
+	return dm.activeUserDict
+}
+
+// SetActiveEngine 切换活跃引擎，同时切换对应的用户词库
+func (dm *DictManager) SetActiveEngine(engineType string) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+
+	if engineType == dm.activeEngine {
+		return
+	}
+
+	var newUserDict *UserDict
+	switch engineType {
+	case "pinyin":
+		newUserDict = dm.pinyinUserDict
+	case "wubi":
+		newUserDict = dm.wubiUserDict
+	default:
+		log.Printf("[DictManager] 未知引擎类型: %s, 保持当前词库", engineType)
+		return
+	}
+
+	if newUserDict == nil {
+		log.Printf("[DictManager] 目标用户词库未初始化: %s", engineType)
+		return
+	}
+
+	// 从 CompositeDict 中替换用户词库层
+	if dm.activeUserDict != nil {
+		dm.compositeDict.RemoveLayer(dm.activeUserDict.Name())
+	}
+	dm.compositeDict.AddLayer(newUserDict)
+	dm.activeUserDict = newUserDict
+	dm.activeEngine = engineType
+
+	log.Printf("[DictManager] 切换活跃引擎词库: %s, 词条数: %d", engineType, newUserDict.EntryCount())
 }
 
 // GetShadowLayer 获取 Shadow 层（用于置顶/删除操作）
@@ -134,10 +184,10 @@ func (dm *DictManager) GetPhraseLayer() *PhraseLayer {
 
 // AddUserWord 添加用户词
 func (dm *DictManager) AddUserWord(code, text string, weight int) error {
-	if dm.userDict == nil {
+	if dm.activeUserDict == nil {
 		return fmt.Errorf("用户词库未初始化")
 	}
-	return dm.userDict.Add(code, text, weight)
+	return dm.activeUserDict.Add(code, text, weight)
 }
 
 // TopWord 置顶词条
@@ -161,9 +211,15 @@ func (dm *DictManager) Save() error {
 
 	var errs []error
 
-	if dm.userDict != nil {
-		if err := dm.userDict.Save(); err != nil {
-			errs = append(errs, fmt.Errorf("保存用户词库失败: %w", err))
+	if dm.pinyinUserDict != nil {
+		if err := dm.pinyinUserDict.Save(); err != nil {
+			errs = append(errs, fmt.Errorf("保存拼音用户词库失败: %w", err))
+		}
+	}
+
+	if dm.wubiUserDict != nil {
+		if err := dm.wubiUserDict.Save(); err != nil {
+			errs = append(errs, fmt.Errorf("保存五笔用户词库失败: %w", err))
 		}
 	}
 
@@ -186,8 +242,12 @@ func (dm *DictManager) Close() error {
 	defer dm.mu.Unlock()
 
 	// 保存所有数据
-	if dm.userDict != nil {
-		dm.userDict.Close()
+	if dm.pinyinUserDict != nil {
+		dm.pinyinUserDict.Close()
+	}
+
+	if dm.wubiUserDict != nil {
+		dm.wubiUserDict.Close()
 	}
 
 	if dm.shadowLayer != nil && dm.shadowLayer.IsDirty() {
@@ -245,8 +305,16 @@ func (dm *DictManager) GetStats() map[string]int {
 		stats["shadow_rules"] = dm.shadowLayer.GetRuleCount()
 	}
 
-	if dm.userDict != nil {
-		stats["user_words"] = dm.userDict.EntryCount()
+	if dm.pinyinUserDict != nil {
+		stats["pinyin_user_words"] = dm.pinyinUserDict.EntryCount()
+	}
+
+	if dm.wubiUserDict != nil {
+		stats["wubi_user_words"] = dm.wubiUserDict.EntryCount()
+	}
+
+	if dm.activeUserDict != nil {
+		stats["user_words"] = dm.activeUserDict.EntryCount()
 	}
 
 	stats["total_layers"] = len(dm.compositeDict.GetLayers())

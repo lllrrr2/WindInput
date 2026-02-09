@@ -254,16 +254,21 @@ func main() {
 		dictManager.Close()
 		logger.Info("DictManager closed, user data saved")
 	}()
-	if err := dictManager.Initialize(); err != nil {
+	pinyinUserDictPath := filepath.Join(dataDir, cfg.Dictionary.PinyinUserDict)
+	wubiUserDictPath := filepath.Join(dataDir, cfg.Dictionary.WubiUserDict)
+	if err := dictManager.Initialize(pinyinUserDictPath, wubiUserDictPath); err != nil {
 		logger.Warn("Failed to initialize dict manager", "error", err)
 	} else {
 		stats := dictManager.GetStats()
 		logger.Info("DictManager initialized",
 			"phrases", stats["phrases"],
 			"commands", stats["commands"],
-			"user_words", stats["user_words"],
+			"pinyin_user_words", stats["pinyin_user_words"],
+			"wubi_user_words", stats["wubi_user_words"],
 			"shadow_rules", stats["shadow_rules"])
 	}
+	// 设置初始活跃引擎词库
+	dictManager.SetActiveEngine(cfg.Engine.Type)
 	engineMgr.SetDictManager(dictManager)
 
 	// Initialize engine based on config

@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/huanfeng/wind_input/pkg/theme"
 	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/control"
 	"github.com/huanfeng/wind_input/pkg/dictfile"
+	"github.com/huanfeng/wind_input/pkg/theme"
 
 	"wind_setting/internal/editor"
 	"wind_setting/internal/filesync"
@@ -392,6 +392,39 @@ func (a *App) ReloadUserDict() error {
 		return fmt.Errorf("user dict editor not initialized")
 	}
 	return a.userDictEditor.Reload()
+}
+
+// GetUserDictEngineType 获取当前用户词库对应的引擎类型
+func (a *App) GetUserDictEngineType() string {
+	cfg, err := config.Load()
+	if err != nil {
+		return "wubi"
+	}
+	return cfg.Engine.Type
+}
+
+// SwitchUserDictEngine 切换用户词库到指定引擎
+func (a *App) SwitchUserDictEngine(engineType string) error {
+	// 先保存当前词库
+	if a.userDictEditor != nil {
+		a.userDictEditor.Save()
+		// 取消旧文件的监控
+		a.fileWatcher.Unwatch(a.userDictEditor.GetFilePath())
+	}
+
+	// 创建新引擎类型的词库编辑器
+	newEditor, err := editor.NewUserDictEditorForEngine(engineType)
+	if err != nil {
+		return fmt.Errorf("failed to create user dict editor: %w", err)
+	}
+
+	if err := newEditor.Load(); err != nil {
+		return fmt.Errorf("failed to load user dict: %w", err)
+	}
+
+	a.userDictEditor = newEditor
+	a.fileWatcher.Watch(a.userDictEditor.GetFilePath())
+	return nil
 }
 
 // ========== Shadow 管理 ==========

@@ -68,6 +68,9 @@ const dictMessageType = ref<"success" | "error">("success");
 const showAddPhraseForm = ref(false);
 const newPhrase = ref({ code: "", text: "", weight: 0 });
 
+// 用户词库引擎类型
+const userDictEngine = ref<"wubi" | "pinyin">("wubi");
+
 // 添加用户词条表单
 const showAddWordForm = ref(false);
 const newWord = ref({ code: "", text: "", weight: 0 });
@@ -667,12 +670,14 @@ async function loadDictData() {
 
   dictLoading.value = true;
   try {
-    const [phrasesData, userDictData, shadowData, stats] = await Promise.all([
-      wailsApi.getPhrases(),
-      wailsApi.getUserDict(),
-      wailsApi.getShadowRules(),
-      wailsApi.getUserDictStats(),
-    ]);
+    const [phrasesData, userDictData, shadowData, stats, engineType] =
+      await Promise.all([
+        wailsApi.getPhrases(),
+        wailsApi.getUserDict(),
+        wailsApi.getShadowRules(),
+        wailsApi.getUserDictStats(),
+        wailsApi.getUserDictEngineType(),
+      ]);
     phrases.value = phrasesData || [];
     userDict.value = userDictData || [];
     shadowRules.value = shadowData || [];
@@ -681,9 +686,35 @@ async function loadDictData() {
       phrase_count: 0,
       shadow_count: 0,
     };
+    if (engineType === "pinyin" || engineType === "wubi") {
+      userDictEngine.value = engineType;
+    }
   } catch (e) {
     console.error("加载词库数据失败", e);
     showDictMessage("加载词库数据失败", "error");
+  } finally {
+    dictLoading.value = false;
+  }
+}
+
+async function handleSwitchUserDictEngine(engineType: "wubi" | "pinyin") {
+  if (engineType === userDictEngine.value) return;
+  dictLoading.value = true;
+  try {
+    await wailsApi.switchUserDictEngine(engineType);
+    userDictEngine.value = engineType;
+    const [userDictData, stats] = await Promise.all([
+      wailsApi.getUserDict(),
+      wailsApi.getUserDictStats(),
+    ]);
+    userDict.value = userDictData || [];
+    dictStats.value = {
+      ...dictStats.value,
+      word_count: stats?.word_count || 0,
+    };
+  } catch (e) {
+    console.error("切换词库失败", e);
+    showDictMessage("切换词库失败", "error");
   } finally {
     dictLoading.value = false;
   }
@@ -1793,6 +1824,29 @@ function handleDocumentClick(event: MouseEvent) {
 
           <!-- 用户词库 -->
           <div v-else-if="dictSubTab === 'userdict'" class="dict-content">
+            <div class="dict-engine-switcher">
+              <span class="dict-engine-label">词库类型：</span>
+              <button
+                :class="[
+                  'dict-engine-btn',
+                  { active: userDictEngine === 'wubi' },
+                ]"
+                @click="handleSwitchUserDictEngine('wubi')"
+                :disabled="dictLoading"
+              >
+                五笔
+              </button>
+              <button
+                :class="[
+                  'dict-engine-btn',
+                  { active: userDictEngine === 'pinyin' },
+                ]"
+                @click="handleSwitchUserDictEngine('pinyin')"
+                :disabled="dictLoading"
+              >
+                拼音
+              </button>
+            </div>
             <div class="dict-toolbar">
               <button
                 class="btn btn-primary btn-sm"
@@ -2993,6 +3047,39 @@ input:checked + .slider:before {
 /* Dictionary Content */
 .dict-content {
   min-height: 300px;
+}
+.dict-engine-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.dict-engine-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+.dict-engine-btn {
+  padding: 4px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  transition: all 0.15s;
+}
+.dict-engine-btn:hover:not(:disabled) {
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+.dict-engine-btn.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.dict-engine-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .dict-toolbar {
   display: flex;
