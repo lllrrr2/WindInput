@@ -48,6 +48,7 @@ type Manager struct {
 	mu          sync.Mutex
 	candidates  []Candidate
 	input       string
+	cursorPos   int
 	page        int
 	totalPages  int
 	caretX      int
@@ -382,6 +383,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos
 	}
 	m.candidates = candidates
 	m.input = input
+	m.cursorPos = cursorPos
 	m.page = page
 	m.totalPages = totalPages
 	m.caretX = caretX
@@ -446,13 +448,14 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorP
 		m.lastRenderedPage = page
 	}
 	currentStickyAbove := m.stickyAbove
-	// Get current hover index for rendering
+	// Get current hover index and page button hover for rendering
 	hoverIndex := m.window.GetHoverIndex()
+	hoverPageBtn := m.window.GetHoverPageBtn()
 	m.mu.Unlock()
 
 	// Render first to get actual window size (with hover highlight)
-	m.logger.Debug("Rendering candidates...", "hoverIndex", hoverIndex)
-	img, renderResult := m.renderer.RenderCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex)
+	m.logger.Debug("Rendering candidates...", "hoverIndex", hoverIndex, "hoverPageBtn", hoverPageBtn)
+	img, renderResult := m.renderer.RenderCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn)
 	windowWidth := img.Bounds().Dx()
 	windowHeight := img.Bounds().Dy()
 	m.logger.Debug("Render complete", "width", windowWidth, "height", windowHeight)
@@ -460,6 +463,7 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorP
 	// Update hit test rectangles for mouse interaction
 	if renderResult != nil {
 		m.window.SetHitRects(renderResult.Rects)
+		m.window.SetPageRects(renderResult.PageUpRect, renderResult.PageDownRect)
 	}
 
 	// Determine position preference based on sticky state
@@ -788,6 +792,7 @@ func (m *Manager) RefreshCandidates() {
 	}
 	candidates := m.candidates
 	input := m.input
+	cursorPos := m.cursorPos
 	page := m.page
 	totalPages := m.totalPages
 	caretX := m.caretX
@@ -802,6 +807,7 @@ func (m *Manager) RefreshCandidates() {
 		Type:         "show",
 		Candidates:   candidates,
 		Input:        input,
+		CursorPos:    cursorPos,
 		X:            caretX,
 		Y:            caretY,
 		CaretHeight:  caretHeight,

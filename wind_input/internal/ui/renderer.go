@@ -258,18 +258,18 @@ func (r *Renderer) ensureFontLoaded() {
 // Optimized to minimize font loading operations
 // hoverIndex: index of the hovered candidate (-1 for none)
 // Returns the rendered image and candidate bounding rectangles for hit testing
-func (r *Renderer) RenderCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
+func (r *Renderer) RenderCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 
 	// Choose layout based on config
 	if cfg.Layout == "horizontal" {
-		return r.renderHorizontalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex)
+		return r.renderHorizontalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn)
 	}
-	return r.renderVerticalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex)
+	return r.renderVerticalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn)
 }
 
 // renderVerticalCandidates renders candidates in vertical layout (traditional style)
-func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
+func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 	scale := GetDPIScale()
 
@@ -447,21 +447,89 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		}
 	}
 
-	// Draw page info
+	// Draw page info with clickable page buttons
 	if totalPages > 1 && pageFace != nil {
 		pageY := y + float64(len(candidates))*cfg.ItemHeight + 4*scale
 		dc.SetFontFace(pageFace)
+
+		pageText := fmt.Sprintf(" %d / %d ", page, totalPages)
+		pageW, _ := dc.MeasureString(pageText)
+
+		arrowSize := 8.0 * scale // Triangle size
+		arrowPad := 8.0 * scale  // Padding around arrow
+		arrowW := arrowSize + arrowPad*2
+		totalW := arrowW + pageW + arrowW
+		startX := width/2 - totalW/2
+		centerY := pageY + 10*scale
+
+		// Page up button rect
+		pageUpBtnRect := CandidateRect{
+			X: startX,
+			Y: pageY,
+			W: arrowW,
+			H: 20 * scale,
+		}
+
+		// Draw page up hover background
+		if hoverPageBtn == "up" {
+			dc.SetColor(cfg.HoverBgColor)
+			r.drawRoundedRect(dc, pageUpBtnRect.X, pageUpBtnRect.Y, pageUpBtnRect.W, pageUpBtnRect.H, 4*scale)
+			dc.Fill()
+		}
+
+		// Draw left arrow triangle (page up)
+		leftArrowColor := cfg.IndexBgColor
+		if page <= 1 {
+			leftArrowColor = cfg.InputTextColor
+		}
+		leftCenterX := startX + arrowW/2
+		dc.SetColor(leftArrowColor)
+		dc.MoveTo(leftCenterX+arrowSize/2, centerY-arrowSize/2)
+		dc.LineTo(leftCenterX-arrowSize/2, centerY)
+		dc.LineTo(leftCenterX+arrowSize/2, centerY+arrowSize/2)
+		dc.ClosePath()
+		dc.Fill()
+		result.PageUpRect = &pageUpBtnRect
+
+		// Draw page text
 		dc.SetColor(cfg.InputTextColor)
-		pageText := fmt.Sprintf("%d / %d  (← →)", page, totalPages)
-		tw, _ := dc.MeasureString(pageText)
-		dc.DrawString(pageText, width/2-tw/2, pageY+16*scale)
+		dc.DrawString(pageText, startX+arrowW, centerY+4*scale)
+
+		// Page down button rect
+		pageDownBtnRect := CandidateRect{
+			X: startX + arrowW + pageW,
+			Y: pageY,
+			W: arrowW,
+			H: 20 * scale,
+		}
+
+		// Draw page down hover background
+		if hoverPageBtn == "down" {
+			dc.SetColor(cfg.HoverBgColor)
+			r.drawRoundedRect(dc, pageDownBtnRect.X, pageDownBtnRect.Y, pageDownBtnRect.W, pageDownBtnRect.H, 4*scale)
+			dc.Fill()
+		}
+
+		// Draw right arrow triangle (page down)
+		rightArrowColor := cfg.IndexBgColor
+		if page >= totalPages {
+			rightArrowColor = cfg.InputTextColor
+		}
+		rightCenterX := startX + arrowW + pageW + arrowW/2
+		dc.SetColor(rightArrowColor)
+		dc.MoveTo(rightCenterX-arrowSize/2, centerY-arrowSize/2)
+		dc.LineTo(rightCenterX+arrowSize/2, centerY)
+		dc.LineTo(rightCenterX-arrowSize/2, centerY+arrowSize/2)
+		dc.ClosePath()
+		dc.Fill()
+		result.PageDownRect = &pageDownBtnRect
 	}
 
 	return dc.Image().(*image.RGBA), result
 }
 
 // renderHorizontalCandidates renders candidates in horizontal layout (modern style)
-func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int) (*image.RGBA, *RenderResult) {
+func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 	scale := GetDPIScale()
 
@@ -517,13 +585,16 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 		}
 	}
 
-	// Page info width
+	// Page info width (including arrow buttons)
+	arrowSize := 8.0 * scale
+	arrowPad := 6.0 * scale
+	arrowW := arrowSize + arrowPad*2
 	pageInfoWidth := 0.0
 	if totalPages > 1 && pageFace != nil {
 		tmpDc.SetFontFace(pageFace)
-		pageText := fmt.Sprintf("%d/%d", page, totalPages)
-		pageInfoWidth, _ = tmpDc.MeasureString(pageText)
-		pageInfoWidth += 20 * scale // padding
+		pageText := fmt.Sprintf(" %d/%d ", page, totalPages)
+		textW, _ := tmpDc.MeasureString(pageText)
+		pageInfoWidth = arrowW + textW + arrowW + 8*scale // arrows + text + spacing
 	}
 
 	// Input area (preedit)
@@ -673,13 +744,77 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 		x += itemWidth + itemSpacing
 	}
 
-	// Draw page info (right aligned)
+	// Draw page info with clickable page buttons (right aligned)
 	if totalPages > 1 && pageFace != nil {
 		dc.SetFontFace(pageFace)
+
+		pageText := fmt.Sprintf(" %d/%d ", page, totalPages)
+		pageW, _ := dc.MeasureString(pageText)
+
+		totalW := arrowW + pageW + arrowW
+		startX := width - cfg.Padding - totalW
+
+		// Page up button rect
+		pageUpBtnRect := CandidateRect{
+			X: startX,
+			Y: y,
+			W: arrowW,
+			H: candidateRowHeight,
+		}
+
+		// Draw page up hover background
+		if hoverPageBtn == "up" {
+			dc.SetColor(cfg.HoverBgColor)
+			r.drawRoundedRect(dc, pageUpBtnRect.X, pageUpBtnRect.Y, pageUpBtnRect.W, pageUpBtnRect.H, 4*scale)
+			dc.Fill()
+		}
+
+		// Draw left arrow triangle (page up)
+		leftArrowColor := cfg.IndexBgColor
+		if page <= 1 {
+			leftArrowColor = cfg.InputTextColor
+		}
+		leftCenterX := startX + arrowW/2
+		dc.SetColor(leftArrowColor)
+		dc.MoveTo(leftCenterX+arrowSize/2, candY-arrowSize/2)
+		dc.LineTo(leftCenterX-arrowSize/2, candY)
+		dc.LineTo(leftCenterX+arrowSize/2, candY+arrowSize/2)
+		dc.ClosePath()
+		dc.Fill()
+		result.PageUpRect = &pageUpBtnRect
+
+		// Draw page text
 		dc.SetColor(cfg.InputTextColor)
-		pageText := fmt.Sprintf("%d/%d", page, totalPages)
-		tw, _ := dc.MeasureString(pageText)
-		dc.DrawString(pageText, width-cfg.Padding-tw, candY+6*scale)
+		dc.DrawString(pageText, startX+arrowW, candY+6*scale)
+
+		// Page down button rect
+		pageDownBtnRect := CandidateRect{
+			X: startX + arrowW + pageW,
+			Y: y,
+			W: arrowW,
+			H: candidateRowHeight,
+		}
+
+		// Draw page down hover background
+		if hoverPageBtn == "down" {
+			dc.SetColor(cfg.HoverBgColor)
+			r.drawRoundedRect(dc, pageDownBtnRect.X, pageDownBtnRect.Y, pageDownBtnRect.W, pageDownBtnRect.H, 4*scale)
+			dc.Fill()
+		}
+
+		// Draw right arrow triangle (page down)
+		rightArrowColor := cfg.IndexBgColor
+		if page >= totalPages {
+			rightArrowColor = cfg.InputTextColor
+		}
+		rightCenterX := startX + arrowW + pageW + arrowW/2
+		dc.SetColor(rightArrowColor)
+		dc.MoveTo(rightCenterX-arrowSize/2, candY-arrowSize/2)
+		dc.LineTo(rightCenterX+arrowSize/2, candY)
+		dc.LineTo(rightCenterX-arrowSize/2, candY+arrowSize/2)
+		dc.ClosePath()
+		dc.Fill()
+		result.PageDownRect = &pageDownBtnRect
 	}
 
 	return dc.Image().(*image.RGBA), result

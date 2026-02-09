@@ -346,6 +346,22 @@ func (c *Coordinator) setupCandidateCallbacks() {
 			// Run in goroutine to avoid blocking UI thread
 			go c.handleCandidateHoverChange(index, tooltipX, tooltipY)
 		},
+		OnPageUp: func() {
+			// Run in goroutine to avoid blocking UI thread
+			go func() {
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.handlePageUp()
+			}()
+		},
+		OnPageDown: func() {
+			// Run in goroutine to avoid blocking UI thread
+			go func() {
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.handlePageDown()
+			}()
+		},
 		OnMoveUp: func(index int) {
 			// Run in goroutine to avoid blocking UI thread
 			go c.handleCandidateMoveUp(index)
@@ -365,6 +381,10 @@ func (c *Coordinator) setupCandidateCallbacks() {
 		OnOpenSettings: func() {
 			// Run in goroutine to avoid blocking UI thread
 			go c.handleCandidateOpenSettings()
+		},
+		OnAbout: func() {
+			// Run in goroutine to avoid blocking UI thread
+			go c.handleCandidateAbout()
 		},
 	})
 }
@@ -511,6 +531,14 @@ func (c *Coordinator) handleCandidateOpenSettings() {
 	c.logger.Info("Opening settings from candidate context menu")
 	if c.uiManager != nil {
 		c.uiManager.OpenSettings()
+	}
+}
+
+// handleCandidateAbout handles about action from context menu
+func (c *Coordinator) handleCandidateAbout() {
+	c.logger.Info("Opening about page from candidate context menu")
+	if c.uiManager != nil {
+		c.uiManager.OpenSettingsWithPage("about")
 	}
 }
 
@@ -2062,6 +2090,11 @@ func (c *Coordinator) handleEngineSwitchKey() *bridge.KeyEventResult {
 
 	c.logger.Info("Engine switched", "newType", newType)
 
+	// 同步词库管理器的活跃引擎
+	if dm := c.engineMgr.GetDictManager(); dm != nil {
+		dm.SetActiveEngine(string(newType))
+	}
+
 	// 保存到用户配置
 	go func() {
 		if err := config.UpdateEngineType(string(newType)); err != nil {
@@ -2254,6 +2287,10 @@ func (c *Coordinator) UpdateEngineConfig(engineConfig *config.EngineConfig) {
 			c.logger.Error("Failed to switch engine", "error", err, "targetType", newType)
 		} else {
 			c.logger.Info("Engine switched via config reload", "from", currentType, "to", newType)
+			// 同步词库管理器的活跃引擎
+			if dm := c.engineMgr.GetDictManager(); dm != nil {
+				dm.SetActiveEngine(string(newType))
+			}
 		}
 	}
 
