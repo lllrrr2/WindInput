@@ -26,9 +26,26 @@ export interface DictionaryConfig {
   pinyin_dict: string;
 }
 
+// 模糊拼音配置
+export interface FuzzyPinyinConfig {
+  enabled: boolean;
+  zh_z: boolean;
+  ch_c: boolean;
+  sh_s: boolean;
+  n_l: boolean;
+  f_h: boolean;
+  r_l: boolean;
+  an_ang: boolean;
+  en_eng: boolean;
+  in_ing: boolean;
+  ian_iang: boolean;
+  uan_uang: boolean;
+}
+
 // 拼音配置
 export interface PinyinConfig {
   show_wubi_hint: boolean;
+  fuzzy: FuzzyPinyinConfig;
 }
 
 // 五笔配置
@@ -283,6 +300,20 @@ export function getDefaultConfig(): Config {
       filter_mode: "smart",
       pinyin: {
         show_wubi_hint: true,
+        fuzzy: {
+          enabled: false,
+          zh_z: false,
+          ch_c: false,
+          sh_s: false,
+          n_l: false,
+          f_h: false,
+          r_l: false,
+          an_ang: false,
+          en_eng: false,
+          in_ing: false,
+          ian_iang: false,
+          uan_uang: false,
+        },
       },
       wubi: {
         auto_commit_at_4: false,

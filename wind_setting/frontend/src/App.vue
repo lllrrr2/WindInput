@@ -84,6 +84,36 @@ const fileChangeStatus = ref<FileChangeStatus | null>(null);
 const showFileChangeAlert = ref(false);
 let fileCheckTimer: number | null = null;
 
+// 模糊音对话框
+const showFuzzyDialog = ref(false);
+const fuzzyPairs = [
+  { field: "zh_z", label: "zh ↔ z" },
+  { field: "ch_c", label: "ch ↔ c" },
+  { field: "sh_s", label: "sh ↔ s" },
+  { field: "n_l", label: "n ↔ l" },
+  { field: "f_h", label: "f ↔ h" },
+  { field: "r_l", label: "r ↔ l" },
+  { field: "an_ang", label: "an ↔ ang" },
+  { field: "en_eng", label: "en ↔ eng" },
+  { field: "in_ing", label: "in ↔ ing" },
+  { field: "ian_iang", label: "ian ↔ iang" },
+  { field: "uan_uang", label: "uan ↔ uang" },
+] as const;
+
+const fuzzyEnabledCount = computed(() => {
+  if (!formData.value?.engine?.pinyin?.fuzzy) return 0;
+  const f = formData.value.engine.pinyin.fuzzy as any;
+  return fuzzyPairs.filter((p) => f[p.field]).length;
+});
+
+function setAllFuzzyPairs(value: boolean) {
+  if (!formData.value?.engine?.pinyin?.fuzzy) return;
+  const f = formData.value.engine.pinyin.fuzzy as any;
+  for (const pair of fuzzyPairs) {
+    f[pair.field] = value;
+  }
+}
+
 // 主题相关状态
 const availableThemes = ref<ThemeInfo[]>([]);
 const themePreview = ref<ThemePreview | null>(null);
@@ -370,7 +400,14 @@ function mergeWithDefaults(cfg: any): Config {
     engine: {
       ...defaults.engine,
       ...cfg.engine,
-      pinyin: { ...defaults.engine.pinyin, ...cfg.engine?.pinyin },
+      pinyin: {
+        ...defaults.engine.pinyin,
+        ...cfg.engine?.pinyin,
+        fuzzy: {
+          ...defaults.engine.pinyin.fuzzy,
+          ...cfg.engine?.pinyin?.fuzzy,
+        },
+      },
       wubi: { ...defaults.engine.wubi, ...cfg.engine?.wubi },
     },
     hotkeys: { ...defaults.hotkeys, ...cfg.hotkeys },
@@ -1304,47 +1341,6 @@ function handleDocumentClick(event: MouseEvent) {
             </div>
           </div>
 
-          <!-- 临时拼音设置 -->
-          <div class="settings-card">
-            <div class="card-title">临时拼音</div>
-            <div class="setting-item">
-              <div class="setting-info">
-                <label>触发键</label>
-                <p class="setting-hint">
-                  五笔模式下按触发键临时切换拼音输入，选字后自动返回五笔。分号键仅在无候选时触发，有候选时仍用于选择第2候选
-                </p>
-              </div>
-              <div class="setting-control">
-                <div class="checkbox-group">
-                  <label
-                    class="checkbox-item"
-                    v-for="tk in [
-                      { value: 'backtick', label: '` 反引号' },
-                      { value: 'semicolon', label: '; 分号' },
-                    ]"
-                    :key="tk.value"
-                  >
-                    <input
-                      type="checkbox"
-                      :checked="
-                        formData.input.temp_pinyin.trigger_keys.includes(
-                          tk.value,
-                        )
-                      "
-                      @change="
-                        toggleArrayValue(
-                          formData.input.temp_pinyin.trigger_keys,
-                          tk.value,
-                        )
-                      "
-                    />
-                    <span>{{ tk.label }}</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- 拼音设置（始终显示） -->
           <div class="settings-card">
             <div class="card-title">拼音设置</div>
@@ -1361,6 +1357,75 @@ function handleDocumentClick(event: MouseEvent) {
                   />
                   <span class="slider"></span>
                 </label>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>模糊音</label>
+                <p class="setting-hint">
+                  允许使用近似发音输入（已启用
+                  {{ fuzzyEnabledCount }} 组）
+                </p>
+              </div>
+              <div class="setting-control inline-controls">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    v-model="formData.engine.pinyin.fuzzy.enabled"
+                  />
+                  <span class="slider"></span>
+                </label>
+                <button class="btn btn-sm" @click="showFuzzyDialog = true">
+                  配置
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 模糊音配置对话框 -->
+          <div
+            class="fuzzy-dialog-overlay"
+            v-if="showFuzzyDialog"
+            @click.self="showFuzzyDialog = false"
+          >
+            <div class="fuzzy-dialog">
+              <div class="fuzzy-dialog-header">
+                <h3>模糊音配置</h3>
+                <button
+                  class="fuzzy-dialog-close"
+                  @click="showFuzzyDialog = false"
+                >
+                  &times;
+                </button>
+              </div>
+              <div class="fuzzy-dialog-body">
+                <div class="fuzzy-pairs-grid">
+                  <label
+                    class="fuzzy-pair-item"
+                    v-for="pair in fuzzyPairs"
+                    :key="pair.field"
+                  >
+                    <input
+                      type="checkbox"
+                      v-model="formData.engine.pinyin.fuzzy[pair.field]"
+                    />
+                    <span>{{ pair.label }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="fuzzy-dialog-footer">
+                <button class="btn btn-sm" @click="setAllFuzzyPairs(true)">
+                  全选
+                </button>
+                <button class="btn btn-sm" @click="setAllFuzzyPairs(false)">
+                  全不选
+                </button>
+                <button
+                  class="btn btn-sm btn-primary"
+                  @click="showFuzzyDialog = false"
+                >
+                  确定
+                </button>
               </div>
             </div>
           </div>
@@ -2288,6 +2353,47 @@ function handleDocumentClick(event: MouseEvent) {
               </div>
             </div>
           </div>
+
+          <!-- 临时拼音触发键 -->
+          <div class="settings-card">
+            <div class="card-title">临时拼音</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>触发键</label>
+                <p class="setting-hint">
+                  五笔模式下按触发键临时切换拼音输入
+                </p>
+              </div>
+              <div class="setting-control">
+                <div class="checkbox-group">
+                  <label
+                    class="checkbox-item"
+                    v-for="tk in [
+                      { value: 'backtick', label: '` 反引号' },
+                      { value: 'semicolon', label: '; 分号' },
+                    ]"
+                    :key="tk.value"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="
+                        formData.input.temp_pinyin.trigger_keys.includes(
+                          tk.value,
+                        )
+                      "
+                      @change="
+                        toggleArrayValue(
+                          formData.input.temp_pinyin.trigger_keys,
+                          tk.value,
+                        )
+                      "
+                    />
+                    <span>{{ tk.label }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- ==================== 高级设置 ==================== -->
@@ -2848,6 +2954,88 @@ input:checked + .slider:before {
 .checkbox-item span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Fuzzy Dialog */
+.fuzzy-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.fuzzy-dialog {
+  background: #fff;
+  color: #1f2937;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  width: 380px;
+  max-width: 90vw;
+}
+.fuzzy-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.fuzzy-dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+.fuzzy-dialog-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.fuzzy-dialog-close:hover {
+  color: #111827;
+}
+.fuzzy-dialog-body {
+  padding: 16px 20px;
+}
+.fuzzy-pairs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+}
+.fuzzy-pair-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background-color 0.15s;
+}
+.fuzzy-pair-item:hover {
+  background-color: #f3f4f6;
+}
+.fuzzy-pair-item input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #2563eb;
+  flex-shrink: 0;
+}
+.fuzzy-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid #e5e7eb;
 }
 
 /* Range */

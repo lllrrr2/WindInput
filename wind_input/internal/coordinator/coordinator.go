@@ -2394,7 +2394,7 @@ func (c *Coordinator) UpdateEngineConfig(engineConfig *config.EngineConfig) {
 		engineConfig.Wubi.ShowCodeHint,
 		engineConfig.Wubi.SingleCodeInput,
 	)
-	c.engineMgr.UpdatePinyinOptions(engineConfig.Pinyin.ShowWubiHint)
+	c.engineMgr.UpdatePinyinOptions(&engineConfig.Pinyin)
 
 	// 更新配置引用
 	if c.config != nil {

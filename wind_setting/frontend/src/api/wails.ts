@@ -231,6 +231,20 @@ export function getDefaultConfig(): Config {
       filter_mode: "smart",
       pinyin: {
         show_wubi_hint: true,
+        fuzzy: {
+          enabled: false,
+          zh_z: false,
+          ch_c: false,
+          sh_s: false,
+          n_l: false,
+          f_h: false,
+          r_l: false,
+          an_ang: false,
+          en_eng: false,
+          in_ing: false,
+          ian_iang: false,
+          uan_uang: false,
+        },
       },
       wubi: {
         auto_commit_at_4: false,

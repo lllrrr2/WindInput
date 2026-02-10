@@ -13,6 +13,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/dict/dictcache"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
 	"github.com/huanfeng/wind_input/internal/engine/wubi"
+	"github.com/huanfeng/wind_input/pkg/config"
 )
 
 // Manager 引擎管理器
@@ -996,13 +997,37 @@ func (m *Manager) preGeneratePinyinWdb() {
 }
 
 // UpdatePinyinOptions 更新拼音引擎的选项（热更新）
-func (m *Manager) UpdatePinyinOptions(showWubiHint bool) {
+func (m *Manager) UpdatePinyinOptions(pinyinCfg *config.PinyinConfig) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if pinyinCfg == nil {
+		return
+	}
+
+	showWubiHint := pinyinCfg.ShowWubiHint
 
 	// 更新保存的配置
 	if m.pinyinConfig != nil {
 		m.pinyinConfig.ShowWubiHint = showWubiHint
+		// 更新模糊拼音配置
+		if pinyinCfg.Fuzzy.Enabled {
+			m.pinyinConfig.Fuzzy = &pinyin.FuzzyConfig{
+				ZhZ:     pinyinCfg.Fuzzy.ZhZ,
+				ChC:     pinyinCfg.Fuzzy.ChC,
+				ShS:     pinyinCfg.Fuzzy.ShS,
+				NL:      pinyinCfg.Fuzzy.NL,
+				FH:      pinyinCfg.Fuzzy.FH,
+				RL:      pinyinCfg.Fuzzy.RL,
+				AnAng:   pinyinCfg.Fuzzy.AnAng,
+				EnEng:   pinyinCfg.Fuzzy.EnEng,
+				InIng:   pinyinCfg.Fuzzy.InIng,
+				IanIang: pinyinCfg.Fuzzy.IanIang,
+				UanUang: pinyinCfg.Fuzzy.UanUang,
+			}
+		} else {
+			m.pinyinConfig.Fuzzy = nil
+		}
 	}
 
 	// 更新所有已注册的拼音引擎的配置
@@ -1011,6 +1036,25 @@ func (m *Manager) UpdatePinyinOptions(showWubiHint bool) {
 			if cfg := pinyinEngine.GetConfig(); cfg != nil {
 				oldShowWubiHint := cfg.ShowWubiHint
 				cfg.ShowWubiHint = showWubiHint
+
+				// 更新模糊拼音配置
+				if pinyinCfg.Fuzzy.Enabled {
+					cfg.Fuzzy = &pinyin.FuzzyConfig{
+						ZhZ:     pinyinCfg.Fuzzy.ZhZ,
+						ChC:     pinyinCfg.Fuzzy.ChC,
+						ShS:     pinyinCfg.Fuzzy.ShS,
+						NL:      pinyinCfg.Fuzzy.NL,
+						FH:      pinyinCfg.Fuzzy.FH,
+						RL:      pinyinCfg.Fuzzy.RL,
+						AnAng:   pinyinCfg.Fuzzy.AnAng,
+						EnEng:   pinyinCfg.Fuzzy.EnEng,
+						InIng:   pinyinCfg.Fuzzy.InIng,
+						IanIang: pinyinCfg.Fuzzy.IanIang,
+						UanUang: pinyinCfg.Fuzzy.UanUang,
+					}
+				} else {
+					cfg.Fuzzy = nil
+				}
 
 				// 从 true→false：释放反向索引
 				if oldShowWubiHint && !showWubiHint {
@@ -1032,5 +1076,5 @@ func (m *Manager) UpdatePinyinOptions(showWubiHint bool) {
 		}
 	}
 
-	log.Printf("[EngineManager] 更新拼音选项: showWubiHint=%v", showWubiHint)
+	log.Printf("[EngineManager] 更新拼音选项: showWubiHint=%v, fuzzyEnabled=%v", showWubiHint, pinyinCfg.Fuzzy.Enabled)
 }

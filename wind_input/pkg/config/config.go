@@ -54,14 +54,18 @@ type PinyinConfig struct {
 
 // FuzzyPinyinConfig 模糊拼音配置
 type FuzzyPinyinConfig struct {
-	Enabled bool `yaml:"enabled" json:"enabled"` // 总开关
-	ZhZ     bool `yaml:"zh_z" json:"zh_z"`       // zh ↔ z
-	ChC     bool `yaml:"ch_c" json:"ch_c"`       // ch ↔ c
-	ShS     bool `yaml:"sh_s" json:"sh_s"`       // sh ↔ s
-	NL      bool `yaml:"n_l" json:"n_l"`         // n ↔ l
-	AnAng   bool `yaml:"an_ang" json:"an_ang"`   // an ↔ ang
-	EnEng   bool `yaml:"en_eng" json:"en_eng"`   // en ↔ eng
-	InIng   bool `yaml:"in_ing" json:"in_ing"`   // in ↔ ing
+	Enabled bool `yaml:"enabled" json:"enabled"`   // 总开关
+	ZhZ     bool `yaml:"zh_z" json:"zh_z"`         // zh ↔ z
+	ChC     bool `yaml:"ch_c" json:"ch_c"`         // ch ↔ c
+	ShS     bool `yaml:"sh_s" json:"sh_s"`         // sh ↔ s
+	NL      bool `yaml:"n_l" json:"n_l"`           // n ↔ l
+	FH      bool `yaml:"f_h" json:"f_h"`           // f ↔ h
+	RL      bool `yaml:"r_l" json:"r_l"`           // r ↔ l
+	AnAng   bool `yaml:"an_ang" json:"an_ang"`     // an ↔ ang
+	EnEng   bool `yaml:"en_eng" json:"en_eng"`     // en ↔ eng
+	InIng   bool `yaml:"in_ing" json:"in_ing"`     // in ↔ ing
+	IanIang bool `yaml:"ian_iang" json:"ian_iang"` // ian ↔ iang
+	UanUang bool `yaml:"uan_uang" json:"uan_uang"` // uan ↔ uang
 }
 
 // WubiConfig 五笔引擎配置

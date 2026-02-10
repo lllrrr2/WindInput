@@ -313,13 +313,17 @@ func main() {
 	// 映射模糊拼音配置
 	if cfg.Engine.Pinyin.Fuzzy.Enabled {
 		pinyinConfig.Fuzzy = &pinyin.FuzzyConfig{
-			ZhZ:   cfg.Engine.Pinyin.Fuzzy.ZhZ,
-			ChC:   cfg.Engine.Pinyin.Fuzzy.ChC,
-			ShS:   cfg.Engine.Pinyin.Fuzzy.ShS,
-			NL:    cfg.Engine.Pinyin.Fuzzy.NL,
-			AnAng: cfg.Engine.Pinyin.Fuzzy.AnAng,
-			EnEng: cfg.Engine.Pinyin.Fuzzy.EnEng,
-			InIng: cfg.Engine.Pinyin.Fuzzy.InIng,
+			ZhZ:     cfg.Engine.Pinyin.Fuzzy.ZhZ,
+			ChC:     cfg.Engine.Pinyin.Fuzzy.ChC,
+			ShS:     cfg.Engine.Pinyin.Fuzzy.ShS,
+			NL:      cfg.Engine.Pinyin.Fuzzy.NL,
+			FH:      cfg.Engine.Pinyin.Fuzzy.FH,
+			RL:      cfg.Engine.Pinyin.Fuzzy.RL,
+			AnAng:   cfg.Engine.Pinyin.Fuzzy.AnAng,
+			EnEng:   cfg.Engine.Pinyin.Fuzzy.EnEng,
+			InIng:   cfg.Engine.Pinyin.Fuzzy.InIng,
+			IanIang: cfg.Engine.Pinyin.Fuzzy.IanIang,
+			UanUang: cfg.Engine.Pinyin.Fuzzy.UanUang,
 		}
 	}
 

@@ -4,13 +4,17 @@ import "strings"
 
 // FuzzyConfig 模糊拼音配置
 type FuzzyConfig struct {
-	ZhZ   bool // zh ↔ z
-	ChC   bool // ch ↔ c
-	ShS   bool // sh ↔ s
-	NL    bool // n ↔ l
-	AnAng bool // an ↔ ang（韵母）
-	EnEng bool // en ↔ eng（韵母）
-	InIng bool // in ↔ ing（韵母）
+	ZhZ     bool // zh ↔ z
+	ChC     bool // ch ↔ c
+	ShS     bool // sh ↔ s
+	NL      bool // n ↔ l
+	FH      bool // f ↔ h
+	RL      bool // r ↔ l
+	AnAng   bool // an ↔ ang（韵母）
+	EnEng   bool // en ↔ eng（韵母）
+	InIng   bool // in ↔ ing（韵母）
+	IanIang bool // ian ↔ iang（韵母）
+	UanUang bool // uan ↔ uang（韵母）
 }
 
 // Enabled 是否启用了任何模糊拼音
@@ -18,8 +22,8 @@ func (fc *FuzzyConfig) Enabled() bool {
 	if fc == nil {
 		return false
 	}
-	return fc.ZhZ || fc.ChC || fc.ShS || fc.NL ||
-		fc.AnAng || fc.EnEng || fc.InIng
+	return fc.ZhZ || fc.ChC || fc.ShS || fc.NL || fc.FH || fc.RL ||
+		fc.AnAng || fc.EnEng || fc.InIng || fc.IanIang || fc.UanUang
 }
 
 // 声母模糊对
@@ -28,6 +32,8 @@ var initialPairs = [][2]string{
 	{"ch", "c"},
 	{"sh", "s"},
 	{"n", "l"},
+	{"f", "h"},
+	{"r", "l"},
 }
 
 // 韵母模糊对
@@ -35,6 +41,8 @@ var finalPairs = [][2]string{
 	{"ang", "an"},
 	{"eng", "en"},
 	{"ing", "in"},
+	{"iang", "ian"},
+	{"uang", "uan"},
 }
 
 // splitInitialFinal 将音节拆分为声母和韵母
@@ -96,14 +104,28 @@ func (fc *FuzzyConfig) Variants(syllable string) []string {
 			altInitials = append(altInitials, "n")
 		}
 	}
+	if fc.FH {
+		if initial == "f" {
+			altInitials = append(altInitials, "h")
+		} else if initial == "h" {
+			altInitials = append(altInitials, "f")
+		}
+	}
+	if fc.RL {
+		if initial == "r" {
+			altInitials = append(altInitials, "l")
+		} else if initial == "l" {
+			altInitials = append(altInitials, "r")
+		}
+	}
 
 	// 韵母替换
 	altFinals = append(altFinals, final) // 原始韵母
 	if fc.AnAng {
-		if strings.HasSuffix(final, "ang") {
+		if strings.HasSuffix(final, "ang") && !strings.HasSuffix(final, "iang") && !strings.HasSuffix(final, "uang") {
 			altFinals = append(altFinals, final[:len(final)-3]+"an")
-		} else if strings.HasSuffix(final, "an") && !strings.HasSuffix(final, "uan") {
-			// "an" → "ang"，但排除 "uan" 中的 "an"（避免 "uan"→"uang" 由此规则覆盖）
+		} else if strings.HasSuffix(final, "an") && !strings.HasSuffix(final, "uan") && !strings.HasSuffix(final, "ian") {
+			// "an" → "ang"，但排除 "uan"/"ian"（由各自独立配置控制）
 			altFinals = append(altFinals, final+"g")
 		}
 	}
@@ -118,6 +140,20 @@ func (fc *FuzzyConfig) Variants(syllable string) []string {
 		if strings.HasSuffix(final, "ing") {
 			altFinals = append(altFinals, final[:len(final)-3]+"in")
 		} else if strings.HasSuffix(final, "in") && !strings.HasSuffix(final, "uin") {
+			altFinals = append(altFinals, final+"g")
+		}
+	}
+	if fc.IanIang {
+		if strings.HasSuffix(final, "iang") {
+			altFinals = append(altFinals, final[:len(final)-4]+"ian")
+		} else if strings.HasSuffix(final, "ian") {
+			altFinals = append(altFinals, final+"g")
+		}
+	}
+	if fc.UanUang {
+		if strings.HasSuffix(final, "uang") {
+			altFinals = append(altFinals, final[:len(final)-4]+"uan")
+		} else if strings.HasSuffix(final, "uan") {
 			altFinals = append(altFinals, final+"g")
 		}
 	}
