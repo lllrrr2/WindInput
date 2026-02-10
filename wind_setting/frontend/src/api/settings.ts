@@ -79,6 +79,11 @@ export interface ToolbarConfig {
   position_y: number;
 }
 
+// 临时拼音配置
+export interface TempPinyinConfig {
+  trigger_keys: string[];
+}
+
 // 输入配置
 export interface InputConfig {
   full_width: boolean;
@@ -86,6 +91,7 @@ export interface InputConfig {
   punct_follow_mode: boolean;
   select_key_groups: string[];
   page_keys: string[];
+  temp_pinyin: TempPinyinConfig;
 }
 
 // 高级配置
@@ -317,6 +323,9 @@ export function getDefaultConfig(): Config {
       punct_follow_mode: false,
       select_key_groups: ["semicolon_quote"],
       page_keys: ["pageupdown", "minus_equal"],
+      temp_pinyin: {
+        trigger_keys: ["backtick"],
+      },
     },
     advanced: {
       log_level: "info",

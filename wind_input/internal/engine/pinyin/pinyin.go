@@ -216,6 +216,20 @@ func (e *Engine) addWubiHints(candidates []candidate.Candidate) {
 	}
 }
 
+// AddWubiHintsForced 强制添加五笔编码提示（不检查 ShowWubiHint 配置）
+// 用于临时拼音模式，无论用户是否开启了五笔提示都强制显示
+func (e *Engine) AddWubiHintsForced(candidates []candidate.Candidate) {
+	if e.wubiReverse == nil && e.wubiTable == nil {
+		return
+	}
+	for i := range candidates {
+		wubiCode := e.lookupWubiCode(candidates[i].Text)
+		if wubiCode != "" {
+			candidates[i].Hint = wubiCode
+		}
+	}
+}
+
 // SetDictManager 设置词库管理器（用于用户词频学习）
 func (e *Engine) SetDictManager(dm *dict.DictManager) {
 	e.dictManager = dm

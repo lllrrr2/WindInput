@@ -112,6 +112,12 @@ type InputConfig struct {
 	PageKeys         []string               `yaml:"page_keys" json:"page_keys"`
 	ShiftTempEnglish ShiftTempEnglishConfig `yaml:"shift_temp_english" json:"shift_temp_english"`
 	CapsLockBehavior CapsLockBehaviorConfig `yaml:"capslock_behavior" json:"capslock_behavior"`
+	TempPinyin       TempPinyinConfig       `yaml:"temp_pinyin" json:"temp_pinyin"`
+}
+
+// TempPinyinConfig 临时拼音模式配置
+type TempPinyinConfig struct {
+	TriggerKeys []string `yaml:"trigger_keys" json:"trigger_keys"` // 触发键: "backtick", "semicolon"
 }
 
 // ShiftTempEnglishConfig 临时英文模式配置
@@ -194,6 +200,9 @@ func DefaultConfig() *Config {
 			},
 			CapsLockBehavior: CapsLockBehaviorConfig{
 				CancelOnModeSwitch: false,
+			},
+			TempPinyin: TempPinyinConfig{
+				TriggerKeys: []string{"backtick"},
 			},
 		},
 		Advanced: AdvancedConfig{

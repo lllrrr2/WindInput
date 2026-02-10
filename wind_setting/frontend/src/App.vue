@@ -376,7 +376,14 @@ function mergeWithDefaults(cfg: any): Config {
     hotkeys: { ...defaults.hotkeys, ...cfg.hotkeys },
     ui: { ...defaults.ui, ...cfg.ui },
     toolbar: { ...defaults.toolbar, ...cfg.toolbar },
-    input: { ...defaults.input, ...cfg.input },
+    input: {
+      ...defaults.input,
+      ...cfg.input,
+      temp_pinyin: {
+        ...defaults.input.temp_pinyin,
+        ...cfg.input?.temp_pinyin,
+      },
+    },
     advanced: { ...defaults.advanced, ...cfg.advanced },
   };
 }
@@ -923,13 +930,14 @@ function handleDocumentClick(event: MouseEvent) {
 <template>
   <div class="app">
     <aside class="sidebar">
-            <div class="logo">
-              <span class="logo-icon">🌬</span>
-              <div class="logo-title">
-                <span class="logo-text">清风输入法</span>
-                <span class="logo-version" v-if="status"
-                  >v{{ status.service.version }}</span>
-              </div>
+      <div class="logo">
+        <span class="logo-icon">🌬</span>
+        <div class="logo-title">
+          <span class="logo-text">清风输入法</span>
+          <span class="logo-version" v-if="status"
+            >v{{ status.service.version }}</span
+          >
+        </div>
         <span
           class="status-dot-inline"
           :class="connected ? 'connected' : 'disconnected'"
@@ -1292,6 +1300,47 @@ function handleDocumentClick(event: MouseEvent) {
                   />
                   <span class="slider"></span>
                 </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 临时拼音设置 -->
+          <div class="settings-card">
+            <div class="card-title">临时拼音</div>
+            <div class="setting-item">
+              <div class="setting-info">
+                <label>触发键</label>
+                <p class="setting-hint">
+                  五笔模式下按触发键临时切换拼音输入，选字后自动返回五笔。分号键仅在无候选时触发，有候选时仍用于选择第2候选
+                </p>
+              </div>
+              <div class="setting-control">
+                <div class="checkbox-group">
+                  <label
+                    class="checkbox-item"
+                    v-for="tk in [
+                      { value: 'backtick', label: '` 反引号' },
+                      { value: 'semicolon', label: '; 分号' },
+                    ]"
+                    :key="tk.value"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="
+                        formData.input.temp_pinyin.trigger_keys.includes(
+                          tk.value,
+                        )
+                      "
+                      @change="
+                        toggleArrayValue(
+                          formData.input.temp_pinyin.trigger_keys,
+                          tk.value,
+                        )
+                      "
+                    />
+                    <span>{{ tk.label }}</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>

@@ -256,8 +256,8 @@ func (m *Manager) initPinyinEngine(dictPath, wubiDictPath string, config *pinyin
 	}
 	loadUnigramModel(engine, unigramTxtPath)
 
-	// 如果启用五笔反查，加载五笔码表
-	if config != nil && config.ShowWubiHint && wubiDictPath != "" {
+	// 始终加载五笔码表（临时拼音模式也需要五笔反查）
+	if wubiDictPath != "" {
 		if err := engine.LoadWubiTable(wubiDictPath); err != nil {
 			log.Printf("[EngineManager] 加载五笔反查码表失败: %v", err)
 		} else {
@@ -385,7 +385,14 @@ func (m *Manager) initWubiEngine(dictPath string, config *wubi.Config) error {
 
 	// 注册并设置为当前引擎
 	m.RegisterEngine(EngineTypeWubi, engine)
-	return m.SetCurrentEngine(EngineTypeWubi)
+	if err := m.SetCurrentEngine(EngineTypeWubi); err != nil {
+		return err
+	}
+
+	// 后台预生成拼音 wdb，避免首次临时拼音切换卡顿
+	go m.preGeneratePinyinWdb()
+
+	return nil
 }
 
 // loadWubiCodeTable 加载五笔码表，优先使用预编译 wdb
@@ -613,8 +620,8 @@ func (m *Manager) loadPinyinEngineLocked() error {
 	}
 	loadUnigramModel(engine, unigramTxtPath)
 
-	// 如果启用五笔反查，加载五笔码表
-	if config.ShowWubiHint && m.wubiDictPath != "" {
+	// 始终加载五笔码表（临时拼音模式也需要五笔反查）
+	if m.wubiDictPath != "" {
 		wubiFullPath := m.wubiDictPath
 		if m.exeDir != "" && !isAbsPath(m.wubiDictPath) {
 			wubiFullPath = m.exeDir + "/" + m.wubiDictPath
@@ -847,6 +854,88 @@ func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommi
 
 	log.Printf("[EngineManager] 更新五笔选项: autoCommitAt4=%v, clearOnEmptyAt4=%v, topCodeCommit=%v, punctCommit=%v, showCodeHint=%v, singleCodeInput=%v",
 		autoCommitAt4, clearOnEmptyAt4, topCodeCommit, punctCommit, showCodeHint, singleCodeInput)
+}
+
+// EnsurePinyinLoaded 确保拼音引擎已加载（不切换当前引擎）
+// 用于临时拼音模式：在五笔模式下按需加载拼音引擎
+func (m *Manager) EnsurePinyinLoaded() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.engines[EngineTypePinyin]; ok {
+		return nil // 已加载
+	}
+
+	log.Printf("[EngineManager] 临时拼音：加载拼音引擎...")
+	return m.loadPinyinEngineLocked()
+}
+
+// ConvertWithPinyin 使用拼音引擎转换输入（不切换当前引擎）
+// 强制添加五笔编码提示，用于临时拼音模式
+func (m *Manager) ConvertWithPinyin(input string, maxCandidates int) *ConvertResult {
+	m.mu.RLock()
+	pinyinEngine, ok := m.engines[EngineTypePinyin]
+	m.mu.RUnlock()
+
+	if !ok {
+		return &ConvertResult{IsEmpty: true}
+	}
+
+	pe, ok := pinyinEngine.(*pinyin.Engine)
+	if !ok {
+		return &ConvertResult{IsEmpty: true}
+	}
+
+	pinyinResult := pe.ConvertEx(input, maxCandidates)
+
+	// 强制添加五笔编码提示
+	pe.AddWubiHintsForced(pinyinResult.Candidates)
+
+	result := &ConvertResult{
+		Candidates:     pinyinResult.Candidates,
+		IsEmpty:        pinyinResult.IsEmpty,
+		PreeditDisplay: pinyinResult.PreeditDisplay,
+	}
+	if pinyinResult.Composition != nil {
+		result.CompletedSyllables = pinyinResult.Composition.CompletedSyllables
+		result.PartialSyllable = pinyinResult.Composition.PartialSyllable
+		result.HasPartial = pinyinResult.Composition.HasPartial()
+	}
+	return result
+}
+
+// preGeneratePinyinWdb 后台预生成拼音二进制词库
+// 在五笔引擎初始化后调用，避免首次临时拼音切换卡顿
+func (m *Manager) preGeneratePinyinWdb() {
+	m.mu.RLock()
+	dictPath := m.pinyinDictPath
+	exeDir := m.exeDir
+	m.mu.RUnlock()
+
+	if dictPath == "" {
+		dictPath = "dict/pinyin"
+	}
+	fullPath := dictPath
+	if exeDir != "" && !isAbsPath(dictPath) {
+		fullPath = exeDir + "/" + dictPath
+	}
+
+	// 检查是否需要生成
+	srcPaths := []string{
+		filepath.Join(fullPath, "8105.dict.yaml"),
+		filepath.Join(fullPath, "base.dict.yaml"),
+	}
+	wdbCachePath := dictcache.CachePath("pinyin")
+	if !dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
+		return // 缓存已是最新
+	}
+
+	log.Printf("[EngineManager] 后台预生成拼音 wdb...")
+	if err := dictcache.ConvertPinyinToWdb(fullPath, wdbCachePath); err != nil {
+		log.Printf("[EngineManager] 后台预生成拼音 wdb 失败: %v", err)
+	} else {
+		log.Printf("[EngineManager] 后台预生成拼音 wdb 完成")
+	}
 }
 
 // UpdatePinyinOptions 更新拼音引擎的选项（热更新）
