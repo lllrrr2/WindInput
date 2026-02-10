@@ -18,7 +18,7 @@ if /I "%~1"=="debug" set "WAILS_MODE=debug"
 if /I "%~1"=="release" set "WAILS_MODE=release"
 if /I "%~1"=="skip" set "WAILS_MODE=skip"
 
-echo [1/7] 构建 Go 服务(wind_input.exe)...
+echo [1/6] 构建 Go 服务(wind_input.exe)...
 if not exist "%SCRIPT_DIR%build" mkdir "%SCRIPT_DIR%build"
 cd "%SCRIPT_DIR%wind_input"
 go build -o ../build/wind_input.exe ./cmd/service
@@ -30,7 +30,7 @@ if %errorLevel% neq 0 (
 echo Go 服务构建成功
 echo.
 
-echo [2/7] 构建 C++ DLL(wind_tsf.dll)...
+echo [2/6] 构建 C++ DLL(wind_tsf.dll)...
 if not exist "%SCRIPT_DIR%wind_tsf\build" mkdir "%SCRIPT_DIR%wind_tsf\build"
 cd "%SCRIPT_DIR%wind_tsf\build"
 if not exist "%SCRIPT_DIR%wind_tsf\build\CMakeCache.txt" (
@@ -45,7 +45,7 @@ if %errorLevel% neq 0 (
 echo C++ DLL 构建成功
 echo.
 
-echo [3/7] 构建设置界面(wind_setting.exe)...
+echo [3/6] 构建设置界面(wind_setting.exe)...
 if /I "%WAILS_MODE%"=="skip" (
     echo [提示] 已按参数跳过 Wails 构建
 ) else (
@@ -79,12 +79,13 @@ if /I "%WAILS_MODE%"=="skip" (
 )
 echo.
 
-echo [4/7] 下载拼音词库(rime-ice)...
+echo [4/6] 下载拼音词库(rime-ice)...
 cd "%SCRIPT_DIR%"
-if not exist "%SCRIPT_DIR%build\dict\rime" mkdir "%SCRIPT_DIR%build\dict\rime"
+REM 下载到 .cache 目录（不在 build 内，避免被安装包打包，且可跨构建复用）
+if not exist "%SCRIPT_DIR%.cache\rime" mkdir "%SCRIPT_DIR%.cache\rime"
 
 set "RIME_BASE_URL=https://raw.githubusercontent.com/iDvel/rime-ice/main/cn_dicts"
-set "RIME_DIR=%SCRIPT_DIR%build\dict\rime"
+set "RIME_DIR=%SCRIPT_DIR%.cache\rime"
 
 call :download_rime_file 8105.dict.yaml "单字词库, 约112KB"
 if errorlevel 1 exit /b 1
@@ -94,7 +95,7 @@ call :download_rime_file tencent.dict.yaml "腾讯词频, 约17MB"
 if errorlevel 1 exit /b 1
 echo.
 
-echo [5/7] 准备词库文件...
+echo [5/6] 准备词库文件...
 cd "%SCRIPT_DIR%"
 if not exist "%SCRIPT_DIR%build\dict\pinyin" mkdir "%SCRIPT_DIR%build\dict\pinyin"
 if not exist "%SCRIPT_DIR%build\dict\wubi" mkdir "%SCRIPT_DIR%build\dict\wubi"
@@ -137,60 +138,12 @@ if exist "%SCRIPT_DIR%dict\pinyin\unigram.txt" (
     echo [提示] Unigram 语言模型不存在,智能组句功能不可用
 )
 
-REM 清理 rime 临时下载目录(已复制到 pinyin/, 避免安装包冗余)
-if exist "%RIME_DIR%" (
-    rmdir /S /Q "%RIME_DIR%" >nul 2>&1
-    echo   - 已清理 rime 临时下载目录
-)
-
-echo.
-
-echo [6/7] 生成预编译二进制词库(.wdb)...
-cd "%SCRIPT_DIR%wind_input"
-set "PINYIN_DICT_DIR=%SCRIPT_DIR%build\dict\pinyin"
-set "UNIGRAM_SRC=%SCRIPT_DIR%dict\pinyin\unigram.txt"
-
-REM 检查源文件是否存在
-if not exist "%PINYIN_DICT_DIR%\8105.dict.yaml" (
-    echo [警告] 拼音词库不存在,跳过 .wdb 生成
-    goto :skip_wdb
-)
-if not exist "%UNIGRAM_SRC%" (
-    echo [警告] unigram.txt 不存在,跳过 unigram.wdb 生成
-)
-
-echo   - 生成 pinyin.wdb + unigram.wdb ...
-go run ./cmd/gen_bindict -dict "%PINYIN_DICT_DIR%" -unigram "%UNIGRAM_SRC%" -out "%PINYIN_DICT_DIR%"
-if errorlevel 1 (
-    echo [警告] .wdb 生成失败,运行时将自动从源文件转换（首次启动稍慢）
-) else (
-    echo   - pinyin.wdb 生成成功
-    echo   - unigram.wdb 生成成功
-)
-
-:skip_wdb
-cd "%SCRIPT_DIR%"
-echo.
-
 REM 复制五笔词库
 if exist "%SCRIPT_DIR%ref\极爽词库6.txt" (
     copy /Y "%SCRIPT_DIR%ref\极爽词库6.txt" "%SCRIPT_DIR%build\dict\wubi\wubi86.txt" >nul
     echo   - 已复制五笔词库
 ) else (
     echo [警告] ref 目录中未找到五笔词库
-)
-
-REM 预编译五笔二进制词库（加速首次启动）
-if exist "%SCRIPT_DIR%build\dict\wubi\wubi86.txt" (
-    echo   - 生成 wubi.wdb ...
-    cd "%SCRIPT_DIR%wind_input"
-    go run ./cmd/gen_wubi_wdb -src "%SCRIPT_DIR%build\dict\wubi\wubi86.txt" -out "%SCRIPT_DIR%build\dict\wubi"
-    if errorlevel 1 (
-        echo [提示] wubi.wdb 生成失败,运行时将自动转换
-    ) else (
-        echo   - wubi.wdb 生成成功
-    )
-    cd "%SCRIPT_DIR%"
 )
 
 REM 复制常用字表
@@ -202,7 +155,7 @@ if exist "%SCRIPT_DIR%dict\common_chars.txt" (
 )
 echo.
 
-echo [7/7] 检查输出文件...
+echo [6/6] 检查输出文件...
 if not exist "%SCRIPT_DIR%build\wind_tsf.dll" (
     echo [错误] 未找到 wind_tsf.dll
     pause
@@ -227,11 +180,10 @@ echo - build\wind_setting.exe(设置界面)
 echo - build\dict\pinyin\8105.dict.yaml(拼音单字词库)
 echo - build\dict\pinyin\base.dict.yaml(拼音基础词库)
 echo - build\dict\pinyin\unigram.txt(Unigram 语言模型)
-echo - build\dict\pinyin\pinyin.wdb(预编译拼音词库, 开发调试用)
-echo - build\dict\pinyin\unigram.wdb(预编译语言模型, 开发调试用)
 echo - build\dict\wubi\wubi86.txt(五笔词库)
-echo - build\dict\wubi\wubi.wdb(预编译五笔词库, 开发调试用)
 echo - build\dict\common_chars.txt(常用字表)
+echo.
+echo 注: .wdb 二进制词库由运行时按需自动生成并缓存
 echo.
 echo 词库来源: 雾凇拼音 rime-ice (https://github.com/iDvel/rime-ice)
 echo.

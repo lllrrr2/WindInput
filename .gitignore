@@ -4,6 +4,9 @@
 /build/
 /wind_tsf/build/
 
+# Build cache (rime downloads, etc.)
+/.cache/
+
 /ref/
 
 # CMake/CLion generated
