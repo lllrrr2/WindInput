@@ -1,0 +1,244 @@
+// handle_candidates.go — 候选词管理、分页、组合文本与 UI 显示
+package coordinator
+
+import (
+	"strings"
+
+	"github.com/huanfeng/wind_input/internal/engine"
+	"github.com/huanfeng/wind_input/internal/ui"
+)
+
+// compositionText 返回当前应显示的组合文本。
+// 拼音模式返回带音节分隔符的文本（如 "zhong'guo"），五笔或未解析时 fallback 到 inputBuffer。
+func (c *Coordinator) compositionText() string {
+	if c.preeditDisplay != "" {
+		return c.preeditDisplay
+	}
+	return c.inputBuffer
+}
+
+// calcSyllableBoundaries 从已完成音节和部分音节计算边界位置。
+// 边界位置是 inputBuffer 中每对相邻音节段之间的字节偏移。
+// 例如 ["zhong", "guo"] partial="" → [5]；["ni", "hao"] partial="zh" → [2, 5]
+func (c *Coordinator) calcSyllableBoundaries(completedSyllables []string, partialSyllable string) []int {
+	segments := make([]string, 0, len(completedSyllables)+1)
+	segments = append(segments, completedSyllables...)
+	if partialSyllable != "" {
+		segments = append(segments, partialSyllable)
+	}
+	if len(segments) <= 1 {
+		return nil
+	}
+	boundaries := make([]int, 0, len(segments)-1)
+	pos := 0
+	for i := 0; i < len(segments)-1; i++ {
+		pos += len(segments[i])
+		boundaries = append(boundaries, pos)
+	}
+	return boundaries
+}
+
+// displayCursorPos 将 inputCursorPos（基于 inputBuffer 的字节位置）映射到 preeditDisplay 中的显示位置。
+// 公式：displayPos = inputCursorPos + count(boundary <= inputCursorPos)
+func (c *Coordinator) displayCursorPos() int {
+	if c.preeditDisplay == "" {
+		return c.inputCursorPos
+	}
+	offset := 0
+	for _, b := range c.syllableBoundaries {
+		if b <= c.inputCursorPos {
+			offset++
+		}
+	}
+	return c.inputCursorPos + offset
+}
+
+func (c *Coordinator) updateCandidates() {
+	c.updateCandidatesEx()
+}
+
+func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
+	if len(c.inputBuffer) == 0 {
+		c.candidates = nil
+		return nil
+	}
+
+	if c.engineMgr == nil {
+		return nil
+	}
+
+	// 使用扩展转换获取更多信息
+	result := c.engineMgr.ConvertEx(c.inputBuffer, 50)
+
+	// 更新预编辑显示状态
+	c.preeditDisplay = result.PreeditDisplay
+	// 安全校验：去除分隔符后应与 inputBuffer 一致，否则 fallback
+	if c.preeditDisplay != "" {
+		stripped := strings.ReplaceAll(c.preeditDisplay, "'", "")
+		if stripped != strings.ToLower(c.inputBuffer) {
+			c.preeditDisplay = ""
+			c.syllableBoundaries = nil
+		} else {
+			c.syllableBoundaries = c.calcSyllableBoundaries(
+				result.CompletedSyllables, result.PartialSyllable)
+		}
+	} else {
+		c.syllableBoundaries = nil
+	}
+
+	// Convert to UI candidates
+	c.candidates = make([]ui.Candidate, len(result.Candidates))
+	for i, ec := range result.Candidates {
+		cand := ui.Candidate{
+			Text:           ec.Text,
+			Index:          i + 1,
+			Weight:         ec.Weight,
+			IsCommand:      ec.IsCommand,
+			ConsumedLength: ec.ConsumedLength,
+		}
+		// 如果有提示信息（如反查编码），添加到注释
+		if ec.Hint != "" {
+			cand.Comment = ec.Hint
+		}
+		c.candidates[i] = cand
+	}
+
+	c.logger.Debug("Got candidates", "count", len(c.candidates), "empty", result.IsEmpty)
+
+	// Calculate pagination
+	c.totalPages = (len(c.candidates) + c.candidatesPerPage - 1) / c.candidatesPerPage
+	if c.totalPages == 0 {
+		c.totalPages = 1
+	}
+	c.currentPage = 1
+
+	return result
+}
+
+func (c *Coordinator) showUI() {
+	if c.uiManager == nil || !c.uiManager.IsReady() {
+		c.logger.Warn("UI manager not ready")
+		return
+	}
+
+	// When InlinePreedit is enabled and there are no candidates,
+	// hide the candidate window (only show the inline preedit in the application)
+	if c.config != nil && c.config.UI.InlinePreedit && len(c.candidates) == 0 {
+		c.hideUI()
+		return
+	}
+
+	// Get current page candidates
+	startIdx := (c.currentPage - 1) * c.candidatesPerPage
+	endIdx := startIdx + c.candidatesPerPage
+	if endIdx > len(c.candidates) {
+		endIdx = len(c.candidates)
+	}
+
+	var pageCandidates []ui.Candidate
+	if startIdx < len(c.candidates) {
+		pageCandidates = c.candidates[startIdx:endIdx]
+	}
+
+	// Re-index for display (1-9)
+	displayCandidates := make([]ui.Candidate, len(pageCandidates))
+	for i, cand := range pageCandidates {
+		displayCandidates[i] = ui.Candidate{
+			Text:    cand.Text,
+			Index:   i + 1,
+			Comment: cand.Comment,
+			Weight:  cand.Weight,
+		}
+	}
+
+	// Use caret position for candidate window placement
+	// The UI manager will handle boundary detection and position adjustment
+	caretX := c.caretX
+	caretY := c.caretY
+	caretHeight := c.caretHeight
+
+	// Multi-monitor support: coordinates can be negative (monitors to the left/above primary)
+	// Only use fallback if we haven't received valid caret info yet (both X and Y are 0)
+	// or if coordinates are extremely large (likely garbage values)
+	const maxCoord = 32000 // Windows virtual screen limit is typically around 32767
+	if (c.caretX == 0 && c.caretY == 0) || caretX > maxCoord || caretX < -maxCoord || caretY > maxCoord || caretY < -maxCoord {
+		// Use last known good position or a reasonable default
+		if c.lastValidX != 0 || c.lastValidY != 0 {
+			caretX = c.lastValidX
+			caretY = c.lastValidY
+			caretHeight = 20 // Default height for fallback
+		} else {
+			// Fallback to a safe position on primary monitor
+			caretX = 400
+			caretY = 300
+			caretHeight = 20
+		}
+		c.logger.Debug("Using fallback position", "caretX", caretX, "caretY", caretY)
+	} else {
+		// Save valid position for future fallback
+		c.lastValidX = caretX
+		c.lastValidY = caretY
+	}
+
+	c.uiManager.ShowCandidates(
+		displayCandidates,
+		c.compositionText(),
+		c.displayCursorPos(),
+		caretX,
+		caretY,
+		caretHeight,
+		c.currentPage,
+		c.totalPages,
+	)
+}
+
+// getIndicatorPosition returns the unified position for all status indicators.
+// Falls back to lastValid or default position if current caret position is invalid.
+func (c *Coordinator) getIndicatorPosition() (x, y int) {
+	x = c.caretX
+	y = c.caretY
+	const maxCoord = 32000
+	if (c.caretX == 0 && c.caretY == 0) || x > maxCoord || x < -maxCoord || y > maxCoord || y < -maxCoord {
+		if c.lastValidX != 0 || c.lastValidY != 0 {
+			x = c.lastValidX
+			y = c.lastValidY
+		} else {
+			x = 400
+			y = 300
+		}
+	}
+	return x, y
+}
+
+func (c *Coordinator) showModeIndicator() {
+	if c.uiManager == nil || !c.uiManager.IsReady() {
+		return
+	}
+
+	// Build composite mode text: Chinese mode shows "中·五笔" or "中·拼音", English mode shows "En"
+	var modeText string
+	if !c.chineseMode {
+		modeText = "En"
+	} else if c.engineMgr != nil {
+		switch c.engineMgr.GetCurrentType() {
+		case engine.EngineTypeWubi:
+			modeText = "中·五笔"
+		case engine.EngineTypePinyin:
+			modeText = "中·拼音"
+		default:
+			modeText = "中"
+		}
+	} else {
+		modeText = "中"
+	}
+
+	x, y := c.getIndicatorPosition()
+	c.uiManager.ShowModeIndicator(modeText, x, y)
+}
+
+func (c *Coordinator) hideUI() {
+	if c.uiManager != nil {
+		c.uiManager.Hide()
+		c.uiManager.HideTooltip()
+	}
+}
