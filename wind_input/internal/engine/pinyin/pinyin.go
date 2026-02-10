@@ -136,11 +136,22 @@ func (e *Engine) GetBinaryUnigramModel() *BinaryUnigramModel {
 	return nil
 }
 
-// LoadWubiTable 加载五笔码表（用于反查）
-// 不再立即构建反向索引，改为首次查询时懒构建
-func (e *Engine) LoadWubiTable(path string) error {
-	ct, err := dict.LoadCodeTable(path)
-	if err != nil {
+// // LoadWubiTable 加载五笔码表（用于反查，文本模式 — 会占用较多堆内存）
+// // 不再立即构建反向索引，改为首次查询时懒构建
+// func (e *Engine) LoadWubiTable(path string) error {
+// 	ct, err := dict.LoadCodeTable(path)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	e.wubiTable = ct
+// 	e.wubiReverse = nil // 延迟构建
+// 	return nil
+// }
+
+// LoadWubiTableBinary 加载五笔码表的 wdb 二进制格式（mmap 模式，几乎不占堆内存）
+func (e *Engine) LoadWubiTableBinary(wdbPath string) error {
+	ct := dict.NewCodeTable()
+	if err := ct.LoadBinary(wdbPath); err != nil {
 		return err
 	}
 	e.wubiTable = ct

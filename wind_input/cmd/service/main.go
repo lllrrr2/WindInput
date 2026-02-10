@@ -26,6 +26,24 @@ import (
 
 const mutexName = "Global\\WindInputIMEService"
 
+// showErrorMessageBox 显示错误弹框（MB_ICONERROR）
+func showErrorMessageBox(message string) {
+	user32 := windows.NewLazySystemDLL("user32.dll")
+	messageBox := user32.NewProc("MessageBoxW")
+	title, _ := windows.UTF16PtrFromString("清风输入法")
+	msg, _ := windows.UTF16PtrFromString(message)
+	messageBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x10) // MB_ICONERROR
+}
+
+// showInfoMessageBox 显示信息弹框（MB_ICONINFORMATION）
+func showInfoMessageBox(message string) {
+	user32 := windows.NewLazySystemDLL("user32.dll")
+	messageBox := user32.NewProc("MessageBoxW")
+	title, _ := windows.UTF16PtrFromString("清风输入法")
+	msg, _ := windows.UTF16PtrFromString(message)
+	messageBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x40) // MB_ICONINFORMATION
+}
+
 // DPI awareness constants
 const (
 	PROCESS_DPI_UNAWARE           = 0
@@ -154,12 +172,7 @@ func main() {
 
 	// Check if another instance is already running
 	if isPipeAlreadyExists() {
-		// Use MessageBox to show error (since this might be started without console)
-		user32 := windows.NewLazySystemDLL("user32.dll")
-		messageBox := user32.NewProc("MessageBoxW")
-		title, _ := windows.UTF16PtrFromString("清风输入法 服务")
-		msg, _ := windows.UTF16PtrFromString("另一实例已在运行。")
-		messageBox.Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x40) // MB_ICONINFORMATION
+		showInfoMessageBox("另一实例已在运行。")
 		os.Exit(0)
 	}
 
@@ -332,8 +345,9 @@ func main() {
 		// 回退到拼音引擎，同时修正词库路径
 		engineConfig.Type = engine.EngineTypePinyin
 		engineConfig.DictPath = filepath.Join(exeDir, config.GetPinyinDictPath())
-		if err := engineMgr.InitializeFromConfig(engineConfig); err != nil {
-			logger.Error("Failed to initialize fallback engine", "error", err)
+		if err2 := engineMgr.InitializeFromConfig(engineConfig); err2 != nil {
+			logger.Error("Failed to initialize fallback engine", "error", err2)
+			showErrorMessageBox("输入法引擎初始化失败，服务无法启动。\n\n原因：" + err.Error() + "\n\n回退引擎也初始化失败：" + err2.Error())
 			os.Exit(1)
 		}
 	}

@@ -249,16 +249,19 @@ func (m *Manager) initPinyinEngine(dictPath, wubiDictPath string, config *pinyin
 	// 创建引擎
 	engine := pinyin.NewEngineWithConfig(d, config)
 
-	// 加载 Unigram 语言模型
+	// 加载 Unigram 语言模型（失败不阻断，仅影响智能组句）
 	unigramTxtPath := "dict/pinyin/unigram.txt"
 	if m.exeDir != "" {
 		unigramTxtPath = m.exeDir + "/" + unigramTxtPath
 	}
-	loadUnigramModel(engine, unigramTxtPath)
+	if err := loadUnigramModel(engine, unigramTxtPath); err != nil {
+		log.Printf("[EngineManager] %v", err)
+	}
 
 	// 始终加载五笔码表（临时拼音模式也需要五笔反查）
+	// 优先使用 wdb 二进制（mmap），避免文本模式占用大量堆内存
 	if wubiDictPath != "" {
-		if err := engine.LoadWubiTable(wubiDictPath); err != nil {
+		if err := loadWubiTableForPinyin(engine, wubiDictPath); err != nil {
 			log.Printf("[EngineManager] 加载五笔反查码表失败: %v", err)
 		} else {
 			log.Printf("[EngineManager] 五笔反查码表加载成功")
@@ -323,16 +326,20 @@ func loadPinyinDict(pinyinDict *dict.PinyinDict, dictPath string) error {
 	return nil
 }
 
-// loadUnigramModel 加载 Unigram 语言模型，支持运行时转换
-func loadUnigramModel(engine *pinyin.Engine, txtPath string) {
+// loadUnigramModel 加载 Unigram 语言模型（仅 wdb 二进制），返回错误供调用方决定是否阻断
+func loadUnigramModel(engine *pinyin.Engine, txtPath string) error {
 	wdbPath := strings.TrimSuffix(txtPath, ".txt") + ".wdb"
 
 	// 优先检查 exe 目录下已有的预编译 wdb
 	if _, err := os.Stat(wdbPath); err == nil {
 		if !dictcache.NeedsRegenerate([]string{txtPath}, wdbPath) {
-			if err := engine.LoadUnigram(txtPath); err == nil {
-				return
+			bm, err := pinyin.NewBinaryUnigramModel(wdbPath)
+			if err == nil {
+				engine.SetUnigram(bm)
+				log.Printf("[EngineManager] Unigram 模型(预编译 wdb)加载成功: %d 词条", bm.Size())
+				return nil
 			}
+			log.Printf("[EngineManager] 预编译 Unigram wdb 加载失败: %v", err)
 		}
 	}
 
@@ -352,17 +359,12 @@ func loadUnigramModel(engine *pinyin.Engine, txtPath string) {
 		if err == nil {
 			engine.SetUnigram(bm)
 			log.Printf("[EngineManager] Unigram 模型(缓存 wdb)加载成功: %d 词条", bm.Size())
-			return
+			return nil
 		}
 		log.Printf("[EngineManager] 加载缓存 Unigram 失败: %v", err)
 	}
 
-	// Fallback: 使用原始加载逻辑
-	if err := engine.LoadUnigram(txtPath); err != nil {
-		log.Printf("[EngineManager] 加载 Unigram 模型失败（智能组句不可用）: %v", err)
-	} else {
-		log.Printf("[EngineManager] Unigram 语言模型加载成功")
-	}
+	return fmt.Errorf("Unigram 模型 wdb 不可用，智能组句功能将不可用")
 }
 
 // initWubiEngine 初始化五笔引擎
@@ -413,14 +415,12 @@ func loadWubiCodeTable(engine *wubi.Engine, srcPath string) error {
 	if dictcache.NeedsRegenerate([]string{srcPath}, wdbCachePath) {
 		log.Printf("[EngineManager] 五笔码表缓存需要重新生成")
 		if err := dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath); err != nil {
-			log.Printf("[EngineManager] 转换码表到 wdb 失败，fallback 到文本加载: %v", err)
-			return engine.LoadCodeTable(srcPath)
+			return fmt.Errorf("转换五笔码表到 wdb 失败: %w", err)
 		}
 	}
 
 	if err := loadWubiFromWdb(engine, wdbCachePath); err != nil {
-		log.Printf("[EngineManager] 加载缓存 wubi.wdb 失败，fallback 到文本加载: %v", err)
-		return engine.LoadCodeTable(srcPath)
+		return fmt.Errorf("加载缓存 wubi.wdb 失败: %w", err)
 	}
 
 	log.Printf("[EngineManager] 五笔码表(缓存 wdb)加载成功")
@@ -450,6 +450,28 @@ func loadWubiFromWdb(engine *wubi.Engine, wdbPath string) error {
 		})
 	}
 	return nil
+}
+
+// loadWubiTableForPinyin 为拼音引擎加载五笔反查码表（仅 wdb 二进制）
+func loadWubiTableForPinyin(engine *pinyin.Engine, srcPath string) error {
+	// 优先：与 wubi86.txt 同目录的预编译 wubi.wdb
+	srcDir := filepath.Dir(srcPath)
+	wdbInDir := filepath.Join(srcDir, "wubi.wdb")
+	if !dictcache.NeedsRegenerate([]string{srcPath}, wdbInDir) {
+		if err := engine.LoadWubiTableBinary(wdbInDir); err == nil {
+			log.Printf("[EngineManager] 五笔反查码表(预编译 wdb, mmap)加载成功")
+			return nil
+		}
+	}
+
+	// 其次：缓存目录的 wubi.wdb
+	wdbCachePath := dictcache.CachePath("wubi")
+	if err := engine.LoadWubiTableBinary(wdbCachePath); err == nil {
+		log.Printf("[EngineManager] 五笔反查码表(缓存 wdb, mmap)加载成功")
+		return nil
+	}
+
+	return fmt.Errorf("五笔反查码表 wdb 不可用，仅影响编码提示功能")
 }
 
 // GetEngineInfo 获取当前引擎信息
@@ -613,20 +635,23 @@ func (m *Manager) loadPinyinEngineLocked() error {
 	}
 	engine := pinyin.NewEngineWithConfig(d, config)
 
-	// 加载 Unigram 语言模型
+	// 加载 Unigram 语言模型（失败不阻断，仅影响智能组句）
 	unigramTxtPath := "dict/pinyin/unigram.txt"
 	if m.exeDir != "" {
 		unigramTxtPath = m.exeDir + "/" + unigramTxtPath
 	}
-	loadUnigramModel(engine, unigramTxtPath)
+	if err := loadUnigramModel(engine, unigramTxtPath); err != nil {
+		log.Printf("[EngineManager] %v", err)
+	}
 
 	// 始终加载五笔码表（临时拼音模式也需要五笔反查）
+	// 优先使用 wdb 二进制（mmap），避免文本模式占用大量堆内存
 	if m.wubiDictPath != "" {
 		wubiFullPath := m.wubiDictPath
 		if m.exeDir != "" && !isAbsPath(m.wubiDictPath) {
 			wubiFullPath = m.exeDir + "/" + m.wubiDictPath
 		}
-		if err := engine.LoadWubiTable(wubiFullPath); err != nil {
+		if err := loadWubiTableForPinyin(engine, wubiFullPath); err != nil {
 			log.Printf("[EngineManager] 加载五笔反查码表失败: %v", err)
 		} else {
 			log.Printf("[EngineManager] 五笔反查码表加载成功")
@@ -904,8 +929,9 @@ func (m *Manager) ConvertWithPinyin(input string, maxCandidates int) *ConvertRes
 	return result
 }
 
-// preGeneratePinyinWdb 后台预生成拼音二进制词库
+// preGeneratePinyinWdb 后台预生成拼音相关的二进制词库
 // 在五笔引擎初始化后调用，避免首次临时拼音切换卡顿
+// 包括：拼音词库 wdb 和 Unigram 模型 wdb
 func (m *Manager) preGeneratePinyinWdb() {
 	m.mu.RLock()
 	dictPath := m.pinyinDictPath
@@ -920,21 +946,45 @@ func (m *Manager) preGeneratePinyinWdb() {
 		fullPath = exeDir + "/" + dictPath
 	}
 
-	// 检查是否需要生成
+	// 1. 预生成拼音词库 wdb
 	srcPaths := []string{
 		filepath.Join(fullPath, "8105.dict.yaml"),
 		filepath.Join(fullPath, "base.dict.yaml"),
 	}
 	wdbCachePath := dictcache.CachePath("pinyin")
-	if !dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
-		return // 缓存已是最新
+	if dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
+		log.Printf("[EngineManager] 后台预生成拼音 wdb...")
+		if err := dictcache.ConvertPinyinToWdb(fullPath, wdbCachePath); err != nil {
+			log.Printf("[EngineManager] 后台预生成拼音 wdb 失败: %v", err)
+		} else {
+			log.Printf("[EngineManager] 后台预生成拼音 wdb 完成")
+		}
 	}
 
-	log.Printf("[EngineManager] 后台预生成拼音 wdb...")
-	if err := dictcache.ConvertPinyinToWdb(fullPath, wdbCachePath); err != nil {
-		log.Printf("[EngineManager] 后台预生成拼音 wdb 失败: %v", err)
-	} else {
-		log.Printf("[EngineManager] 后台预生成拼音 wdb 完成")
+	// 2. 预生成 Unigram 模型 wdb
+	unigramTxtPath := "dict/pinyin/unigram.txt"
+	if exeDir != "" {
+		unigramTxtPath = exeDir + "/" + unigramTxtPath
+	}
+	unigramWdbPath := strings.TrimSuffix(unigramTxtPath, ".txt") + ".wdb"
+	unigramCachePath := dictcache.CachePath("unigram")
+
+	// 如果 exe 目录下预编译 wdb 已存在且最新，无需生成缓存
+	if _, err := os.Stat(unigramWdbPath); err == nil {
+		if !dictcache.NeedsRegenerate([]string{unigramTxtPath}, unigramWdbPath) {
+			return
+		}
+	}
+	// 检查缓存是否需要重新生成
+	if dictcache.NeedsRegenerate([]string{unigramTxtPath}, unigramCachePath) {
+		if _, err := os.Stat(unigramTxtPath); err == nil {
+			log.Printf("[EngineManager] 后台预生成 Unigram wdb...")
+			if err := dictcache.ConvertUnigramToWdb(unigramTxtPath, unigramCachePath); err != nil {
+				log.Printf("[EngineManager] 后台预生成 Unigram wdb 失败: %v", err)
+			} else {
+				log.Printf("[EngineManager] 后台预生成 Unigram wdb 完成")
+			}
+		}
 	}
 }
 
@@ -960,13 +1010,13 @@ func (m *Manager) UpdatePinyinOptions(showWubiHint bool) {
 					pinyinEngine.ReleaseWubiHint()
 				}
 			}
-			// 如果开启反查但五笔码表未加载，则加载
+			// 如果开启反查但五笔码表未加载，则加载（仅 wdb 二进制）
 			if showWubiHint && m.wubiDictPath != "" {
 				wubiFullPath := m.wubiDictPath
 				if m.exeDir != "" && !isAbsPath(m.wubiDictPath) {
 					wubiFullPath = m.exeDir + "/" + m.wubiDictPath
 				}
-				if err := pinyinEngine.LoadWubiTable(wubiFullPath); err != nil {
+				if err := loadWubiTableForPinyin(pinyinEngine, wubiFullPath); err != nil {
 					log.Printf("[EngineManager] 加载五笔反查码表失败: %v", err)
 				} else {
 					log.Printf("[EngineManager] 五笔反查码表加载成功")
