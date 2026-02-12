@@ -91,6 +91,7 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 	for i, ec := range result.Candidates {
 		cand := ui.Candidate{
 			Text:           ec.Text,
+			Code:           ec.Code,
 			Index:          i + 1,
 			Weight:         ec.Weight,
 			IsCommand:      ec.IsCommand,
@@ -145,6 +146,7 @@ func (c *Coordinator) showUI() {
 	for i, cand := range pageCandidates {
 		displayCandidates[i] = ui.Candidate{
 			Text:    cand.Text,
+			Code:    cand.Code,
 			Index:   i + 1,
 			Comment: cand.Comment,
 			Weight:  cand.Weight,

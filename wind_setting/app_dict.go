@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/dictfile"
 
@@ -292,6 +294,97 @@ func (a *App) SwitchUserDictEngine(engineType string) error {
 	a.userDictEditor = newEditor
 	a.fileWatcher.Watch(a.userDictEditor.GetFilePath())
 	return nil
+}
+
+// ========== 用户词库导入导出 ==========
+
+// ImportExportResult 导入导出操作结果
+type ImportExportResult struct {
+	Cancelled bool   `json:"cancelled"`
+	Count     int    `json:"count"`
+	Total     int    `json:"total,omitempty"`
+	Path      string `json:"path,omitempty"`
+}
+
+// ImportUserDict 从文件导入用户词库
+func (a *App) ImportUserDict() (*ImportExportResult, error) {
+	if a.userDictEditor == nil {
+		return nil, fmt.Errorf("user dict editor not initialized")
+	}
+
+	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "导入用户词库",
+		Filters: []wailsRuntime.FileFilter{
+			{
+				DisplayName: "词库文件 (*.txt)",
+				Pattern:     "*.txt",
+			},
+			{
+				DisplayName: "所有文件 (*.*)",
+				Pattern:     "*.*",
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("打开文件对话框失败: %w", err)
+	}
+
+	if path == "" {
+		return &ImportExportResult{Cancelled: true}, nil
+	}
+
+	count, err := a.userDictEditor.ImportFromFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("导入失败: %w", err)
+	}
+
+	if err := a.userDictEditor.Save(); err != nil {
+		return nil, fmt.Errorf("保存失败: %w", err)
+	}
+
+	a.fileWatcher.UpdateState(a.userDictEditor.GetFilePath())
+	go a.NotifyReload("userdict")
+
+	return &ImportExportResult{
+		Count: count,
+		Total: a.userDictEditor.GetWordCount(),
+	}, nil
+}
+
+// ExportUserDict 导出用户词库到文件
+func (a *App) ExportUserDict() (*ImportExportResult, error) {
+	if a.userDictEditor == nil {
+		return nil, fmt.Errorf("user dict editor not initialized")
+	}
+
+	defaultFilename := fmt.Sprintf("user_dict_%s.txt", time.Now().Format("20060102"))
+
+	path, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+		Title:           "导出用户词库",
+		DefaultFilename: defaultFilename,
+		Filters: []wailsRuntime.FileFilter{
+			{
+				DisplayName: "词库文件 (*.txt)",
+				Pattern:     "*.txt",
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("打开保存对话框失败: %w", err)
+	}
+
+	if path == "" {
+		return &ImportExportResult{Cancelled: true}, nil
+	}
+
+	if err := a.userDictEditor.ExportToFile(path); err != nil {
+		return nil, fmt.Errorf("导出失败: %w", err)
+	}
+
+	return &ImportExportResult{
+		Count: a.userDictEditor.GetWordCount(),
+		Path:  path,
+	}, nil
 }
 
 // ========== Shadow 管理 ==========

@@ -163,57 +163,150 @@ func (c *Coordinator) handleCandidateHoverChange(index, tooltipX, tooltipY int) 
 // handleCandidateMoveUp handles move up action from context menu
 func (c *Coordinator) handleCandidateMoveUp(index int) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	c.logger.Debug("Candidate move up requested", "index", index)
 
-	if index <= 0 || index >= len(c.candidates) {
-		c.logger.Warn("Invalid candidate index for move up", "index", index)
+	// Convert page-local index to actual candidate index
+	actualIndex := (c.currentPage-1)*c.candidatesPerPage + index
+
+	if actualIndex <= 0 || actualIndex >= len(c.candidates) {
+		c.logger.Warn("Invalid candidate index for move up", "actualIndex", actualIndex)
+		c.mu.Unlock()
 		return
 	}
 
-	c.logger.Debug("Request to move candidate up", "index", index)
+	candidate := c.candidates[actualIndex]
+	if candidate.IsCommand {
+		c.logger.Debug("Cannot move command candidate", "text", candidate.Text)
+		c.mu.Unlock()
+		return
+	}
 
-	// TODO: Implement candidate priority adjustment
-	// This would require:
-	// 1. Swap priority/weight with the previous candidate
-	// 2. Save to user dictionary or priority file
-	// 3. Refresh the candidate list
+	prevCandidate := c.candidates[actualIndex-1]
+	code := candidate.Code
+	if code == "" {
+		code = c.inputBuffer
+	}
+
+	// Calculate new weight: just above the previous candidate
+	newWeight := prevCandidate.Weight + 1
+
+	c.mu.Unlock()
+
+	// Perform shadow operation without lock
+	if c.engineMgr != nil {
+		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
+		if shadowLayer != nil {
+			shadowLayer.Reweight(code, candidate.Text, newWeight)
+			if err := shadowLayer.Save(); err != nil {
+				c.logger.Error("Failed to save shadow layer", "error", err)
+			}
+		}
+	}
+
+	// Re-acquire lock to refresh UI
+	c.mu.Lock()
+	c.updateCandidates()
+	c.showUI()
+	c.mu.Unlock()
 }
 
 // handleCandidateMoveDown handles move down action from context menu
 func (c *Coordinator) handleCandidateMoveDown(index int) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	c.logger.Debug("Candidate move down requested", "index", index)
 
-	if index < 0 || index >= len(c.candidates)-1 {
-		c.logger.Warn("Invalid candidate index for move down", "index", index)
+	// Convert page-local index to actual candidate index
+	actualIndex := (c.currentPage-1)*c.candidatesPerPage + index
+
+	if actualIndex < 0 || actualIndex >= len(c.candidates)-1 {
+		c.logger.Warn("Invalid candidate index for move down", "actualIndex", actualIndex)
+		c.mu.Unlock()
 		return
 	}
 
-	c.logger.Debug("Request to move candidate down", "index", index)
+	candidate := c.candidates[actualIndex]
+	if candidate.IsCommand {
+		c.logger.Debug("Cannot move command candidate", "text", candidate.Text)
+		c.mu.Unlock()
+		return
+	}
 
-	// TODO: Implement candidate priority adjustment
+	nextCandidate := c.candidates[actualIndex+1]
+	code := candidate.Code
+	if code == "" {
+		code = c.inputBuffer
+	}
+
+	// Calculate new weight: just below the next candidate
+	newWeight := nextCandidate.Weight - 1
+
+	c.mu.Unlock()
+
+	// Perform shadow operation without lock
+	if c.engineMgr != nil {
+		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
+		if shadowLayer != nil {
+			shadowLayer.Reweight(code, candidate.Text, newWeight)
+			if err := shadowLayer.Save(); err != nil {
+				c.logger.Error("Failed to save shadow layer", "error", err)
+			}
+		}
+	}
+
+	// Re-acquire lock to refresh UI
+	c.mu.Lock()
+	c.updateCandidates()
+	c.showUI()
+	c.mu.Unlock()
 }
 
 // handleCandidateMoveTop handles move to top action from context menu
 func (c *Coordinator) handleCandidateMoveTop(index int) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	c.logger.Debug("Candidate move to top requested", "index", index)
 
-	if index <= 0 || index >= len(c.candidates) {
-		c.logger.Warn("Invalid candidate index for move to top", "index", index)
+	// Convert page-local index to actual candidate index
+	actualIndex := (c.currentPage-1)*c.candidatesPerPage + index
+
+	if actualIndex <= 0 || actualIndex >= len(c.candidates) {
+		c.logger.Warn("Invalid candidate index for move to top", "actualIndex", actualIndex)
+		c.mu.Unlock()
 		return
 	}
 
-	c.logger.Debug("Request to move candidate to top", "index", index)
+	candidate := c.candidates[actualIndex]
+	if candidate.IsCommand {
+		c.logger.Debug("Cannot move command candidate to top", "text", candidate.Text)
+		c.mu.Unlock()
+		return
+	}
 
-	// TODO: Implement candidate priority adjustment
-	// Set this candidate's priority to be highest
+	code := candidate.Code
+	if code == "" {
+		code = c.inputBuffer
+	}
+
+	c.mu.Unlock()
+
+	// Perform shadow operation without lock
+	if c.engineMgr != nil {
+		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
+		if shadowLayer != nil {
+			shadowLayer.Top(code, candidate.Text)
+			if err := shadowLayer.Save(); err != nil {
+				c.logger.Error("Failed to save shadow layer", "error", err)
+			}
+		}
+	}
+
+	// Re-acquire lock to refresh UI
+	c.mu.Lock()
+	c.updateCandidates()
+	c.showUI()
+	c.mu.Unlock()
 }
 
 // handleCandidateDelete handles delete action from context menu
@@ -222,23 +315,45 @@ func (c *Coordinator) handleCandidateDelete(index int) {
 
 	c.logger.Debug("Candidate delete requested", "index", index)
 
-	if index < 0 || index >= len(c.candidates) {
-		c.logger.Warn("Invalid candidate index for delete", "index", index)
+	// Convert page-local index to actual candidate index
+	actualIndex := (c.currentPage-1)*c.candidatesPerPage + index
+
+	if actualIndex < 0 || actualIndex >= len(c.candidates) {
+		c.logger.Warn("Invalid candidate index for delete", "actualIndex", actualIndex)
 		c.mu.Unlock()
 		return
 	}
 
+	candidate := c.candidates[actualIndex]
+	if candidate.IsCommand {
+		c.logger.Debug("Cannot delete command candidate", "text", candidate.Text)
+		c.mu.Unlock()
+		return
+	}
+
+	code := candidate.Code
+	if code == "" {
+		code = c.inputBuffer
+	}
+
 	c.mu.Unlock()
 
-	c.logger.Debug("Request to delete user word", "index", index)
+	// Perform shadow operation without lock
+	if c.engineMgr != nil {
+		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
+		if shadowLayer != nil {
+			shadowLayer.Delete(code, candidate.Text)
+			if err := shadowLayer.Save(); err != nil {
+				c.logger.Error("Failed to save shadow layer", "error", err)
+			}
+		}
+	}
 
-	// Show confirmation dialog
-	// TODO: Implement confirmation dialog via UI manager
-	// For now, just log the request
-	// if confirmed {
-	//     // Delete from user dictionary
-	//     // Refresh candidate list
-	// }
+	// Re-acquire lock to refresh UI
+	c.mu.Lock()
+	c.updateCandidates()
+	c.showUI()
+	c.mu.Unlock()
 }
 
 // handleCandidateOpenSettings handles open settings action from context menu

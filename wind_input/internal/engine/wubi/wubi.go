@@ -249,6 +249,9 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 		allCandidates = dedup(allCandidates)
 	}
 
+	// ========== Phase 4.5: 应用 Shadow 规则 ==========
+	allCandidates = e.applyShadowRules(input, allCandidates)
+
 	// 空码处理
 	if len(allCandidates) == 0 {
 		result.IsEmpty = true
@@ -297,6 +300,78 @@ func dedup(candidates []candidate.Candidate) []candidate.Candidate {
 	}
 	seenPool.Put(seen)
 	return result
+}
+
+// applyShadowRules 应用 Shadow 层规则（置顶/删除/调权）
+// 收集 input 本身和所有候选的 Code 对应的 Shadow 规则并统一应用
+func (e *Engine) applyShadowRules(input string, candidates []candidate.Candidate) []candidate.Candidate {
+	if e.dictManager == nil {
+		return candidates
+	}
+	shadowLayer := e.dictManager.GetShadowLayer()
+	if shadowLayer == nil {
+		return candidates
+	}
+
+	// 收集所有相关 code 的 Shadow 规则
+	// 五笔场景：用户输入 "aa" 但候选的 Code 可能是 "aaaa"、"aaab" 等
+	// 需要同时查 input 和每个候选的 Code
+	deleted := make(map[string]bool)
+	toppedMap := make(map[string]bool) // word -> topped
+	reweighted := make(map[string]int) // word -> newWeight
+
+	codeSet := make(map[string]bool)
+	codeSet[input] = true
+	for _, c := range candidates {
+		if c.Code != "" && c.Code != input {
+			codeSet[c.Code] = true
+		}
+	}
+
+	for code := range codeSet {
+		rules := shadowLayer.GetShadowRules(code)
+		for _, rule := range rules {
+			switch rule.Action {
+			case dict.ShadowActionDelete:
+				deleted[rule.Word] = true
+			case dict.ShadowActionTop:
+				toppedMap[rule.Word] = true
+			case dict.ShadowActionReweight:
+				reweighted[rule.Word] = rule.NewWeight
+			}
+		}
+	}
+
+	// 如果没有任何规则，直接返回
+	if len(deleted) == 0 && len(toppedMap) == 0 && len(reweighted) == 0 {
+		return candidates
+	}
+
+	// 应用规则：过滤删除项，标记置顶项和调权项
+	needResort := false
+	var results []candidate.Candidate
+	for _, c := range candidates {
+		if deleted[c.Text] {
+			continue
+		}
+		if toppedMap[c.Text] {
+			c.Weight = 999999
+			needResort = true
+		} else if newWeight, ok := reweighted[c.Text]; ok {
+			c.Weight = newWeight
+			needResort = true
+		}
+		results = append(results, c)
+	}
+
+	// 有权重变化时重新排序
+	if needResort {
+		sort.SliceStable(results, func(i, j int) bool {
+			return results[i].Weight > results[j].Weight
+		})
+	}
+
+	return results
 }
 
 // checkAutoCommit 检查是否满足自动上屏条件

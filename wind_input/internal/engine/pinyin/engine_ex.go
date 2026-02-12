@@ -377,6 +377,10 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	// 5. 排序（根据排序模式）
 	e.sortCandidates(result.Candidates, candidateOrder, syllableCount)
 
+	// 5.5 应用 Shadow 规则（置顶/删除/调权）
+	// 必须在拼音引擎的权重分配之后执行，因为拼音引擎会覆盖 CompositeDict 设置的 Shadow 权重
+	result.Candidates = e.applyShadowRules(input, result.Candidates)
+
 	// 6. 应用过滤
 	if !skipFilter {
 		filterMode := "smart"
@@ -405,4 +409,76 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 		len(result.Candidates), result.IsEmpty)
 
 	return result
+}
+
+// applyShadowRules 在拼音引擎的权重分配之后应用 Shadow 规则
+// 拼音引擎会覆盖 CompositeDict 设置的权重，所以需要在最终排序后再次应用
+func (e *Engine) applyShadowRules(input string, candidates []candidate.Candidate) []candidate.Candidate {
+	if e.dictManager == nil {
+		return candidates
+	}
+	shadowLayer := e.dictManager.GetShadowLayer()
+	if shadowLayer == nil {
+		return candidates
+	}
+
+	// 收集所有相关 code 的 Shadow 规则
+	// 拼音场景：用户输入 "nihao" 但候选可能来自不同路径（精确、前缀、子词组等）
+	// 需要同时查 input 和每个候选的 Code
+	deleted := make(map[string]bool)
+	toppedMap := make(map[string]bool)
+	reweighted := make(map[string]int)
+
+	codeSet := make(map[string]bool)
+	codeSet[input] = true
+	for _, c := range candidates {
+		if c.Code != "" && c.Code != input {
+			codeSet[c.Code] = true
+		}
+	}
+
+	for code := range codeSet {
+		rules := shadowLayer.GetShadowRules(code)
+		for _, rule := range rules {
+			switch rule.Action {
+			case dict.ShadowActionDelete:
+				deleted[rule.Word] = true
+			case dict.ShadowActionTop:
+				toppedMap[rule.Word] = true
+			case dict.ShadowActionReweight:
+				reweighted[rule.Word] = rule.NewWeight
+			}
+		}
+	}
+
+	if len(deleted) == 0 && len(toppedMap) == 0 && len(reweighted) == 0 {
+		return candidates
+	}
+
+	// 应用规则：过滤删除项，标记置顶项和调权项
+	needResort := false
+	var results []candidate.Candidate
+	for _, c := range candidates {
+		if deleted[c.Text] {
+			continue
+		}
+		if toppedMap[c.Text] {
+			// 置顶权重高于拼音引擎最高权重(weightCommand=4000000)
+			c.Weight = 5000000
+			needResort = true
+		} else if newWeight, ok := reweighted[c.Text]; ok {
+			c.Weight = newWeight
+			needResort = true
+		}
+		results = append(results, c)
+	}
+
+	// 有权重变化时重新排序
+	if needResort {
+		sort.SliceStable(results, func(i, j int) bool {
+			return results[i].Weight > results[j].Weight
+		})
+	}
+
+	return results
 }

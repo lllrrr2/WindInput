@@ -19,13 +19,19 @@
             已被修改
           </p>
         </div>
-        <button class="btn btn-sm btn-primary" @click="handleReloadAllFiles">重新加载</button>
-        <button class="btn btn-sm" @click="showFileChangeAlert = false">忽略</button>
+        <button class="btn btn-sm btn-primary" @click="handleReloadAllFiles">
+          重新加载
+        </button>
+        <button class="btn btn-sm" @click="showFileChangeAlert = false">
+          忽略
+        </button>
       </div>
     </div>
 
     <!-- 消息提示 -->
-    <div v-if="dictMessage" :class="['dict-message', dictMessageType]">{{ dictMessage }}</div>
+    <div v-if="dictMessage" :class="['dict-message', dictMessageType]">
+      {{ dictMessage }}
+    </div>
 
     <!-- 子标签页 -->
     <div class="dict-tabs">
@@ -60,15 +66,29 @@
     <!-- 用户短语 -->
     <div v-else-if="dictSubTab === 'phrases'" class="dict-content">
       <div class="dict-toolbar">
-        <button class="btn btn-primary btn-sm" @click="showAddPhraseForm = true">+ 添加短语</button>
-        <button class="btn btn-sm" @click="loadDictData" :disabled="dictLoading">
+        <button
+          class="btn btn-primary btn-sm"
+          @click="showAddPhraseForm = true"
+        >
+          + 添加短语
+        </button>
+        <button
+          class="btn btn-sm"
+          @click="loadDictData"
+          :disabled="dictLoading"
+        >
           {{ dictLoading ? "加载中..." : "刷新" }}
         </button>
       </div>
       <div v-if="showAddPhraseForm" class="dict-form-card">
         <div class="form-row">
           <label>编码</label>
-          <input type="text" v-model="newPhrase.code" class="input" placeholder="如: rq" />
+          <input
+            type="text"
+            v-model="newPhrase.code"
+            class="input"
+            placeholder="如: rq"
+          />
         </div>
         <div class="form-row">
           <label>文本</label>
@@ -81,11 +101,19 @@
         </div>
         <div class="form-row">
           <label>权重</label>
-          <input type="number" v-model.number="newPhrase.weight" class="input input-sm" />
+          <input
+            type="number"
+            v-model.number="newPhrase.weight"
+            class="input input-sm"
+          />
         </div>
         <div class="form-actions">
-          <button class="btn btn-sm" @click="showAddPhraseForm = false">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleAddPhrase">添加</button>
+          <button class="btn btn-sm" @click="showAddPhraseForm = false">
+            取消
+          </button>
+          <button class="btn btn-primary btn-sm" @click="handleAddPhrase">
+            添加
+          </button>
         </div>
       </div>
       <div class="dict-list" v-if="phrases.length > 0">
@@ -96,7 +124,11 @@
             <span v-if="item.type" class="dict-item-tag">{{ item.type }}</span>
           </div>
           <div class="dict-item-actions">
-            <button class="btn-icon btn-delete" @click="handleRemovePhrase(item)" title="删除">
+            <button
+              class="btn-icon btn-delete"
+              @click="handleRemovePhrase(item)"
+              title="删除"
+            >
               &times;
             </button>
           </div>
@@ -125,27 +157,65 @@
         </button>
       </div>
       <div class="dict-toolbar">
-        <button class="btn btn-primary btn-sm" @click="showAddWordForm = true">+ 添加词条</button>
-        <button class="btn btn-sm" @click="loadDictData" :disabled="dictLoading">
+        <button class="btn btn-primary btn-sm" @click="showAddWordForm = true">
+          + 添加词条
+        </button>
+        <button
+          class="btn btn-sm"
+          @click="handleImportUserDict"
+          :disabled="dictLoading"
+        >
+          导入
+        </button>
+        <button
+          class="btn btn-sm"
+          @click="handleExportUserDict"
+          :disabled="dictLoading"
+        >
+          导出
+        </button>
+        <button
+          class="btn btn-sm"
+          @click="loadDictData"
+          :disabled="dictLoading"
+        >
           {{ dictLoading ? "加载中..." : "刷新" }}
         </button>
       </div>
       <div v-if="showAddWordForm" class="dict-form-card">
         <div class="form-row">
           <label>编码</label>
-          <input type="text" v-model="newWord.code" class="input" placeholder="如: nihao" />
+          <input
+            type="text"
+            v-model="newWord.code"
+            class="input"
+            placeholder="如: nihao"
+          />
         </div>
         <div class="form-row">
           <label>词条</label>
-          <input type="text" v-model="newWord.text" class="input" placeholder="如: 你好" />
+          <input
+            type="text"
+            v-model="newWord.text"
+            class="input"
+            placeholder="如: 你好"
+          />
         </div>
         <div class="form-row">
           <label>权重</label>
-          <input type="number" v-model.number="newWord.weight" class="input input-sm" />
+          <input
+            type="number"
+            v-model.number="newWord.weight"
+            class="input input-sm"
+          />
         </div>
         <div class="form-actions">
-          <button class="btn btn-sm" @click="showAddWordForm = false">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleAddUserWord">添加</button>
+          <button class="btn btn-sm" @click="showAddWordForm = false">
+            取消
+          </button>
+          <button class="btn btn-primary btn-sm" @click="handleAddUserWord">
+            添加
+          </button>
         </div>
       </div>
       <div class="dict-list" v-if="userDict.length > 0">
@@ -153,10 +223,16 @@
           <div class="dict-item-main">
             <span class="dict-item-code">{{ item.code }}</span>
             <span class="dict-item-text">{{ item.text }}</span>
-            <span class="dict-item-weight" v-if="item.weight">{{ item.weight }}</span>
+            <span class="dict-item-weight" v-if="item.weight">{{
+              item.weight
+            }}</span>
           </div>
           <div class="dict-item-actions">
-            <button class="btn-icon btn-delete" @click="handleRemoveUserWord(item)" title="删除">
+            <button
+              class="btn-icon btn-delete"
+              @click="handleRemoveUserWord(item)"
+              title="删除"
+            >
               &times;
             </button>
           </div>
@@ -168,21 +244,38 @@
     <!-- 候选调整 (Shadow) -->
     <div v-else-if="dictSubTab === 'shadow'" class="dict-content">
       <div class="dict-toolbar">
-        <button class="btn btn-primary btn-sm" @click="showAddShadowForm = true">
+        <button
+          class="btn btn-primary btn-sm"
+          @click="showAddShadowForm = true"
+        >
           + 添加规则
         </button>
-        <button class="btn btn-sm" @click="loadDictData" :disabled="dictLoading">
+        <button
+          class="btn btn-sm"
+          @click="loadDictData"
+          :disabled="dictLoading"
+        >
           {{ dictLoading ? "加载中..." : "刷新" }}
         </button>
       </div>
       <div v-if="showAddShadowForm" class="dict-form-card">
         <div class="form-row">
           <label>编码</label>
-          <input type="text" v-model="newShadow.code" class="input" placeholder="如: zg" />
+          <input
+            type="text"
+            v-model="newShadow.code"
+            class="input"
+            placeholder="如: zg"
+          />
         </div>
         <div class="form-row">
           <label>词条</label>
-          <input type="text" v-model="newShadow.word" class="input" placeholder="如: 中国" />
+          <input
+            type="text"
+            v-model="newShadow.word"
+            class="input"
+            placeholder="如: 中国"
+          />
         </div>
         <div class="form-row">
           <label>操作</label>
@@ -192,24 +285,41 @@
             <option value="adjust">调整权重</option>
           </select>
         </div>
-        <div class="form-row" v-if="newShadow.action === 'adjust' || newShadow.action === 'pin'">
+        <div
+          class="form-row"
+          v-if="newShadow.action === 'adjust' || newShadow.action === 'pin'"
+        >
           <label>权重</label>
-          <input type="number" v-model.number="newShadow.weight" class="input input-sm" />
+          <input
+            type="number"
+            v-model.number="newShadow.weight"
+            class="input input-sm"
+          />
         </div>
         <div class="form-actions">
-          <button class="btn btn-sm" @click="showAddShadowForm = false">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleAddShadowRule">添加</button>
+          <button class="btn btn-sm" @click="showAddShadowForm = false">
+            取消
+          </button>
+          <button class="btn btn-primary btn-sm" @click="handleAddShadowRule">
+            添加
+          </button>
         </div>
       </div>
       <div class="dict-list" v-if="shadowRules.length > 0">
-        <div class="dict-list-item" v-for="(item, idx) in shadowRules" :key="idx">
+        <div
+          class="dict-list-item"
+          v-for="(item, idx) in shadowRules"
+          :key="idx"
+        >
           <div class="dict-item-main">
             <span class="dict-item-code">{{ item.code }}</span>
             <span class="dict-item-text">{{ item.word }}</span>
             <span class="dict-item-tag" :class="'tag-' + item.action">
               {{ getShadowActionLabel(item.action) }}
             </span>
-            <span class="dict-item-weight" v-if="item.weight">{{ item.weight }}</span>
+            <span class="dict-item-weight" v-if="item.weight">{{
+              item.weight
+            }}</span>
           </div>
           <div class="dict-item-actions">
             <button
@@ -246,7 +356,11 @@ const dictSubTab = ref<"phrases" | "userdict" | "shadow">("phrases");
 const phrases = ref<PhraseItem[]>([]);
 const userDict = ref<UserWordItem[]>([]);
 const shadowRules = ref<ShadowRuleItem[]>([]);
-const dictStats = ref<DictStats>({ word_count: 0, phrase_count: 0, shadow_count: 0 });
+const dictStats = ref<DictStats>({
+  word_count: 0,
+  phrase_count: 0,
+  shadow_count: 0,
+});
 const dictLoading = ref(false);
 const dictMessage = ref("");
 const dictMessageType = ref<"success" | "error">("success");
@@ -276,17 +390,22 @@ async function loadDictData() {
   if (!props.isWailsEnv) return;
   dictLoading.value = true;
   try {
-    const [phrasesData, userDictData, shadowData, stats, engineType] = await Promise.all([
-      wailsApi.getPhrases(),
-      wailsApi.getUserDict(),
-      wailsApi.getShadowRules(),
-      wailsApi.getUserDictStats(),
-      wailsApi.getUserDictEngineType(),
-    ]);
+    const [phrasesData, userDictData, shadowData, stats, engineType] =
+      await Promise.all([
+        wailsApi.getPhrases(),
+        wailsApi.getUserDict(),
+        wailsApi.getShadowRules(),
+        wailsApi.getUserDictStats(),
+        wailsApi.getUserDictEngineType(),
+      ]);
     phrases.value = phrasesData || [];
     userDict.value = userDictData || [];
     shadowRules.value = shadowData || [];
-    dictStats.value = stats || { word_count: 0, phrase_count: 0, shadow_count: 0 };
+    dictStats.value = stats || {
+      word_count: 0,
+      phrase_count: 0,
+      shadow_count: 0,
+    };
     if (engineType === "pinyin" || engineType === "wubi") {
       userDictEngine.value = engineType;
     }
@@ -309,7 +428,10 @@ async function handleSwitchUserDictEngine(engineType: "wubi" | "pinyin") {
       wailsApi.getUserDictStats(),
     ]);
     userDict.value = userDictData || [];
-    dictStats.value = { ...dictStats.value, word_count: stats?.word_count || 0 };
+    dictStats.value = {
+      ...dictStats.value,
+      word_count: stats?.word_count || 0,
+    };
   } catch (e) {
     console.error("切换词库失败", e);
     showDictMessage("切换词库失败", "error");
@@ -324,7 +446,11 @@ async function handleAddPhrase() {
     return;
   }
   try {
-    await wailsApi.addPhrase(newPhrase.value.code, newPhrase.value.text, newPhrase.value.weight);
+    await wailsApi.addPhrase(
+      newPhrase.value.code,
+      newPhrase.value.text,
+      newPhrase.value.weight,
+    );
     showDictMessage("添加成功", "success");
     showAddPhraseForm.value = false;
     newPhrase.value = { code: "", text: "", weight: 0 };
@@ -351,7 +477,11 @@ async function handleAddUserWord() {
     return;
   }
   try {
-    await wailsApi.addUserWord(newWord.value.code, newWord.value.text, newWord.value.weight);
+    await wailsApi.addUserWord(
+      newWord.value.code,
+      newWord.value.text,
+      newWord.value.weight,
+    );
     showDictMessage("添加成功", "success");
     showAddWordForm.value = false;
     newWord.value = { code: "", text: "", weight: 0 };
@@ -369,6 +499,36 @@ async function handleRemoveUserWord(item: UserWordItem) {
     await loadDictData();
   } catch (e: any) {
     showDictMessage(e.message || "删除失败", "error");
+  }
+}
+
+async function handleImportUserDict() {
+  dictLoading.value = true;
+  try {
+    const result = await wailsApi.importUserDict();
+    if (result.cancelled) return;
+    showDictMessage(
+      `导入成功，新增 ${result.count} 条，共 ${result.total} 条`,
+      "success",
+    );
+    await loadDictData();
+  } catch (e: any) {
+    showDictMessage(e.message || "导入失败", "error");
+  } finally {
+    dictLoading.value = false;
+  }
+}
+
+async function handleExportUserDict() {
+  dictLoading.value = true;
+  try {
+    const result = await wailsApi.exportUserDict();
+    if (result.cancelled) return;
+    showDictMessage(`导出成功，共 ${result.count} 条`, "success");
+  } catch (e: any) {
+    showDictMessage(e.message || "导出失败", "error");
+  } finally {
+    dictLoading.value = false;
   }
 }
 
@@ -435,7 +595,11 @@ async function handleReloadAllFiles() {
 }
 
 function getShadowActionLabel(action: string): string {
-  const labels: Record<string, string> = { pin: "置顶", delete: "删除", adjust: "调整权重" };
+  const labels: Record<string, string> = {
+    pin: "置顶",
+    delete: "删除",
+    adjust: "调整权重",
+  };
   return labels[action] || action;
 }
 

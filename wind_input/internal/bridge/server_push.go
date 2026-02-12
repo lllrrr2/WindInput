@@ -194,34 +194,71 @@ func (s *Server) PushCommitTextToActiveClient(text string) {
 	}
 	s.pushMu.RUnlock()
 
-	if !exists || writer == nil {
-		s.logger.Warn("PushCommitText: no push pipe for active process",
-			"activeProcessID", activeProcessID)
-		return
-	}
-
 	// Encode the commit text message using CMD_COMMIT_TEXT
 	encoded := s.codec.EncodeCommitText(text, "", false, false)
 
-	s.logger.Debug("Pushing commit text to active TSF client via push pipe",
-		"processID", activeProcessID)
+	if exists && writer != nil {
+		// Best case: send to the specific active client
+		s.logger.Debug("Pushing commit text to active TSF client via push pipe",
+			"processID", activeProcessID)
 
-	// Send to the active client only
-	if err := s.codec.WriteMessage(writer, encoded); err != nil {
-		s.logger.Warn("Failed to push commit text to active client",
-			"processID", activeProcessID, "error", err)
+		if err := s.codec.WriteMessage(writer, encoded); err != nil {
+			s.logger.Warn("Failed to push commit text to active client",
+				"processID", activeProcessID, "error", err)
 
-		// Remove the failed client
-		s.pushMu.Lock()
-		delete(s.pushClients, handle)
-		delete(s.pushHandleToPID, handle)
-		delete(s.pushClientsByPID, activeProcessID)
-		s.pushMu.Unlock()
-		windows.CloseHandle(handle)
+			// Remove the failed client
+			s.pushMu.Lock()
+			delete(s.pushClients, handle)
+			delete(s.pushHandleToPID, handle)
+			delete(s.pushClientsByPID, activeProcessID)
+			s.pushMu.Unlock()
+			windows.CloseHandle(handle)
+			return
+		}
+
+		s.logger.Info("Commit text push completed to active client", "processID", activeProcessID)
 		return
 	}
 
-	s.logger.Info("Commit text push completed to active client", "processID", activeProcessID)
+	// Fallback: active process has no push pipe connection.
+	// Broadcast to all push pipe clients — only the TSF instance with
+	// an active composition will actually insert the text.
+	s.logger.Warn("PushCommitText: no push pipe for active process, broadcasting to all clients",
+		"activeProcessID", activeProcessID)
+
+	s.pushMu.RLock()
+	type clientInfo struct {
+		handle windows.Handle
+		writer *pipeWriter
+	}
+	allClients := make([]clientInfo, 0, len(s.pushClients))
+	for h, w := range s.pushClients {
+		allClients = append(allClients, clientInfo{handle: h, writer: w})
+	}
+	s.pushMu.RUnlock()
+
+	var failedHandles []windows.Handle
+	for _, client := range allClients {
+		if err := s.codec.WriteMessage(client.writer, encoded); err != nil {
+			failedHandles = append(failedHandles, client.handle)
+		}
+	}
+
+	if len(failedHandles) > 0 {
+		s.pushMu.Lock()
+		for _, h := range failedHandles {
+			pid := s.pushHandleToPID[h]
+			delete(s.pushClients, h)
+			delete(s.pushHandleToPID, h)
+			if pid != 0 {
+				delete(s.pushClientsByPID, pid)
+			}
+			windows.CloseHandle(h)
+		}
+		s.pushMu.Unlock()
+	}
+
+	s.logger.Info("Commit text broadcast completed", "totalClients", len(allClients), "failed", len(failedHandles))
 }
 
 // PushClearCompositionToActiveClient sends a clear composition command to the active TSF client

@@ -4,6 +4,7 @@ package ui
 // Candidate represents a candidate word
 type Candidate struct {
 	Text           string
+	Code           string // 编码（拼音/五笔），用于 Shadow 层操作
 	Index          int
 	Comment        string
 	Weight         int

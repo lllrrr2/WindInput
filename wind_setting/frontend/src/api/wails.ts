@@ -143,6 +143,22 @@ export async function switchUserDictEngine(engineType: string): Promise<void> {
   return App.SwitchUserDictEngine(engineType);
 }
 
+// 导入导出结果类型
+export interface ImportExportResult {
+  cancelled: boolean;
+  count: number;
+  total?: number;
+  path?: string;
+}
+
+export async function importUserDict(): Promise<ImportExportResult> {
+  return App.ImportUserDict() as unknown as ImportExportResult;
+}
+
+export async function exportUserDict(): Promise<ImportExportResult> {
+  return App.ExportUserDict() as unknown as ImportExportResult;
+}
+
 // Shadow 管理
 export async function getShadowRules(): Promise<ShadowRuleItem[]> {
   return App.GetShadowRules();
