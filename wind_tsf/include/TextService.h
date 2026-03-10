@@ -10,6 +10,7 @@ class CLangBarItemButton;
 class CCaretEditSession;
 class CDisplayAttributeProvider;
 class CHotkeyManager;
+struct ServiceResponse;
 
 class CTextService : public ITfTextInputProcessor,
                      public ITfThreadMgrEventSink,
@@ -140,7 +141,14 @@ private:
     BOOL _InitDisplayAttribute();
     void _UninitDisplayAttribute();
 
+    // State sync helper (internal): apply status response to local state
+    void _SyncStateFromResponse(const ServiceResponse& response);
+
 public:
+    // Perform full state sync with Go service (sends IMEActivated + processes response).
+    // Called after new/re-connection to ensure TSF and service state are consistent.
+    void _DoFullStateSync();
+
     // Get display attribute GUID atom for composition
     TfGuidAtom GetDisplayAttributeInputAtom() { return _gaDisplayAttributeInput; }
 };

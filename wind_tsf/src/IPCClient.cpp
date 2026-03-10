@@ -12,6 +12,7 @@ CIPCClient::CIPCClient()
     : _hPipe(INVALID_HANDLE_VALUE)
     , _hEvent(NULL)
     , _serviceStartAttempted(FALSE)
+    , _needsStateSync(TRUE)
     , _circuitState(CircuitState::Closed)
     , _consecutiveFailures(0)
     , _lastFailureTime(0)
@@ -447,6 +448,7 @@ BOOL CIPCClient::Connect()
             _LogInfo(L"Connected to Go Service (binary protocol v%d.%d)",
                      PROTOCOL_VERSION >> 12, PROTOCOL_VERSION & 0xFFF);
             _RecordSuccess();
+            _needsStateSync = TRUE;
 
             return TRUE;
         }

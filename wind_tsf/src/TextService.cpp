@@ -552,51 +552,10 @@ STDAPI CTextService::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId)
     // This ensures status indicators appear at the correct position immediately
     SendCaretPositionUpdate();
 
-    // Notify Go service that IME is activated (so it can show toolbar)
-    if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
-    {
-        WIND_LOG_DEBUG(L"Sending ime_activated to service\n");
-        if (_pIPCClient->SendIMEActivated())
-        {
-            ServiceResponse response;
-            if (_pIPCClient->ReceiveResponse(response))
-            {
-                WIND_LOG_DEBUG(L"ime_activated response received\n");
-
-                // If we got a status update, sync state and hotkeys
-                if (response.type == ResponseType::StatusUpdate)
-                {
-                    _bChineseMode = response.IsChineseMode();
-
-                    // Sync full status to LangBarItemButton
-                    if (_pLangBarItemButton != nullptr)
-                    {
-                        BOOL bCapsLock = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
-                        _pLangBarItemButton->UpdateFullStatus(
-                            response.IsChineseMode(),
-                            response.IsFullWidth(),
-                            response.IsChinesePunct(),
-                            response.IsToolbarVisible(),
-                            bCapsLock
-                        );
-                        WIND_LOG_INFO_FMT(L"Synced full status: mode=%d, width=%d, punct=%d, toolbar=%d\n",
-                            response.IsChineseMode(), response.IsFullWidth(),
-                            response.IsChinesePunct(), response.IsToolbarVisible());
-                    }
-
-                    // Update hotkey whitelist if present
-                    if (response.HasHotkeys() && _pHotkeyManager != nullptr)
-                    {
-                        WIND_LOG_DEBUG(L"Updating hotkey whitelist from ime_activated\n");
-                        _pHotkeyManager->UpdateHotkeys(
-                            response.keyDownHotkeys,
-                            response.keyUpHotkeys
-                        );
-                    }
-                }
-            }
-        }
-    }
+    // Notify Go service that IME is activated and sync full state.
+    // Uses _DoFullStateSync which also handles lazy connect (service may
+    // still be starting after first install).
+    _DoFullStateSync();
 
     // NOTE: Using synchronous IPC mode (no reader thread)
     // Reference: Weasel uses sync IPC with librime and it works well
@@ -720,9 +679,11 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
         LONG caretX = 0, caretY = 0, caretHeight = 0;
         GetCaretPosition(&caretX, &caretY, &caretHeight);
 
-        // Send focus_gained to service and receive response synchronously
-        // This ensures state is properly synced before user starts typing
-        if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
+        // Send focus_gained to service and receive response synchronously.
+        // This ensures state is properly synced before user starts typing.
+        // Note: SendFocusGained does lazy connect internally, so this also
+        // handles the case where the service started after TSF was loaded.
+        if (_pIPCClient != nullptr)
         {
             if (_pIPCClient->SendFocusGained(caretX, caretY, caretHeight))
             {
@@ -730,34 +691,8 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
                 if (_pIPCClient->ReceiveResponse(response))
                 {
                     WIND_LOG_DEBUG(L"FocusGained response received\n");
-
-                    // If we got a status update, sync full state including language bar
-                    if (response.type == ResponseType::StatusUpdate)
-                    {
-                        _bChineseMode = response.IsChineseMode();
-
-                        // Update language bar with full status (including CapsLock)
-                        if (_pLangBarItemButton != nullptr)
-                        {
-                            _pLangBarItemButton->UpdateFullStatus(
-                                response.IsChineseMode(),
-                                response.IsFullWidth(),
-                                response.IsChinesePunct(),
-                                response.IsToolbarVisible(),
-                                response.IsCapsLock()
-                            );
-                        }
-
-                        // Update hotkey whitelist if present
-                        if (response.HasHotkeys() && _pHotkeyManager != nullptr)
-                        {
-                            WIND_LOG_DEBUG(L"Updating hotkey whitelist from focus_gained\n");
-                            _pHotkeyManager->UpdateHotkeys(
-                                response.keyDownHotkeys,
-                                response.keyUpHotkeys
-                            );
-                        }
-                    }
+                    _SyncStateFromResponse(response);
+                    _pIPCClient->ClearNeedsSyncFlag();
                 }
             }
         }
@@ -814,6 +749,64 @@ void CTextService::_UninitKeyEventSink()
         _pKeyEventSink->Release();
         _pKeyEventSink = nullptr;
     }
+}
+
+// ============================================================================
+// State sync helpers
+// ============================================================================
+
+void CTextService::_SyncStateFromResponse(const ServiceResponse& response)
+{
+    if (response.type != ResponseType::StatusUpdate)
+        return;
+
+    _bChineseMode = response.IsChineseMode();
+
+    // Sync full status to LangBarItemButton
+    if (_pLangBarItemButton != nullptr)
+    {
+        BOOL bCapsLock = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
+        _pLangBarItemButton->UpdateFullStatus(
+            response.IsChineseMode(),
+            response.IsFullWidth(),
+            response.IsChinesePunct(),
+            response.IsToolbarVisible(),
+            bCapsLock
+        );
+    }
+
+    // Update hotkey whitelist if present
+    if (response.HasHotkeys() && _pHotkeyManager != nullptr)
+    {
+        WIND_LOG_DEBUG(L"Updating hotkey whitelist from state sync\n");
+        _pHotkeyManager->UpdateHotkeys(
+            response.keyDownHotkeys,
+            response.keyUpHotkeys
+        );
+    }
+
+    WIND_LOG_INFO_FMT(L"State synced: mode=%d, width=%d, punct=%d, toolbar=%d\n",
+        response.IsChineseMode(), response.IsFullWidth(),
+        response.IsChinesePunct(), response.IsToolbarVisible());
+}
+
+void CTextService::_DoFullStateSync()
+{
+    if (_pIPCClient == nullptr || !_pIPCClient->IsConnected())
+        return;
+
+    WIND_LOG_INFO(L"Performing full state sync with Go service\n");
+
+    if (_pIPCClient->SendIMEActivated())
+    {
+        ServiceResponse response;
+        if (_pIPCClient->ReceiveResponse(response))
+        {
+            _SyncStateFromResponse(response);
+        }
+    }
+
+    _pIPCClient->ClearNeedsSyncFlag();
 }
 
 BOOL CTextService::_InitIPCClient()

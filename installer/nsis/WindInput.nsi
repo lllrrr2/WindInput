@@ -336,6 +336,14 @@ install_cleanup_bak_end:
     SetRebootFlag true
   ${EndIf}
 
+  ; --- Step 8: Auto-start on login (registry Run key) ---
+  DetailPrint "正在配置开机自启动..."
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WindInput" '"$INSTDIR\wind_input.exe"'
+
+  ; --- Step 9: Pre-start service (background, so dictionary can be pre-loaded) ---
+  DetailPrint "正在预启动输入法服务..."
+  Exec '"$INSTDIR\wind_input.exe"'
+
   DetailPrint "正在创建快捷方式..."
   CreateDirectory "$SMPROGRAMS\清风输入法"
   CreateShortcut "$SMPROGRAMS\清风输入法\清风输入法 设置.lnk" "$INSTDIR\wind_setting.exe" "" "$INSTDIR\wind_setting.exe" 0
@@ -436,6 +444,8 @@ uninst_cleanup_bak_end:
   RMDir /r /REBOOTOK "$LOCALAPPDATA\WindInput\cache"
 
   ; --- Step 6: Registry ---
+  ; Remove auto-start entry
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "WindInput"
   DeleteRegKey HKLM "${UNINST_KEY}"
   IfRebootFlag 0 uninst_done
     IfSilent uninst_done 0

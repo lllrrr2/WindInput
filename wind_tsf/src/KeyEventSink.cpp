@@ -620,6 +620,14 @@ BOOL CKeyEventSink::_SendKeyToService(uint32_t keyCode, uint32_t modifiers, uint
         return FALSE;
     }
 
+    // If a new connection was established (e.g., service started after TSF loaded),
+    // perform a full state sync before processing key events.
+    // This covers the edge case where service becomes available between focus events.
+    if (pIPCClient->NeedsStateSync() && pIPCClient->IsConnected())
+    {
+        _pTextService->_DoFullStateSync();
+    }
+
     // Get scan code from virtual key (optional, set to 0 if not needed)
     uint32_t scanCode = MapVirtualKeyW(keyCode, MAPVK_VK_TO_VSC);
 

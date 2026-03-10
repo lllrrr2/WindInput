@@ -190,6 +190,11 @@ public:
     // Force circuit breaker reset (e.g., user manually triggered)
     void ResetCircuitBreaker();
 
+    // State sync tracking: TRUE when a new connection is established and
+    // full state sync with Go service hasn't happened yet.
+    BOOL NeedsStateSync() const { return _needsStateSync; }
+    void ClearNeedsSyncFlag() { _needsStateSync = FALSE; }
+
 private:
     // Pipe handle
     HANDLE _hPipe;
@@ -199,6 +204,9 @@ private:
 
     // Service start flag
     BOOL _serviceStartAttempted;
+
+    // State sync flag: set TRUE on new connection, cleared after full sync
+    BOOL _needsStateSync;
 
     // Circuit breaker state
     CircuitState _circuitState;

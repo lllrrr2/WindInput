@@ -19,7 +19,7 @@ REM 获取脚本目录
 set SCRIPT_DIR=%~dp0
 set BUILD_DIR=%SCRIPT_DIR%..\build
 
-echo [1/8] 检查文件...
+echo [1/10] 检查文件...
 if not exist "%BUILD_DIR%\wind_tsf.dll" (
     echo [错误] 未找到 wind_tsf.dll
     echo 请先运行 build_all.bat
@@ -34,12 +34,12 @@ if not exist "%BUILD_DIR%\wind_input.exe" (
     exit /b 1
 )
 
-echo [2/8] 停止旧进程...
+echo [2/10] 停止旧进程...
 taskkill /F /IM wind_input.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-echo [3/8] 创建安装目录...
-echo [4/8] 处理已有文件...
+echo [3/10] 创建安装目录...
+echo [4/10] 处理已有文件...
 set "INSTALL_DIR=%ProgramW6432%\WindInput"
 if "%ProgramW6432%"=="" set "INSTALL_DIR=%ProgramFiles%\WindInput"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
@@ -81,7 +81,7 @@ if exist "%INSTALL_DIR%\wind_setting.exe" (
     )
 )
 
-echo [5/8] 复制文件...
+echo [5/10] 复制文件...
 copy /Y "%BUILD_DIR%\wind_tsf.dll" "%INSTALL_DIR%\" >nul
 if %errorLevel% neq 0 (
     echo [错误] 复制 wind_tsf.dll 失败
@@ -108,7 +108,7 @@ if exist "%BUILD_DIR%\wind_setting.exe" (
     echo [提示] 未找到 wind_setting.exe,已跳过(可选)
 )
 
-echo [6/8] 从 build 目录复制词库(源文件, wdb 运行时自动生成)...
+echo [6/10] 从 build 目录复制词库(源文件, wdb 运行时自动生成)...
 REM 创建词库目录
 if not exist "%INSTALL_DIR%\dict\pinyin" mkdir "%INSTALL_DIR%\dict\pinyin"
 if not exist "%INSTALL_DIR%\dict\wubi" mkdir "%INSTALL_DIR%\dict\wubi"
@@ -151,7 +151,7 @@ if exist "%BUILD_DIR%\dict\common_chars.txt" (
     echo [警告] build 目录中未找到常用字表
 )
 
-echo [7/8] 注册 COM 组件...
+echo [7/10] 注册 COM 组件...
 regsvr32 /s "%INSTALL_DIR%\wind_tsf.dll"
 if %errorLevel% neq 0 (
     echo [错误] COM 注册失败
@@ -159,7 +159,19 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo [8/8] 创建快捷方式...
+echo [8/10] 配置开机自启动...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WindInput" /t REG_SZ /d "\"%INSTALL_DIR%\wind_input.exe\"" /f >nul 2>&1
+if %errorLevel% equ 0 (
+    echo   - 已添加开机自启动注册表项
+) else (
+    echo [警告] 添加开机自启动失败
+)
+
+echo [9/10] 预启动输入法服务...
+start "" "%INSTALL_DIR%\wind_input.exe"
+echo   - 服务已在后台启动
+
+echo [10/10] 创建快捷方式...
 REM 创建开始菜单快捷方式
 if exist "%INSTALL_DIR%\wind_setting.exe" (
     powershell -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%ProgramData%\Microsoft\Windows\Start Menu\Programs\清风输入法 设置.lnk'); $s.TargetPath = '%INSTALL_DIR%\wind_setting.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = '清风输入法 设置'; $s.Save()" >nul 2>&1
@@ -195,7 +207,7 @@ echo - dict\pinyin\unigram.txt (语言模型)
 echo - dict\wubi\wubi86.txt (五笔86词库)
 echo - dict\common_chars.txt (常用字表)
 echo.
-echo 服务将在使用输入法时自动启动。
+echo 服务已自动启动，并已配置开机自启动。
 echo.
 echo 使用方法:
 echo 1. 按 Win+Space 切换输入法
