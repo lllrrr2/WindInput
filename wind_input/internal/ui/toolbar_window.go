@@ -275,6 +275,16 @@ func (w *ToolbarWindow) SetMenuFontSize(size float64) {
 	}
 }
 
+// SetFontPath updates the primary font for toolbar text and its popup menu.
+func (w *ToolbarWindow) SetFontPath(path string) {
+	if w.renderer != nil {
+		w.renderer.SetFontPath(path)
+	}
+	if w.popupMenu != nil {
+		w.popupMenu.SetFontPath(path)
+	}
+}
+
 // SetTextRenderMode switches between GDI and FreeType text rendering
 func (w *ToolbarWindow) SetTextRenderMode(mode TextRenderMode) {
 	if w.renderer != nil {
@@ -514,6 +524,10 @@ func (w *ToolbarWindow) Destroy() {
 	}
 	if globalToolbar == w {
 		globalToolbar = nil
+	}
+	if w.renderer != nil {
+		w.renderer.Close()
+		w.renderer = nil
 	}
 }
 

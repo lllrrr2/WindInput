@@ -1,5 +1,6 @@
 @echo off
 setlocal
+chcp 65001 >nul
 
 echo ======================================
 echo 清风输入法安装程序
@@ -22,6 +23,13 @@ set BUILD_DIR=%SCRIPT_DIR%..\build
 echo [1/10] 检查文件...
 if not exist "%BUILD_DIR%\wind_tsf.dll" (
     echo [错误] 未找到 wind_tsf.dll
+    echo 请先运行 build_all.bat
+    pause
+    exit /b 1
+)
+
+if not exist "%BUILD_DIR%\wind_dwrite.dll" (
+    echo [错误] 未找到 wind_dwrite.dll
     echo 请先运行 build_all.bat
     pause
     exit /b 1
@@ -54,11 +62,24 @@ if exist "%INSTALL_DIR%\wind_tsf.dll" (
 
     del /F "%INSTALL_DIR%\wind_tsf.dll" >nul 2>&1
     if exist "%INSTALL_DIR%\wind_tsf.dll" (
-        echo [警告] 无法删除旧的 wind_tsf.dll,重命名为 wind_tsf.dll.old_%RANDOM_SUFFIX%
+        echo [WARN] Failed to delete old wind_tsf.dll, renaming to wind_tsf.dll.old_%RANDOM_SUFFIX%
         ren "%INSTALL_DIR%\wind_tsf.dll" "wind_tsf.dll.old_%RANDOM_SUFFIX%" >nul 2>&1
         if exist "%INSTALL_DIR%\wind_tsf.dll" (
-            echo [警告] 仍无法重命名,尝试备用名称...
+            echo [WARN] Failed to rename old wind_tsf.dll, trying backup name...
             ren "%INSTALL_DIR%\wind_tsf.dll" "wind_tsf_%RANDOM_SUFFIX%.dll.bak" >nul 2>&1
+        )
+    )
+)
+
+REM 处理旧 wind_dwrite.dll
+if exist "%INSTALL_DIR%\wind_dwrite.dll" (
+    del /F "%INSTALL_DIR%\wind_dwrite.dll" >nul 2>&1
+    if exist "%INSTALL_DIR%\wind_dwrite.dll" (
+        echo [WARN] Failed to delete old wind_dwrite.dll, renaming to wind_dwrite.dll.old_%RANDOM_SUFFIX%
+        ren "%INSTALL_DIR%\wind_dwrite.dll" "wind_dwrite.dll.old_%RANDOM_SUFFIX%" >nul 2>&1
+        if exist "%INSTALL_DIR%\wind_dwrite.dll" (
+            echo [WARN] Failed to rename old wind_dwrite.dll, trying backup name...
+            ren "%INSTALL_DIR%\wind_dwrite.dll" "wind_dwrite_%RANDOM_SUFFIX%.dll.bak" >nul 2>&1
         )
     )
 )
@@ -67,7 +88,7 @@ REM 处理旧 wind_input.exe
 if exist "%INSTALL_DIR%\wind_input.exe" (
     del /F "%INSTALL_DIR%\wind_input.exe" >nul 2>&1
     if exist "%INSTALL_DIR%\wind_input.exe" (
-        echo [警告] 无法删除旧的 wind_input.exe,重命名为 wind_input.exe.old_%RANDOM_SUFFIX%
+        echo [WARN] Failed to delete old wind_input.exe, renaming to wind_input.exe.old_%RANDOM_SUFFIX%
         ren "%INSTALL_DIR%\wind_input.exe" "wind_input.exe.old_%RANDOM_SUFFIX%" >nul 2>&1
     )
 )
@@ -76,7 +97,7 @@ REM 处理旧 wind_setting.exe
 if exist "%INSTALL_DIR%\wind_setting.exe" (
     del /F "%INSTALL_DIR%\wind_setting.exe" >nul 2>&1
     if exist "%INSTALL_DIR%\wind_setting.exe" (
-        echo [警告] 无法删除旧的 wind_setting.exe,重命名
+        echo [WARN] Failed to delete old wind_setting.exe, renaming to backup file
         ren "%INSTALL_DIR%\wind_setting.exe" "wind_setting.exe.old_%RANDOM_SUFFIX%" >nul 2>&1
     )
 )
@@ -85,6 +106,13 @@ echo [5/10] 复制文件...
 copy /Y "%BUILD_DIR%\wind_tsf.dll" "%INSTALL_DIR%\" >nul
 if %errorLevel% neq 0 (
     echo [错误] 复制 wind_tsf.dll 失败
+    pause
+    exit /b 1
+)
+
+copy /Y "%BUILD_DIR%\wind_dwrite.dll" "%INSTALL_DIR%\" >nul
+if %errorLevel% neq 0 (
+    echo [错误] 复制 wind_dwrite.dll 失败
     pause
     exit /b 1
 )
@@ -199,6 +227,7 @@ echo 安装目录: %INSTALL_DIR%
 echo.
 echo 已安装组件:
 echo - wind_tsf.dll (TSF 桥接)
+echo - wind_dwrite.dll (DirectWrite 渲染 Shim)
 echo - wind_input.exe (输入法服务)
 echo - wind_setting.exe (设置界面)
 echo - dict\pinyin\8105.dict.yaml (拼音单字词库)

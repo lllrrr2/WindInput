@@ -176,16 +176,29 @@ func (fc *fontCache) touchLRU(size float64) {
 	fc.faceOrder = append(fc.faceOrder, size)
 }
 
+// Close releases all cached font.Face instances.
+func (fc *fontCache) Close() {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	for _, face := range fc.faces {
+		face.Close()
+	}
+	fc.faces = make(map[float64]font.Face)
+	fc.faceOrder = nil
+	fc.font = nil
+}
+
 // Renderer renders candidate window content
 type Renderer struct {
-	config        RenderConfig
-	fontPath      string
-	fontCache     *fontCache
-	fontReady     bool
-	resolvedTheme *theme.ResolvedTheme
-	textRenderer  *TextRenderer // GDI text renderer for native Windows text quality
-	textDrawer    TextDrawer    // Active text drawing backend (GDI or FreeType)
-	fontConfig    *FontConfig   // Centralized font configuration
+	config         RenderConfig
+	fontPath       string
+	fontCache      *fontCache
+	fontReady      bool
+	resolvedTheme  *theme.ResolvedTheme
+	textRenderer   *TextRenderer   // GDI text renderer for native Windows text quality
+	dwriteRenderer *DWriteRenderer // DirectWrite text renderer
+	textDrawer     TextDrawer      // Active text drawing backend (GDI, FreeType, or DirectWrite)
+	fontConfig     *FontConfig     // Centralized font configuration
 }
 
 // NewRenderer creates a new renderer
@@ -193,12 +206,15 @@ func NewRenderer(config RenderConfig) *Renderer {
 	fontCfg := NewFontConfig()
 	tr := NewTextRenderer()
 	tr.SetGDIParams(fontCfg.GetEffectiveGDIWeight(), fontCfg.GetEffectiveGDIScale())
+	dwr := NewDWriteRenderer("candidate")
+	dwr.SetGDIParams(fontCfg.GetEffectiveGDIWeight(), fontCfg.GetEffectiveGDIScale())
 
 	r := &Renderer{
-		config:       config,
-		fontCache:    newFontCache(),
-		textRenderer: tr,
-		fontConfig:   fontCfg,
+		config:         config,
+		fontCache:      newFontCache(),
+		textRenderer:   tr,
+		dwriteRenderer: dwr,
+		fontConfig:     fontCfg,
 	}
 	// Pre-load font on creation
 	r.ensureFontLoaded()
@@ -208,9 +224,16 @@ func NewRenderer(config RenderConfig) *Renderer {
 
 // updateTextDrawer creates the appropriate TextDrawer based on current render mode
 func (r *Renderer) updateTextDrawer() {
-	if r.config.TextRenderMode == TextRenderModeFreetype {
+	switch r.config.TextRenderMode {
+	case TextRenderModeFreetype:
 		r.textDrawer = newFreeTypeDrawer(r.fontCache, r.fontConfig)
-	} else {
+	case TextRenderModeDirectWrite:
+		if r.dwriteRenderer != nil && r.dwriteRenderer.IsAvailable() {
+			r.textDrawer = newDirectWriteDrawer(r.dwriteRenderer)
+		} else {
+			r.textDrawer = newGDIDrawer(r.textRenderer)
+		}
+	default:
 		r.textDrawer = newGDIDrawer(r.textRenderer)
 	}
 }
@@ -219,6 +242,9 @@ func (r *Renderer) updateTextDrawer() {
 func (r *Renderer) SetGDIFontParams(weight int, scale float64) {
 	if r.textRenderer != nil {
 		r.textRenderer.SetGDIParams(weight, scale)
+	}
+	if r.dwriteRenderer != nil {
+		r.dwriteRenderer.SetGDIParams(weight, scale)
 	}
 }
 
@@ -230,10 +256,14 @@ func (r *Renderer) SetTextRenderMode(mode TextRenderMode) {
 
 // GetTextRenderMode returns the current text rendering mode
 func (r *Renderer) GetTextRenderMode() TextRenderMode {
-	if r.config.TextRenderMode == TextRenderModeFreetype {
+	switch r.config.TextRenderMode {
+	case TextRenderModeFreetype:
 		return TextRenderModeFreetype
+	case TextRenderModeDirectWrite:
+		return TextRenderModeDirectWrite
+	default:
+		return TextRenderModeGDI
 	}
-	return TextRenderModeGDI
 }
 
 // SetFontPath sets the font path
@@ -242,6 +272,7 @@ func (r *Renderer) SetFontPath(path string) {
 	r.fontReady = false
 	r.ensureFontLoaded()
 	r.textRenderer.SetFont(r.fontPath)
+	r.dwriteRenderer.SetFont(r.fontPath)
 }
 
 // UpdateFont updates font settings
@@ -258,6 +289,20 @@ func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
 		r.fontReady = false
 		r.ensureFontLoaded()
 		r.textRenderer.SetFont(r.fontPath)
+		r.dwriteRenderer.SetFont(r.fontPath)
+	}
+}
+
+// Close releases renderer-owned font and text resources.
+func (r *Renderer) Close() {
+	if r.fontCache != nil {
+		r.fontCache.Close()
+	}
+	if r.textRenderer != nil {
+		r.textRenderer.Close()
+	}
+	if r.dwriteRenderer != nil {
+		r.dwriteRenderer.Close()
 	}
 }
 
@@ -345,6 +390,7 @@ func (r *Renderer) ensureFontLoaded() {
 			r.fontPath = resolved
 			r.fontReady = true
 			r.textRenderer.SetFont(resolved)
+			r.dwriteRenderer.SetFont(resolved)
 			return
 		}
 	}

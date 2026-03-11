@@ -40,6 +40,10 @@ set(RESOURCE_FILE ${CMAKE_SOURCE_DIR}/res/resource.rc)
 # 创建 DLL
 add_library(wind_tsf SHARED ${SOURCES} ${RESOURCE_FILE})
 
+add_library(wind_dwrite SHARED
+    src/WindDWriteShim.cpp
+)
+
 # 注意：库通过源文件中的 #pragma comment 链接
 
 # 添加预处理器定义
@@ -54,6 +58,23 @@ target_compile_definitions(wind_tsf PRIVATE
 target_compile_options(wind_tsf PRIVATE
     /utf-8  # 使用 UTF-8 编码
     /W3     # 警告级别3
+)
+
+target_compile_definitions(wind_dwrite PRIVATE
+    UNICODE
+    _UNICODE
+    _WINDOWS
+    _USRDLL
+)
+
+target_compile_options(wind_dwrite PRIVATE
+    /utf-8
+    /W3
+)
+
+target_link_libraries(wind_dwrite PRIVATE
+    d2d1
+    dwrite
 )
 
 # 生成模块定义文件

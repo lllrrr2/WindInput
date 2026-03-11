@@ -365,11 +365,17 @@ func (m *Manager) IsReady() bool {
 // Destroy destroys the UI manager
 func (m *Manager) Destroy() {
 	m.window.Destroy()
+	if m.renderer != nil {
+		m.renderer.Close()
+		m.renderer = nil
+	}
 	if m.toolbar != nil {
 		m.toolbar.Destroy()
+		m.toolbar = nil
 	}
 	if m.tooltip != nil {
 		m.tooltip.Destroy()
+		m.tooltip = nil
 	}
 	if m.unifiedPopupMenu != nil {
 		m.unifiedPopupMenu.Destroy()

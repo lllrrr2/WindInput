@@ -46,6 +46,15 @@ if exist "%INSTALL_DIR%\wind_tsf.dll" (
     )
 )
 
+REM 尝试删除 wind_dwrite.dll
+if exist "%INSTALL_DIR%\wind_dwrite.dll" (
+    del /F "%INSTALL_DIR%\wind_dwrite.dll" >nul 2>&1
+    if exist "%INSTALL_DIR%\wind_dwrite.dll" (
+        echo [警告] 无法删除 wind_dwrite.dll,重命名以便稍后清理
+        ren "%INSTALL_DIR%\wind_dwrite.dll" "wind_dwrite.dll.old_%RANDOM_SUFFIX%" >nul 2>&1
+    )
+)
+
 REM 尝试删除 wind_input.exe
 if exist "%INSTALL_DIR%\wind_input.exe" (
     del /F "%INSTALL_DIR%\wind_input.exe" >nul 2>&1

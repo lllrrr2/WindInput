@@ -53,6 +53,7 @@ type PopupMenu struct {
 	// Text rendering
 	fontCache            *fontCache
 	textRenderer         *TextRenderer
+	dwriteRenderer       *DWriteRenderer
 	textDrawer           TextDrawer
 	fontConfig           *FontConfig
 	menuFontSizeOverride float64 // 0 = use default menuFontSize constant
@@ -200,10 +201,12 @@ func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 // Menus default to SemiBold (600) weight for better readability at small font sizes.
 func NewPopupMenu() *PopupMenu {
 	tr := NewTextRenderer()
+	dwr := NewDWriteRenderer("popup_menu")
 	fontCfg := NewFontConfig()
 	// Menus use SemiBold by default (600), overriding the global default (500 Medium).
 	// GDI weight 400-500 looks nearly identical; 600 is the minimum for visibly bolder text.
 	tr.SetGDIParams(FontWeightSemiBold, fontCfg.GetEffectiveGDIScale())
+	dwr.SetGDIParams(FontWeightSemiBold, fontCfg.GetEffectiveGDIScale())
 	cache := newFontCache()
 
 	// Load primary font from centralized config (lazy — no truetype parsing yet)
@@ -211,15 +214,17 @@ func NewPopupMenu() *PopupMenu {
 	if resolved != "" {
 		cache.loadFont(resolved)
 		tr.SetFont(resolved)
+		dwr.SetFont(resolved)
 	}
 
 	return &PopupMenu{
-		hoverIndex:   -1,
-		submenuIndex: -1,
-		fontCache:    cache,
-		textRenderer: tr,
-		textDrawer:   newGDIDrawer(tr),
-		fontConfig:   fontCfg,
+		hoverIndex:     -1,
+		submenuIndex:   -1,
+		fontCache:      cache,
+		textRenderer:   tr,
+		dwriteRenderer: dwr,
+		textDrawer:     newGDIDrawer(tr),
+		fontConfig:     fontCfg,
 	}
 }
 
@@ -237,6 +242,7 @@ func newPopupMenuShared(parent *PopupMenu) *PopupMenu {
 		submenuIndex:         -1,
 		fontCache:            parent.fontCache,
 		textRenderer:         parent.textRenderer,
+		dwriteRenderer:       parent.dwriteRenderer,
 		textDrawer:           parent.textDrawer,
 		fontConfig:           parent.fontConfig,
 		menuFontSizeOverride: menuFontSizeOverride,
@@ -251,10 +257,37 @@ func (m *PopupMenu) SetGDIFontParams(weight int, scale float64) {
 	if m.textRenderer != nil {
 		m.textRenderer.SetGDIParams(weight, scale)
 	}
+	if m.dwriteRenderer != nil {
+		m.dwriteRenderer.SetGDIParams(weight, scale)
+	}
 	m.mu.Unlock()
 
 	if sub != nil {
 		sub.SetGDIFontParams(weight, scale)
+	}
+}
+
+// SetFontPath updates the primary font for popup menu rendering.
+func (m *PopupMenu) SetFontPath(path string) {
+	m.mu.Lock()
+	sub := m.submenu
+	m.fontConfig.SetPrimaryFont(path)
+	resolved := m.fontConfig.ResolvePrimaryFont()
+	if resolved != "" {
+		m.fontCache.mu.Lock()
+		m.fontCache.loadFont(resolved)
+		m.fontCache.mu.Unlock()
+		if m.textRenderer != nil {
+			m.textRenderer.SetFont(resolved)
+		}
+		if m.dwriteRenderer != nil {
+			m.dwriteRenderer.SetFont(resolved)
+		}
+	}
+	m.mu.Unlock()
+
+	if sub != nil {
+		sub.SetFontPath(path)
 	}
 }
 
@@ -291,12 +324,19 @@ func (m *PopupMenu) getMenuItemHeight() int {
 	return h
 }
 
-// SetTextRenderMode switches between GDI and FreeType text rendering
+// SetTextRenderMode switches between GDI, FreeType, and DirectWrite text rendering
 func (m *PopupMenu) SetTextRenderMode(mode TextRenderMode) {
 	m.mu.Lock()
-	if mode == TextRenderModeFreetype {
+	switch mode {
+	case TextRenderModeFreetype:
 		m.textDrawer = newFreeTypeDrawer(m.fontCache, m.fontConfig)
-	} else {
+	case TextRenderModeDirectWrite:
+		if m.dwriteRenderer != nil && m.dwriteRenderer.IsAvailable() {
+			m.textDrawer = newDirectWriteDrawer(m.dwriteRenderer)
+		} else {
+			m.textDrawer = newGDIDrawer(m.textRenderer)
+		}
+	default:
 		m.textDrawer = newGDIDrawer(m.textRenderer)
 	}
 	sub := m.submenu
@@ -498,6 +538,17 @@ func (m *PopupMenu) Destroy() {
 	if m.hwnd != 0 {
 		procDestroyWindow.Call(uintptr(m.hwnd))
 		m.hwnd = 0
+	}
+	if m.parentMenu == nil {
+		if m.fontCache != nil {
+			m.fontCache.Close()
+		}
+		if m.textRenderer != nil {
+			m.textRenderer.Close()
+		}
+		if m.dwriteRenderer != nil {
+			m.dwriteRenderer.Close()
+		}
 	}
 }
 

@@ -604,6 +604,24 @@ func (w *CandidateWindow) SetMenuFontParams(weight int, scale float64) {
 	w.mu.Unlock()
 }
 
+// SetTextRenderMode sets the text render mode for the candidate window's popup menu.
+func (w *CandidateWindow) SetTextRenderMode(mode TextRenderMode) {
+	w.mu.Lock()
+	if w.popupMenu != nil {
+		w.popupMenu.SetTextRenderMode(mode)
+	}
+	w.mu.Unlock()
+}
+
+// SetMenuFontPath sets the primary font path for the candidate window's popup menu.
+func (w *CandidateWindow) SetMenuFontPath(path string) {
+	w.mu.Lock()
+	if w.popupMenu != nil {
+		w.popupMenu.SetFontPath(path)
+	}
+	w.mu.Unlock()
+}
+
 // SetMenuFontSize sets the base font size for candidate window's popup menu
 func (w *CandidateWindow) SetMenuFontSize(size float64) {
 	w.mu.Lock()

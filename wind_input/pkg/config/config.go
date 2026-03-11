@@ -102,7 +102,7 @@ type UIConfig struct {
 	TooltipDelay            int     `yaml:"tooltip_delay" json:"tooltip_delay"`                         // 编码提示延迟显示时间（毫秒），0 表示立即显示
 
 	// 文本渲染设置
-	TextRenderMode string  `yaml:"text_render_mode,omitempty" json:"text_render_mode,omitempty"` // 文本渲染引擎："gdi"（默认，Windows原生）或 "freetype"（FreeType渲染）
+	TextRenderMode string  `yaml:"text_render_mode,omitempty" json:"text_render_mode,omitempty"` // 文本渲染引擎："gdi"（默认，Windows原生）、"freetype"（FreeType渲染）或 "directwrite"（DirectWrite+Direct2D渲染）
 	GDIFontWeight  int     `yaml:"gdi_font_weight,omitempty" json:"gdi_font_weight,omitempty"`   // 候选框GDI字体粗细：100~900，默认500(Medium)
 	GDIFontScale   float64 `yaml:"gdi_font_scale,omitempty" json:"gdi_font_scale,omitempty"`     // GDI字体缩放：0.5~2.0，默认1.0，值越大文字越大
 	MenuFontWeight int     `yaml:"menu_font_weight,omitempty" json:"menu_font_weight,omitempty"` // 菜单GDI字体粗细：100~900，默认600(SemiBold)
@@ -195,6 +195,11 @@ func DefaultConfig() *Config {
 			StatusIndicatorOffsetY:  0,
 			TooltipDelay:            200,
 			Theme:                   "default",
+			TextRenderMode:          "gdi",
+			GDIFontWeight:           500,
+			GDIFontScale:            1.0,
+			MenuFontWeight:          600,
+			MenuFontSize:            12.0,
 		},
 		Toolbar: ToolbarConfig{
 			Visible:   true,

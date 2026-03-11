@@ -25,18 +25,21 @@ type TooltipWindow struct {
 	resolvedTheme *theme.ResolvedTheme
 
 	// Text rendering
-	fontCache    *fontCache
-	textRenderer *TextRenderer
-	textDrawer   TextDrawer
-	fontConfig   *FontConfig
+	fontCache      *fontCache
+	textRenderer   *TextRenderer
+	dwriteRenderer *DWriteRenderer
+	textDrawer     TextDrawer
+	fontConfig     *FontConfig
 }
 
 // NewTooltipWindow creates a new tooltip window
 func NewTooltipWindow(logger *slog.Logger) *TooltipWindow {
 	tr := NewTextRenderer()
+	dwr := NewDWriteRenderer("tooltip")
 	fontCfg := NewFontConfig()
 	// Tooltips use the same weight as candidate box (gdi_font_weight, default Medium 500)
 	tr.SetGDIParams(fontCfg.GetEffectiveGDIWeight(), fontCfg.GetEffectiveGDIScale())
+	dwr.SetGDIParams(fontCfg.GetEffectiveGDIWeight(), fontCfg.GetEffectiveGDIScale())
 	cache := newFontCache()
 
 	// Load primary font from centralized config
@@ -44,14 +47,16 @@ func NewTooltipWindow(logger *slog.Logger) *TooltipWindow {
 	if resolved != "" {
 		cache.loadFont(resolved)
 		tr.SetFont(resolved)
+		dwr.SetFont(resolved)
 	}
 
 	return &TooltipWindow{
-		logger:       logger,
-		fontCache:    cache,
-		textRenderer: tr,
-		textDrawer:   newGDIDrawer(tr),
-		fontConfig:   fontCfg,
+		logger:         logger,
+		fontCache:      cache,
+		textRenderer:   tr,
+		dwriteRenderer: dwr,
+		textDrawer:     newGDIDrawer(tr),
+		fontConfig:     fontCfg,
 	}
 }
 
@@ -62,15 +67,43 @@ func (w *TooltipWindow) SetGDIFontParams(weight int, scale float64) {
 	if w.textRenderer != nil {
 		w.textRenderer.SetGDIParams(weight, scale)
 	}
+	if w.dwriteRenderer != nil {
+		w.dwriteRenderer.SetGDIParams(weight, scale)
+	}
 }
 
-// SetTextRenderMode switches between GDI and FreeType text rendering
+// SetFontPath updates the primary font for tooltip rendering.
+func (w *TooltipWindow) SetFontPath(path string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.fontConfig.SetPrimaryFont(path)
+	resolved := w.fontConfig.ResolvePrimaryFont()
+	if resolved == "" {
+		return
+	}
+
+	w.fontCache.mu.Lock()
+	w.fontCache.loadFont(resolved)
+	w.fontCache.mu.Unlock()
+	w.textRenderer.SetFont(resolved)
+	w.dwriteRenderer.SetFont(resolved)
+}
+
+// SetTextRenderMode switches between GDI, FreeType, and DirectWrite text rendering
 func (w *TooltipWindow) SetTextRenderMode(mode TextRenderMode) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if mode == TextRenderModeFreetype {
+	switch mode {
+	case TextRenderModeFreetype:
 		w.textDrawer = newFreeTypeDrawer(w.fontCache, w.fontConfig)
-	} else {
+	case TextRenderModeDirectWrite:
+		if w.dwriteRenderer != nil && w.dwriteRenderer.IsAvailable() {
+			w.textDrawer = newDirectWriteDrawer(w.dwriteRenderer)
+		} else {
+			w.textDrawer = newGDIDrawer(w.textRenderer)
+		}
+	default:
 		w.textDrawer = newGDIDrawer(w.textRenderer)
 	}
 }
@@ -212,6 +245,15 @@ func (w *TooltipWindow) Destroy() {
 	if w.hwnd != 0 {
 		procDestroyWindow.Call(uintptr(w.hwnd))
 		w.hwnd = 0
+	}
+	if w.fontCache != nil {
+		w.fontCache.Close()
+	}
+	if w.textRenderer != nil {
+		w.textRenderer.Close()
+	}
+	if w.dwriteRenderer != nil {
+		w.dwriteRenderer.Close()
 	}
 }
 

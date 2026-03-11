@@ -20,25 +20,29 @@ const (
 
 // ToolbarRenderer renders the toolbar UI
 type ToolbarRenderer struct {
-	fontPath      string
-	resolvedTheme *theme.ResolvedTheme
-	fontCache     *fontCache
-	textRenderer  *TextRenderer
-	textDrawer    TextDrawer
-	fontConfig    *FontConfig
+	fontPath       string
+	resolvedTheme  *theme.ResolvedTheme
+	fontCache      *fontCache
+	textRenderer   *TextRenderer
+	dwriteRenderer *DWriteRenderer
+	textDrawer     TextDrawer
+	fontConfig     *FontConfig
 }
 
 // NewToolbarRenderer creates a new toolbar renderer
 func NewToolbarRenderer() *ToolbarRenderer {
 	fc := NewFontConfig()
 	tr := NewTextRenderer()
+	dwr := NewDWriteRenderer("toolbar")
 	// Toolbar text is relatively large, use same weight as candidate box
 	tr.SetGDIParams(fc.GetEffectiveGDIWeight(), fc.GetEffectiveGDIScale())
+	dwr.SetGDIParams(fc.GetEffectiveGDIWeight(), fc.GetEffectiveGDIScale())
 
 	r := &ToolbarRenderer{
-		fontCache:    newFontCache(),
-		textRenderer: tr,
-		fontConfig:   fc,
+		fontCache:      newFontCache(),
+		textRenderer:   tr,
+		dwriteRenderer: dwr,
+		fontConfig:     fc,
 	}
 	r.ensureFontLoaded()
 	r.textDrawer = newGDIDrawer(r.textRenderer)
@@ -50,13 +54,23 @@ func (r *ToolbarRenderer) SetGDIFontParams(weight int, scale float64) {
 	if r.textRenderer != nil {
 		r.textRenderer.SetGDIParams(weight, scale)
 	}
+	if r.dwriteRenderer != nil {
+		r.dwriteRenderer.SetGDIParams(weight, scale)
+	}
 }
 
-// SetTextRenderMode switches between GDI and FreeType text rendering
+// SetTextRenderMode switches between GDI, FreeType, and DirectWrite text rendering
 func (r *ToolbarRenderer) SetTextRenderMode(mode TextRenderMode) {
-	if mode == TextRenderModeFreetype {
+	switch mode {
+	case TextRenderModeFreetype:
 		r.textDrawer = newFreeTypeDrawer(r.fontCache, r.fontConfig)
-	} else {
+	case TextRenderModeDirectWrite:
+		if r.dwriteRenderer != nil && r.dwriteRenderer.IsAvailable() {
+			r.textDrawer = newDirectWriteDrawer(r.dwriteRenderer)
+		} else {
+			r.textDrawer = newGDIDrawer(r.textRenderer)
+		}
+	default:
 		r.textDrawer = newGDIDrawer(r.textRenderer)
 	}
 }
@@ -75,6 +89,7 @@ func (r *ToolbarRenderer) ensureFontLoaded() {
 		if err := r.fontCache.loadFont(resolved); err == nil {
 			r.fontPath = resolved
 			r.textRenderer.SetFont(resolved)
+			r.dwriteRenderer.SetFont(resolved)
 			return
 		}
 	}
@@ -83,10 +98,30 @@ func (r *ToolbarRenderer) ensureFontLoaded() {
 // SetFontPath sets the font path for rendering
 func (r *ToolbarRenderer) SetFontPath(path string) {
 	r.fontPath = path
+	r.fontConfig.SetPrimaryFont(path)
+	resolved := r.fontConfig.ResolvePrimaryFont()
+	if resolved != "" {
+		path = resolved
+		r.fontPath = resolved
+	}
 	r.fontCache.mu.Lock()
 	r.fontCache.loadFont(path)
 	r.fontCache.mu.Unlock()
 	r.textRenderer.SetFont(path)
+	r.dwriteRenderer.SetFont(path)
+}
+
+// Close releases renderer-owned font and text resources.
+func (r *ToolbarRenderer) Close() {
+	if r.fontCache != nil {
+		r.fontCache.Close()
+	}
+	if r.textRenderer != nil {
+		r.textRenderer.Close()
+	}
+	if r.dwriteRenderer != nil {
+		r.dwriteRenderer.Close()
+	}
 }
 
 // SetTheme sets the theme for the toolbar renderer

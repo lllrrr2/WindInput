@@ -162,6 +162,12 @@ if not exist "%SCRIPT_DIR%build\wind_tsf.dll" (
     exit /b 1
 )
 
+if not exist "%SCRIPT_DIR%build\wind_dwrite.dll" (
+    echo [错误] 未找到 wind_dwrite.dll
+    pause
+    exit /b 1
+)
+
 if not exist "%SCRIPT_DIR%build\wind_input.exe" (
     echo [错误] 未找到 wind_input.exe
     pause
@@ -175,6 +181,7 @@ echo ======================================
 echo.
 echo 输出文件:
 echo - build\wind_tsf.dll(TSF 桥接)
+echo - build\wind_dwrite.dll(DirectWrite 渲染 Shim)
 echo - build\wind_input.exe(输入法服务)
 echo - build\wind_setting.exe(设置界面)
 echo - build\dict\pinyin\8105.dict.yaml(拼音单字词库)

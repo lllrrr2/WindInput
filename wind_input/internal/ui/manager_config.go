@@ -12,6 +12,18 @@ func (m *Manager) UpdateConfig(fontSize float64, fontPath string, hideCandidateW
 	if m.renderer != nil {
 		m.renderer.UpdateFont(fontSize, fontPath)
 	}
+	if m.toolbar != nil {
+		m.toolbar.SetFontPath(fontPath)
+	}
+	if m.tooltip != nil {
+		m.tooltip.SetFontPath(fontPath)
+	}
+	if m.unifiedPopupMenu != nil {
+		m.unifiedPopupMenu.SetFontPath(fontPath)
+	}
+	if m.window != nil {
+		m.window.SetMenuFontPath(fontPath)
+	}
 	// 更新调试开关
 	m.mu.Lock()
 	m.hideCandidateWindow = hideCandidateWindow
@@ -89,11 +101,14 @@ func (m *Manager) SetMenuFontSize(size float64) {
 	m.logger.Info("Menu font size updated", "size", size)
 }
 
-// SetTextRenderMode 设置文本渲染模式（"gdi" 或 "freetype"）
+// SetTextRenderMode 设置文本渲染模式（"gdi"、"freetype" 或 "directwrite"）
 func (m *Manager) SetTextRenderMode(mode string) {
 	renderMode := TextRenderModeGDI
-	if mode == "freetype" {
+	switch mode {
+	case "freetype":
 		renderMode = TextRenderModeFreetype
+	case "directwrite":
+		renderMode = TextRenderModeDirectWrite
 	}
 	if m.renderer != nil {
 		m.renderer.SetTextRenderMode(renderMode)
@@ -106,6 +121,9 @@ func (m *Manager) SetTextRenderMode(mode string) {
 	}
 	if m.unifiedPopupMenu != nil {
 		m.unifiedPopupMenu.SetTextRenderMode(renderMode)
+	}
+	if m.window != nil {
+		m.window.SetTextRenderMode(renderMode)
 	}
 	m.logger.Info("Text render mode updated", "mode", mode)
 }
