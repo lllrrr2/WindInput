@@ -254,7 +254,26 @@ func (w *ToolbarWindow) SetCallback(callback *ToolbarCallback) {
 	w.mu.Unlock()
 }
 
-// SetTheme sets the theme for the toolbar and re-renders
+// SetGDIFontParams updates GDI font weight and scale for toolbar and its popup menu
+func (w *ToolbarWindow) SetGDIFontParams(weight int, scale float64) {
+	if w.renderer != nil {
+		w.renderer.SetGDIFontParams(weight, scale)
+	}
+	if w.popupMenu != nil {
+		w.popupMenu.SetGDIFontParams(weight, scale)
+	}
+}
+
+// SetTextRenderMode switches between GDI and FreeType text rendering
+func (w *ToolbarWindow) SetTextRenderMode(mode TextRenderMode) {
+	if w.renderer != nil {
+		w.renderer.SetTextRenderMode(mode)
+	}
+	if w.popupMenu != nil {
+		w.popupMenu.SetTextRenderMode(mode)
+	}
+}
+
 func (w *ToolbarWindow) SetTheme(resolved *theme.ResolvedTheme) {
 	if w.renderer != nil {
 		w.renderer.SetTheme(resolved)

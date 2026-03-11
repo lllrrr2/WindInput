@@ -307,6 +307,14 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		)
 		// 设置编码提示延迟
 		c.uiManager.SetTooltipDelay(cfg.UI.TooltipDelay)
+		// 设置文本渲染模式
+		if cfg.UI.TextRenderMode != "" {
+			c.uiManager.SetTextRenderMode(cfg.UI.TextRenderMode)
+		}
+		// 设置GDI字体参数
+		if cfg.UI.GDIFontWeight > 0 || cfg.UI.GDIFontScale > 0 {
+			c.uiManager.SetGDIFontParams(cfg.UI.GDIFontWeight, cfg.UI.GDIFontScale)
+		}
 		// 加载主题
 		if cfg.UI.Theme != "" {
 			c.uiManager.LoadTheme(cfg.UI.Theme)

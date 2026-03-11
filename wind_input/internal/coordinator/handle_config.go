@@ -50,6 +50,14 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 		)
 		// 设置编码提示延迟
 		c.uiManager.SetTooltipDelay(uiConfig.TooltipDelay)
+		// 设置文本渲染模式
+		if uiConfig.TextRenderMode != "" {
+			c.uiManager.SetTextRenderMode(uiConfig.TextRenderMode)
+		}
+		// 设置GDI字体参数
+		if uiConfig.GDIFontWeight > 0 || uiConfig.GDIFontScale > 0 {
+			c.uiManager.SetGDIFontParams(uiConfig.GDIFontWeight, uiConfig.GDIFontScale)
+		}
 		// 更新主题
 		if uiConfig.Theme != "" {
 			c.uiManager.LoadTheme(uiConfig.Theme)

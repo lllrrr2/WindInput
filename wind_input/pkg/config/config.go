@@ -100,6 +100,11 @@ type UIConfig struct {
 	StatusIndicatorOffsetY  int     `yaml:"status_indicator_offset_y" json:"status_indicator_offset_y"` // 状态提示 Y 偏移量
 	Theme                   string  `yaml:"theme" json:"theme"`                                         // 主题名称：default, dark 或自定义主题名
 	TooltipDelay            int     `yaml:"tooltip_delay" json:"tooltip_delay"`                         // 编码提示延迟显示时间（毫秒），0 表示立即显示
+
+	// 文本渲染设置
+	TextRenderMode string  `yaml:"text_render_mode,omitempty" json:"text_render_mode,omitempty"` // 文本渲染引擎："gdi"（默认，Windows原生）或 "freetype"（FreeType渲染）
+	GDIFontWeight  int     `yaml:"gdi_font_weight,omitempty" json:"gdi_font_weight,omitempty"`   // GDI字体粗细：100~900，默认400(Normal)，500=Medium，600=SemiBold，700=Bold
+	GDIFontScale   float64 `yaml:"gdi_font_scale,omitempty" json:"gdi_font_scale,omitempty"`     // GDI字体缩放：0.5~2.0，默认1.0，值越大文字越大
 }
 
 // ToolbarConfig contains toolbar settings

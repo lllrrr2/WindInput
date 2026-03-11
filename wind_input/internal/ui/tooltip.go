@@ -23,12 +23,54 @@ type TooltipWindow struct {
 	visible       bool
 	text          string
 	resolvedTheme *theme.ResolvedTheme
+
+	// Text rendering
+	fontCache    *fontCache
+	textRenderer *TextRenderer
+	textDrawer   TextDrawer
+	fontConfig   *FontConfig
 }
 
 // NewTooltipWindow creates a new tooltip window
 func NewTooltipWindow(logger *slog.Logger) *TooltipWindow {
+	tr := NewTextRenderer()
+	fontCfg := NewFontConfig()
+	tr.SetGDIParams(fontCfg.GetEffectiveGDIWeight(), fontCfg.GetEffectiveGDIScale())
+	cache := newFontCache()
+
+	// Load primary font from centralized config
+	resolved := fontCfg.ResolvePrimaryFont()
+	if resolved != "" {
+		cache.loadFont(resolved)
+		tr.SetFont(resolved)
+	}
+
 	return &TooltipWindow{
-		logger: logger,
+		logger:       logger,
+		fontCache:    cache,
+		textRenderer: tr,
+		textDrawer:   newGDIDrawer(tr),
+		fontConfig:   fontCfg,
+	}
+}
+
+// SetGDIFontParams updates GDI font weight and scale for text rendering
+func (w *TooltipWindow) SetGDIFontParams(weight int, scale float64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.textRenderer != nil {
+		w.textRenderer.SetGDIParams(weight, scale)
+	}
+}
+
+// SetTextRenderMode switches between GDI and FreeType text rendering
+func (w *TooltipWindow) SetTextRenderMode(mode TextRenderMode) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if mode == TextRenderModeFreetype {
+		w.textDrawer = newFreeTypeDrawer(w.fontCache)
+	} else {
+		w.textDrawer = newGDIDrawer(w.textRenderer)
 	}
 }
 
@@ -177,42 +219,31 @@ func (w *TooltipWindow) render(text string) *image.RGBA {
 	scale := GetDPIScale()
 	bgColor, textColor := w.getTooltipColors()
 
-	// Measure text
+	w.mu.Lock()
+	td := w.textDrawer
+	w.mu.Unlock()
+
 	fontSize := 14.0 * scale
 	padding := 6.0 * scale
 
-	dc := gg.NewContext(1, 1)
-	// Simple font loading
-	fontPath := "C:/Windows/Fonts/simhei.ttf"
-	if err := dc.LoadFontFace(fontPath, fontSize); err != nil {
-		// Fallback
-		fontPath = "C:/Windows/Fonts/arial.ttf"
-		if err := dc.LoadFontFace(fontPath, fontSize); err != nil {
-			w.logger.Warn("Failed to load font for tooltip", "error", err)
-			return nil
-		}
-	}
-
-	tw, _ := dc.MeasureString(text)
+	// Measure text width using TextDrawer
+	tw := td.MeasureString(text, fontSize)
 	width := tw + padding*2
 	height := fontSize + padding*2
 
-	// Create actual context
-	dc = gg.NewContext(int(width), int(height))
-	if err := dc.LoadFontFace(fontPath, fontSize); err != nil {
-		return nil
-	}
-
-	// Draw background
+	// Phase 1: Draw shapes with gg
+	dc := gg.NewContext(int(width), int(height))
 	dc.SetColor(bgColor)
 	dc.DrawRoundedRectangle(0, 0, width, height, 4*scale)
 	dc.Fill()
 
-	// Draw text
-	dc.SetColor(textColor)
-	dc.DrawString(text, padding, padding+fontSize*0.8)
+	// Phase 2: Draw text with TextDrawer
+	img := dc.Image().(*image.RGBA)
+	td.BeginDraw(img)
+	td.DrawString(text, padding, padding+fontSize*0.8, fontSize, textColor)
+	td.EndDraw()
 
-	return dc.Image().(*image.RGBA)
+	return img
 }
 
 // updateLayeredWindow updates the tooltip's layered window

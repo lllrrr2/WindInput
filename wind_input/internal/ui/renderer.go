@@ -27,12 +27,13 @@ type RenderConfig struct {
 	InputBgColor    color.Color
 	InputTextColor  color.Color
 	BorderColor     color.Color
-	HoverBgColor    color.Color // Background color for hovered candidate
-	Layout          string      // "horizontal" or "vertical"
-	HidePreedit     bool        // Hide preedit area when inline_preedit is enabled
-	IndexStyle      string      // "circle" (default) or "text" (plain text index)
-	AccentBarColor  color.Color // Left accent bar color, nil = no bar
-	HasAccentBar    bool        // Whether to draw accent bar
+	HoverBgColor    color.Color    // Background color for hovered candidate
+	Layout          string         // "horizontal" or "vertical"
+	HidePreedit     bool           // Hide preedit area when inline_preedit is enabled
+	IndexStyle      string         // "circle" (default) or "text" (plain text index)
+	AccentBarColor  color.Color    // Left accent bar color, nil = no bar
+	HasAccentBar    bool           // Whether to draw accent bar
+	TextRenderMode  TextRenderMode // "gdi" (Windows native) or "freetype" (original)
 }
 
 // DefaultRenderConfig returns default rendering configuration with DPI scaling
@@ -127,17 +128,57 @@ type Renderer struct {
 	fontCache     *fontCache
 	fontReady     bool
 	resolvedTheme *theme.ResolvedTheme
+	textRenderer  *TextRenderer // GDI text renderer for native Windows text quality
+	textDrawer    TextDrawer    // Active text drawing backend (GDI or FreeType)
+	fontConfig    *FontConfig   // Centralized font configuration
 }
 
 // NewRenderer creates a new renderer
 func NewRenderer(config RenderConfig) *Renderer {
+	fontCfg := NewFontConfig()
+	tr := NewTextRenderer()
+	tr.SetGDIParams(fontCfg.GetEffectiveGDIWeight(), fontCfg.GetEffectiveGDIScale())
+
 	r := &Renderer{
-		config:    config,
-		fontCache: newFontCache(),
+		config:       config,
+		fontCache:    newFontCache(),
+		textRenderer: tr,
+		fontConfig:   fontCfg,
 	}
 	// Pre-load font on creation
 	r.ensureFontLoaded()
+	r.updateTextDrawer()
 	return r
+}
+
+// updateTextDrawer creates the appropriate TextDrawer based on current render mode
+func (r *Renderer) updateTextDrawer() {
+	if r.config.TextRenderMode == TextRenderModeFreetype {
+		r.textDrawer = newFreeTypeDrawer(r.fontCache)
+	} else {
+		r.textDrawer = newGDIDrawer(r.textRenderer)
+	}
+}
+
+// SetGDIFontParams updates GDI font weight and scale for text rendering
+func (r *Renderer) SetGDIFontParams(weight int, scale float64) {
+	if r.textRenderer != nil {
+		r.textRenderer.SetGDIParams(weight, scale)
+	}
+}
+
+// SetTextRenderMode switches between GDI and FreeType text rendering
+func (r *Renderer) SetTextRenderMode(mode TextRenderMode) {
+	r.config.TextRenderMode = mode
+	r.updateTextDrawer()
+}
+
+// GetTextRenderMode returns the current text rendering mode
+func (r *Renderer) GetTextRenderMode() TextRenderMode {
+	if r.config.TextRenderMode == TextRenderModeFreetype {
+		return TextRenderModeFreetype
+	}
+	return TextRenderModeGDI
 }
 
 // SetFontPath sets the font path
@@ -145,6 +186,7 @@ func (r *Renderer) SetFontPath(path string) {
 	r.fontPath = path
 	r.fontReady = false
 	r.ensureFontLoaded()
+	r.textRenderer.SetFont(r.fontPath)
 }
 
 // UpdateFont updates font settings
@@ -160,6 +202,7 @@ func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
 		r.fontPath = fontPath
 		r.fontReady = false
 		r.ensureFontLoaded()
+		r.textRenderer.SetFont(r.fontPath)
 	}
 }
 
@@ -226,7 +269,7 @@ func (r *Renderer) GetLayout() string {
 	return r.config.Layout
 }
 
-// ensureFontLoaded loads the font if not already cached
+// ensureFontLoaded loads the font if not already cached, using FontConfig.
 func (r *Renderer) ensureFontLoaded() {
 	if r.fontReady && r.fontCache.font != nil {
 		return
@@ -235,26 +278,18 @@ func (r *Renderer) ensureFontLoaded() {
 	r.fontCache.mu.Lock()
 	defer r.fontCache.mu.Unlock()
 
-	// Try user-specified font first
+	// Sync user-specified font to FontConfig
 	if r.fontPath != "" {
-		if err := r.fontCache.loadFont(r.fontPath); err == nil {
-			r.fontReady = true
-			return
-		}
+		r.fontConfig.SetPrimaryFont(r.fontPath)
 	}
 
-	// Try common Windows fonts (prefer .ttf over .ttc)
-	fonts := []string{
-		"C:/Windows/Fonts/simhei.ttf",  // SimHei
-		"C:/Windows/Fonts/simsun.ttf",  // SimSun (ttf version)
-		"C:/Windows/Fonts/msyh.ttf",    // Microsoft YaHei (ttf version)
-		"C:/Windows/Fonts/arial.ttf",   // Arial fallback
-		"C:/Windows/Fonts/segoeui.ttf", // Segoe UI
-	}
-	for _, path := range fonts {
-		if err := r.fontCache.loadFont(path); err == nil {
-			r.fontPath = path
+	// Resolve the primary font from the centralized config
+	resolved := r.fontConfig.ResolvePrimaryFont()
+	if resolved != "" {
+		if err := r.fontCache.loadFont(resolved); err == nil {
+			r.fontPath = resolved
 			r.fontReady = true
+			r.textRenderer.SetFont(resolved)
 			return
 		}
 	}
@@ -303,22 +338,15 @@ func (r *Renderer) drawRoundedRect(dc *gg.Context, x, y, w, h, radius float64) {
 // RenderModeIndicator renders a mode indicator with adaptive width
 func (r *Renderer) RenderModeIndicator(mode string) *image.RGBA {
 	scale := GetDPIScale()
+	td := r.textDrawer
 
 	minWidth := 50.0 * scale
 	height := 36.0 * scale
 	fontSize := 20.0 * scale
 	padding := 12.0 * scale
 
-	// Use cached font face
-	face := r.fontCache.getFace(fontSize)
-
-	// Measure text width to determine canvas width
-	var textWidth float64
-	if face != nil {
-		tmpDc := gg.NewContext(1, 1)
-		tmpDc.SetFontFace(face)
-		textWidth, _ = tmpDc.MeasureString(mode)
-	}
+	// Measure text width
+	textWidth := td.MeasureString(mode, fontSize)
 
 	// Adaptive width: max(minWidth, textWidth + padding*2)
 	width := textWidth + padding*2
@@ -331,19 +359,17 @@ func (r *Renderer) RenderModeIndicator(mode string) *image.RGBA {
 	// Get colors from theme
 	bgColor, textColor := r.getModeIndicatorColors()
 
-	// Draw background
+	// Draw background shape
 	dc.SetColor(bgColor)
 	r.drawRoundedRect(dc, 2*scale, 2*scale, width-4*scale, height-4*scale, 6*scale)
 	dc.Fill()
 
-	if face != nil {
-		dc.SetFontFace(face)
-	}
+	// Draw mode text
+	img := dc.Image().(*image.RGBA)
+	td.BeginDraw(img)
+	tw := td.MeasureString(mode, fontSize)
+	td.DrawString(mode, width/2-tw/2, height/2+7*scale, fontSize, textColor)
+	td.EndDraw()
 
-	// Draw mode text (centered)
-	dc.SetColor(textColor)
-	tw, _ := dc.MeasureString(mode)
-	dc.DrawString(mode, width/2-tw/2, height/2+7*scale)
-
-	return dc.Image().(*image.RGBA)
+	return img
 }

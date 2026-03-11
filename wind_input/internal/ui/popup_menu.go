@@ -7,7 +7,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/fogleman/gg"
 	"github.com/huanfeng/wind_input/pkg/theme"
 	"golang.org/x/sys/windows"
 )
@@ -50,6 +49,12 @@ type PopupMenu struct {
 
 	// Flip support: when menu can't fit below Y, flip above flipRefY
 	flipRefY int // 翻转参考Y（0=禁用）
+
+	// Text rendering
+	fontCache    *fontCache
+	textRenderer *TextRenderer
+	textDrawer   TextDrawer
+	fontConfig   *FontConfig
 
 	mu sync.Mutex
 }
@@ -192,9 +197,45 @@ func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 
 // NewPopupMenu creates a new popup menu
 func NewPopupMenu() *PopupMenu {
+	tr := NewTextRenderer()
+	fontCfg := NewFontConfig()
+	tr.SetGDIParams(fontCfg.GetEffectiveGDIWeight(), fontCfg.GetEffectiveGDIScale())
+	cache := newFontCache()
+
+	// Load primary font from centralized config
+	resolved := fontCfg.ResolvePrimaryFont()
+	if resolved != "" {
+		cache.loadFont(resolved)
+		tr.SetFont(resolved)
+	}
+
 	return &PopupMenu{
 		hoverIndex:   -1,
 		submenuIndex: -1,
+		fontCache:    cache,
+		textRenderer: tr,
+		textDrawer:   newGDIDrawer(tr),
+		fontConfig:   fontCfg,
+	}
+}
+
+// SetGDIFontParams updates GDI font weight and scale for text rendering
+func (m *PopupMenu) SetGDIFontParams(weight int, scale float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.textRenderer != nil {
+		m.textRenderer.SetGDIParams(weight, scale)
+	}
+}
+
+// SetTextRenderMode switches between GDI and FreeType text rendering
+func (m *PopupMenu) SetTextRenderMode(mode TextRenderMode) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if mode == TextRenderModeFreetype {
+		m.textDrawer = newFreeTypeDrawer(m.fontCache)
+	} else {
+		m.textDrawer = newGDIDrawer(m.textRenderer)
 	}
 }
 
@@ -406,18 +447,17 @@ func (m *PopupMenu) calculateSize() {
 	m.width = int(float64(menuMinWidth)*scale + extraLeft + extraRight)
 	m.height = int(float64(menuPaddingY*2) * scale)
 
-	// Create a temporary context to measure text
-	dc := gg.NewContext(1, 1)
+	// Use TextDrawer for text measurement (consistent with render)
 	fontSize := menuFontSize * scale
-	m.loadFont(dc, fontSize)
+	td := m.textDrawer
 
 	for _, item := range m.items {
 		if item.Separator {
 			m.height += int(float64(menuSeparatorHeight) * scale)
 		} else {
 			m.height += int(float64(menuItemHeight) * scale)
-			// Calculate text width
-			tw, _ := dc.MeasureString(item.Text)
+			// Calculate text width using TextDrawer
+			tw := td.MeasureString(item.Text, fontSize)
 			itemWidth := int(tw + float64(menuPaddingX)*scale + extraLeft + extraRight + float64(menuPaddingX)*scale)
 			if itemWidth > m.width {
 				m.width = itemWidth

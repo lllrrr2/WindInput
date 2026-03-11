@@ -22,16 +22,70 @@ const (
 type ToolbarRenderer struct {
 	fontPath      string
 	resolvedTheme *theme.ResolvedTheme
+	fontCache     *fontCache
+	textRenderer  *TextRenderer
+	textDrawer    TextDrawer
+	fontConfig    *FontConfig
 }
 
 // NewToolbarRenderer creates a new toolbar renderer
 func NewToolbarRenderer() *ToolbarRenderer {
-	return &ToolbarRenderer{}
+	fc := NewFontConfig()
+	tr := NewTextRenderer()
+	tr.SetGDIParams(fc.GetEffectiveGDIWeight(), fc.GetEffectiveGDIScale())
+
+	r := &ToolbarRenderer{
+		fontCache:    newFontCache(),
+		textRenderer: tr,
+		fontConfig:   fc,
+	}
+	r.ensureFontLoaded()
+	r.textDrawer = newGDIDrawer(r.textRenderer)
+	return r
+}
+
+// SetGDIFontParams updates GDI font weight and scale for text rendering
+func (r *ToolbarRenderer) SetGDIFontParams(weight int, scale float64) {
+	if r.textRenderer != nil {
+		r.textRenderer.SetGDIParams(weight, scale)
+	}
+}
+
+// SetTextRenderMode switches between GDI and FreeType text rendering
+func (r *ToolbarRenderer) SetTextRenderMode(mode TextRenderMode) {
+	if mode == TextRenderModeFreetype {
+		r.textDrawer = newFreeTypeDrawer(r.fontCache)
+	} else {
+		r.textDrawer = newGDIDrawer(r.textRenderer)
+	}
+}
+
+// ensureFontLoaded loads a font into the cache using FontConfig.
+func (r *ToolbarRenderer) ensureFontLoaded() {
+	r.fontCache.mu.Lock()
+	defer r.fontCache.mu.Unlock()
+
+	if r.fontPath != "" {
+		r.fontConfig.SetPrimaryFont(r.fontPath)
+	}
+
+	resolved := r.fontConfig.ResolvePrimaryFont()
+	if resolved != "" {
+		if err := r.fontCache.loadFont(resolved); err == nil {
+			r.fontPath = resolved
+			r.textRenderer.SetFont(resolved)
+			return
+		}
+	}
 }
 
 // SetFontPath sets the font path for rendering
 func (r *ToolbarRenderer) SetFontPath(path string) {
 	r.fontPath = path
+	r.fontCache.mu.Lock()
+	r.fontCache.loadFont(path)
+	r.fontCache.mu.Unlock()
+	r.textRenderer.SetFont(path)
 }
 
 // SetTheme sets the theme for the toolbar renderer
@@ -83,6 +137,9 @@ func (r *ToolbarRenderer) Render(state ToolbarState) *image.RGBA {
 	height := int(float64(toolbarBaseHeight) * scale)
 
 	dc := gg.NewContext(width, height)
+	fontSize := 14.0 * scale
+
+	// ========== Phase 1: Draw all shapes with gg ==========
 
 	// Background with rounded corners
 	radius := 6.0 * scale
@@ -96,62 +153,80 @@ func (r *ToolbarRenderer) Render(state ToolbarState) *image.RGBA {
 	dc.SetLineWidth(1)
 	dc.Stroke()
 
-	// Load font
-	fontSize := 14.0 * scale
-	if err := r.loadFont(dc, fontSize); err != nil {
-		// Continue without text if font fails
-	}
-
 	// Draw grip handle (left side)
 	r.drawGrip(dc, scale, height, colors)
 
-	// Draw buttons
+	// Draw button backgrounds
 	x := gripWidth * scale
 	buttonW := buttonWidth * scale
 	padding := buttonPadding * scale
 
-	// Mode button (中/En/A)
-	r.drawModeButton(dc, x+padding, padding, buttonW-padding*2, float64(height)-padding*2, state, scale, colors)
+	// Mode button background
+	modeBtnX, modeBtnY := x+padding, padding
+	modeBtnW, modeBtnH := buttonW-padding*2, float64(height)-padding*2
+	r.drawModeButton(dc, modeBtnX, modeBtnY, modeBtnW, modeBtnH, state, scale, colors)
 	x += buttonW
 
-	// Full-width button (全/半)
-	r.drawWidthButton(dc, x+padding, padding, buttonW-padding*2, float64(height)-padding*2, state.FullWidth, scale, colors)
+	// Full-width button background
+	widthBtnX, widthBtnY := x+padding, padding
+	widthBtnW, widthBtnH := buttonW-padding*2, float64(height)-padding*2
+	r.drawWidthButton(dc, widthBtnX, widthBtnY, widthBtnW, widthBtnH, state.FullWidth, scale, colors)
 	x += buttonW
 
-	// Punctuation button (，/,)
-	r.drawPunctButton(dc, x+padding, padding, buttonW-padding*2, float64(height)-padding*2, state.ChinesePunct, scale, colors)
+	// Punctuation button background
+	punctBtnX, punctBtnY := x+padding, padding
+	punctBtnW, punctBtnH := buttonW-padding*2, float64(height)-padding*2
+	r.drawPunctButton(dc, punctBtnX, punctBtnY, punctBtnW, punctBtnH, state.ChinesePunct, scale, colors)
 	x += buttonW
 
-	// Settings button (gear icon)
+	// Settings button (shapes only, no text)
 	r.drawSettingsButton(dc, x+padding, padding, buttonW-padding*2, float64(height)-padding*2, scale, colors)
 
-	return dc.Image().(*image.RGBA)
-}
+	// ========== Phase 2: Draw all text with TextDrawer ==========
+	img := dc.Image().(*image.RGBA)
+	td := r.textDrawer
+	td.BeginDraw(img)
 
-// loadFont loads the font for rendering
-func (r *ToolbarRenderer) loadFont(dc *gg.Context, fontSize float64) error {
-	// Try custom font first
-	if r.fontPath != "" {
-		if err := dc.LoadFontFace(r.fontPath, fontSize); err == nil {
-			return nil
-		}
+	// Mode button text
+	var modeText string
+	if state.ChineseMode {
+		modeText = "中"
+	} else if state.CapsLock {
+		modeText = "A"
+	} else {
+		modeText = "a"
 	}
+	tw := td.MeasureString(modeText, fontSize)
+	td.DrawString(modeText, modeBtnX+modeBtnW/2-tw/2, modeBtnY+modeBtnH/2+fontSize*0.35, fontSize, colors.ModeTextColor)
 
-	// Try system fonts
-	systemFonts := []string{
-		"C:\\Windows\\Fonts\\msyh.ttc",    // Microsoft YaHei
-		"C:\\Windows\\Fonts\\simhei.ttf",  // SimHei
-		"C:\\Windows\\Fonts\\simsun.ttc",  // SimSun
-		"C:\\Windows\\Fonts\\segoeui.ttf", // Segoe UI
+	// Width button text
+	var widthText string
+	var widthTextColor color.Color
+	if state.FullWidth {
+		widthText = "全"
+		widthTextColor = colors.FullWidthOnColor
+	} else {
+		widthText = "半"
+		widthTextColor = colors.FullWidthOffColor
 	}
+	tw = td.MeasureString(widthText, fontSize)
+	td.DrawString(widthText, widthBtnX+widthBtnW/2-tw/2, widthBtnY+widthBtnH/2+fontSize*0.35, fontSize, widthTextColor)
 
-	for _, font := range systemFonts {
-		if err := dc.LoadFontFace(font, fontSize); err == nil {
-			return nil
-		}
+	// Punct button text
+	var punctText string
+	var punctTextColor color.Color
+	if state.ChinesePunct {
+		punctText = "\uFF0C" // Chinese comma ，
+		punctTextColor = colors.PunctChineseColor
+	} else {
+		punctText = ","
+		punctTextColor = colors.PunctEnglishColor
 	}
+	tw = td.MeasureString(punctText, fontSize)
+	td.DrawString(punctText, punctBtnX+punctBtnW/2-tw/2, punctBtnY+punctBtnH/2+fontSize*0.35, fontSize, punctTextColor)
 
-	return nil
+	td.EndDraw()
+	return img
 }
 
 // drawGrip draws the grip handle for dragging
@@ -175,9 +250,8 @@ func (r *ToolbarRenderer) drawGrip(dc *gg.Context, scale float64, height int, co
 	}
 }
 
-// drawModeButton draws the mode button (中/En/A)
+// drawModeButton draws the mode button background (text drawn separately in Phase 2)
 func (r *ToolbarRenderer) drawModeButton(dc *gg.Context, x, y, w, h float64, state ToolbarState, scale float64, colors *theme.ResolvedToolbarColors) {
-	// Background - vibrant colors
 	if state.ChineseMode {
 		dc.SetColor(colors.ModeChineseBgColor)
 	} else {
@@ -186,23 +260,10 @@ func (r *ToolbarRenderer) drawModeButton(dc *gg.Context, x, y, w, h float64, sta
 	radius := 4.0 * scale
 	dc.DrawRoundedRectangle(x, y, w, h, radius)
 	dc.Fill()
-
-	// Text
-	dc.SetColor(colors.ModeTextColor)
-	var text string
-	if state.ChineseMode {
-		text = "中"
-	} else if state.CapsLock {
-		text = "A"
-	} else {
-		text = "a"
-	}
-	dc.DrawStringAnchored(text, x+w/2, y+h/2, 0.5, 0.5)
 }
 
-// drawWidthButton draws the full/half width button
+// drawWidthButton draws the full/half width button background (text drawn separately in Phase 2)
 func (r *ToolbarRenderer) drawWidthButton(dc *gg.Context, x, y, w, h float64, fullWidth bool, scale float64, colors *theme.ResolvedToolbarColors) {
-	// Background
 	if fullWidth {
 		dc.SetColor(colors.FullWidthOnBgColor)
 	} else {
@@ -211,23 +272,10 @@ func (r *ToolbarRenderer) drawWidthButton(dc *gg.Context, x, y, w, h float64, fu
 	radius := 4.0 * scale
 	dc.DrawRoundedRectangle(x, y, w, h, radius)
 	dc.Fill()
-
-	// Text
-	if fullWidth {
-		dc.SetColor(colors.FullWidthOnColor)
-	} else {
-		dc.SetColor(colors.FullWidthOffColor)
-	}
-	text := "半"
-	if fullWidth {
-		text = "全"
-	}
-	dc.DrawStringAnchored(text, x+w/2, y+h/2, 0.5, 0.5)
 }
 
-// drawPunctButton draws the punctuation button
+// drawPunctButton draws the punctuation button background (text drawn separately in Phase 2)
 func (r *ToolbarRenderer) drawPunctButton(dc *gg.Context, x, y, w, h float64, chinesePunct bool, scale float64, colors *theme.ResolvedToolbarColors) {
-	// Background
 	if chinesePunct {
 		dc.SetColor(colors.PunctChineseBgColor)
 	} else {
@@ -236,18 +284,6 @@ func (r *ToolbarRenderer) drawPunctButton(dc *gg.Context, x, y, w, h float64, ch
 	radius := 4.0 * scale
 	dc.DrawRoundedRectangle(x, y, w, h, radius)
 	dc.Fill()
-
-	// Text (comma as indicator)
-	if chinesePunct {
-		dc.SetColor(colors.PunctChineseColor)
-	} else {
-		dc.SetColor(colors.PunctEnglishColor)
-	}
-	text := ","
-	if chinesePunct {
-		text = "\uFF0C" // Chinese comma ，
-	}
-	dc.DrawStringAnchored(text, x+w/2, y+h/2, 0.5, 0.5)
 }
 
 // drawSettingsButton draws the settings button (gear icon)
@@ -369,40 +405,36 @@ func CreateModeIndicatorColor(chineseMode bool) color.RGBA {
 func (r *ToolbarRenderer) RenderTooltip(text string) *image.RGBA {
 	scale := GetDPIScale()
 	bgColor, textColor, borderColor := r.getTooltipColors()
+	td := r.textDrawer
 
-	// Calculate text size
 	fontSize := 12.0 * scale
 	padding := 6.0 * scale
 
-	// Create temporary context to measure text
-	tmpDc := gg.NewContext(1, 1)
-	if err := r.loadFont(tmpDc, fontSize); err == nil {
-		// Font loaded successfully
-	}
-	textWidth, _ := tmpDc.MeasureString(text)
+	// Measure text width
+	textWidth := td.MeasureString(text, fontSize)
 
 	width := int(textWidth + padding*2 + 2)
 	height := int(fontSize + padding*2)
 
 	dc := gg.NewContext(width, height)
 
-	// Background
+	// Phase 1: Draw shapes with gg
 	radius := 4.0 * scale
 	dc.DrawRoundedRectangle(0, 0, float64(width), float64(height), radius)
 	dc.SetColor(bgColor)
 	dc.Fill()
 
-	// Border
 	dc.DrawRoundedRectangle(0.5, 0.5, float64(width)-1, float64(height)-1, radius)
 	dc.SetColor(borderColor)
 	dc.SetLineWidth(1)
 	dc.Stroke()
 
-	// Text
-	if err := r.loadFont(dc, fontSize); err == nil {
-		dc.SetColor(textColor)
-		dc.DrawStringAnchored(text, float64(width)/2, float64(height)/2, 0.5, 0.5)
-	}
+	// Phase 2: Draw text with TextDrawer
+	img := dc.Image().(*image.RGBA)
+	td.BeginDraw(img)
+	tw := td.MeasureString(text, fontSize)
+	td.DrawString(text, float64(width)/2-tw/2, float64(height)/2+fontSize*0.35, fontSize, textColor)
+	td.EndDraw()
 
-	return dc.Image().(*image.RGBA)
+	return img
 }

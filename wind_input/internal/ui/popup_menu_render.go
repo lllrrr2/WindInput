@@ -2,40 +2,18 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"unsafe"
 
 	"github.com/fogleman/gg"
 )
 
-// loadFont loads font for the context (Chinese text)
-func (m *PopupMenu) loadFont(dc *gg.Context, fontSize float64) {
-	fonts := []string{
-		"C:/Windows/Fonts/msyh.ttc",
-		"C:/Windows/Fonts/simhei.ttf",
-		"C:/Windows/Fonts/simsun.ttc",
-		"C:/Windows/Fonts/segoeui.ttf",
-	}
-	for _, path := range fonts {
-		if err := dc.LoadFontFace(path, fontSize); err == nil {
-			return
-		}
-	}
-}
-
-// loadSymbolFont loads a symbol-capable font for rendering ✓ ▸ etc.
-func (m *PopupMenu) loadSymbolFont(dc *gg.Context, fontSize float64) {
-	fonts := []string{
-		"C:/Windows/Fonts/seguisym.ttf", // Segoe UI Symbol (Win7+, best coverage)
-		"C:/Windows/Fonts/segmdl2.ttf",  // Segoe MDL2 Assets (Win10+)
-		"C:/Windows/Fonts/segoeui.ttf",  // Segoe UI
-		"C:/Windows/Fonts/arial.ttf",    // Arial
-		"C:/Windows/Fonts/msyh.ttc",     // Microsoft YaHei (fallback)
-	}
-	for _, path := range fonts {
-		if err := dc.LoadFontFace(path, fontSize); err == nil {
-			return
-		}
-	}
+// menuTextItem holds deferred text drawing info for Phase 2
+type menuTextItem struct {
+	text     string
+	x, y     float64
+	fontSize float64
+	clr      color.Color
 }
 
 // render renders the menu to an image
@@ -49,6 +27,7 @@ func (m *PopupMenu) render() *image.RGBA {
 	hasChecked := m.hasChecked
 	hasChildren := m.hasChildren
 	colors := m.getPopupMenuColors()
+	td := m.textDrawer
 	m.mu.Unlock()
 
 	scale := GetDPIScale()
@@ -67,16 +46,16 @@ func (m *PopupMenu) render() *image.RGBA {
 	}
 
 	dc := gg.NewContext(width, height)
-	m.loadFont(dc, fontSize)
 
 	// Calculate corner radius with DPI scaling
 	radius := float64(menuCornerRadius) * scale
+
+	// ========== Phase 1: Draw all shapes with gg ==========
 
 	// Fill background with rounded rectangle
 	dc.SetRGBA(1, 1, 1, 0) // Transparent background first
 	dc.Clear()
 
-	// Draw filled rounded rectangle for background
 	dc.SetColor(colors.BackgroundColor)
 	dc.DrawRoundedRectangle(0.5, 0.5, float64(width)-1, float64(height)-1, radius)
 	dc.Fill()
@@ -85,72 +64,77 @@ func (m *PopupMenu) render() *image.RGBA {
 	dc.DrawRoundedRectangle(1, 1, float64(width)-2, float64(height)-2, radius-1)
 	dc.Clip()
 
+	// Collect ALL text items (including symbols) for Phase 2
+	var textItems []menuTextItem
+
 	// Draw items
 	y := padY
 	for i, item := range items {
 		if item.Separator {
-			// Draw separator line
 			sepY := float64(y + sepH/2)
 			dc.SetColor(colors.SeparatorColor)
 			dc.DrawLine(4*scale, sepY, float64(width)-4*scale, sepY)
 			dc.Stroke()
 			y += sepH
 		} else {
-			// Determine if this item should be highlighted
 			isHovered := (i == hoverIdx && !item.Disabled) || (i == submenuIdx)
 
-			// Draw item background if hovered or submenu is open for this item
+			// Draw item background
 			if isHovered {
 				dc.SetColor(colors.HoverBgColor)
 				dc.DrawRectangle(1, float64(y), float64(width-2), float64(itemH))
 				dc.Fill()
 			}
 
-			// Draw check mark using symbol font
+			// Collect check mark for Phase 2 (unified text rendering)
 			if item.Checked {
+				var symColor color.Color
 				if item.Disabled {
-					dc.SetColor(colors.DisabledColor)
+					symColor = colors.DisabledColor
 				} else if isHovered {
-					dc.SetColor(colors.HoverTextColor)
+					symColor = colors.HoverTextColor
 				} else {
-					dc.SetColor(colors.TextColor)
+					symColor = colors.TextColor
 				}
-				m.loadSymbolFont(dc, fontSize)
 				cx := padX/2 + checkW/2
 				cy := float64(y) + float64(itemH)/2 + fontSize/3
-				sw, _ := dc.MeasureString("✓")
-				dc.DrawString("✓", cx-sw/2, cy)
-				m.loadFont(dc, fontSize) // switch back to text font
+				sw := td.MeasureString("✓", fontSize)
+				textItems = append(textItems, menuTextItem{
+					text: "✓", x: cx - sw/2, y: cy, fontSize: fontSize, clr: symColor,
+				})
 			}
 
-			// Draw text
+			// Collect menu item text for Phase 2
+			var textColor color.Color
 			if item.Disabled {
-				dc.SetColor(colors.DisabledColor)
+				textColor = colors.DisabledColor
 			} else if isHovered {
-				dc.SetColor(colors.HoverTextColor)
+				textColor = colors.HoverTextColor
 			} else {
-				dc.SetColor(colors.TextColor)
+				textColor = colors.TextColor
 			}
-
 			textX := padX + checkW
 			textY := float64(y) + float64(itemH)/2 + fontSize/3
-			dc.DrawString(item.Text, textX, textY)
+			textItems = append(textItems, menuTextItem{
+				text: item.Text, x: textX, y: textY, fontSize: fontSize, clr: textColor,
+			})
 
-			// Draw submenu arrow using symbol font
+			// Collect submenu arrow for Phase 2 (unified text rendering)
 			if len(item.Children) > 0 {
+				var arrowColor color.Color
 				if item.Disabled {
-					dc.SetColor(colors.DisabledColor)
+					arrowColor = colors.DisabledColor
 				} else if isHovered {
-					dc.SetColor(colors.HoverTextColor)
+					arrowColor = colors.HoverTextColor
 				} else {
-					dc.SetColor(colors.TextColor)
+					arrowColor = colors.TextColor
 				}
-				m.loadSymbolFont(dc, fontSize)
 				ax := float64(width) - padX/2 - arrowW/2
 				ay := float64(y) + float64(itemH)/2 + fontSize/3
-				sw, _ := dc.MeasureString("▸")
-				dc.DrawString("▸", ax-sw/2, ay)
-				m.loadFont(dc, fontSize) // switch back to text font
+				sw := td.MeasureString("▸", fontSize)
+				textItems = append(textItems, menuTextItem{
+					text: "▸", x: ax - sw/2, y: ay, fontSize: fontSize, clr: arrowColor,
+				})
 			}
 
 			y += itemH
@@ -163,7 +147,15 @@ func (m *PopupMenu) render() *image.RGBA {
 	dc.DrawRoundedRectangle(0.5, 0.5, float64(width)-1, float64(height)-1, radius)
 	dc.Stroke()
 
-	return dc.Image().(*image.RGBA)
+	// ========== Phase 2: Draw ALL text (items + symbols) with TextDrawer ==========
+	img := dc.Image().(*image.RGBA)
+	td.BeginDraw(img)
+	for _, t := range textItems {
+		td.DrawString(t.text, t.x, t.y, t.fontSize, t.clr)
+	}
+	td.EndDraw()
+
+	return img
 }
 
 // updateWindow updates the layered window with the rendered image

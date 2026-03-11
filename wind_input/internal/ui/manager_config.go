@@ -47,6 +47,44 @@ func (m *Manager) SetCandidateLayout(layout string) {
 	}
 }
 
+// SetGDIFontParams 设置GDI字体粗细和缩放（广播到所有UI组件）
+func (m *Manager) SetGDIFontParams(weight int, scale float64) {
+	if m.renderer != nil {
+		m.renderer.SetGDIFontParams(weight, scale)
+	}
+	if m.toolbar != nil {
+		m.toolbar.SetGDIFontParams(weight, scale)
+	}
+	if m.tooltip != nil {
+		m.tooltip.SetGDIFontParams(weight, scale)
+	}
+	if m.unifiedPopupMenu != nil {
+		m.unifiedPopupMenu.SetGDIFontParams(weight, scale)
+	}
+	m.logger.Info("GDI font params updated", "weight", weight, "scale", scale)
+}
+
+// SetTextRenderMode 设置文本渲染模式（"gdi" 或 "freetype"）
+func (m *Manager) SetTextRenderMode(mode string) {
+	renderMode := TextRenderModeGDI
+	if mode == "freetype" {
+		renderMode = TextRenderModeFreetype
+	}
+	if m.renderer != nil {
+		m.renderer.SetTextRenderMode(renderMode)
+	}
+	if m.toolbar != nil {
+		m.toolbar.SetTextRenderMode(renderMode)
+	}
+	if m.tooltip != nil {
+		m.tooltip.SetTextRenderMode(renderMode)
+	}
+	if m.unifiedPopupMenu != nil {
+		m.unifiedPopupMenu.SetTextRenderMode(renderMode)
+	}
+	m.logger.Info("Text render mode updated", "mode", mode)
+}
+
 // SetHidePreedit 设置是否隐藏预编辑区域
 func (m *Manager) SetHidePreedit(hide bool) {
 	if m.renderer != nil {
