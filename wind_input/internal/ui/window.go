@@ -595,6 +595,24 @@ func (w *CandidateWindow) SetCallbacks(callbacks *CandidateCallback) {
 	w.mu.Unlock()
 }
 
+// SetMenuFontParams updates GDI font weight and scale for candidate window's popup menu
+func (w *CandidateWindow) SetMenuFontParams(weight int, scale float64) {
+	w.mu.Lock()
+	if w.popupMenu != nil {
+		w.popupMenu.SetGDIFontParams(weight, scale)
+	}
+	w.mu.Unlock()
+}
+
+// SetMenuFontSize sets the base font size for candidate window's popup menu
+func (w *CandidateWindow) SetMenuFontSize(size float64) {
+	w.mu.Lock()
+	if w.popupMenu != nil {
+		w.popupMenu.SetMenuFontSize(size)
+	}
+	w.mu.Unlock()
+}
+
 // SetTheme sets the theme for the candidate window's popup menu
 func (w *CandidateWindow) SetTheme(resolved *theme.ResolvedTheme) {
 	w.mu.Lock()

@@ -48,7 +48,7 @@ func DefaultRenderConfig() RenderConfig {
 		Padding:         10 * scale,
 		ItemHeight:      32 * scale,
 		CornerRadius:    8 * scale,
-		BackgroundColor: color.RGBA{255, 255, 255, 245}, // Slightly transparent white
+		BackgroundColor: color.RGBA{255, 255, 255, 255}, // Opaque white
 		TextColor:       color.RGBA{30, 30, 30, 255},
 		IndexColor:      color.RGBA{255, 255, 255, 255},
 		IndexBgColor:    color.RGBA{66, 133, 244, 255}, // Blue

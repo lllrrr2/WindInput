@@ -184,7 +184,7 @@ func (t *Theme) Resolve() *ResolvedTheme {
 		Meta:  t.Meta,
 		Style: t.resolveStyle(),
 		CandidateWindow: ResolvedCandidateWindowColors{
-			BackgroundColor: MustParseHexColor(t.CandidateWindow.BackgroundColor, color.RGBA{255, 255, 255, 245}),
+			BackgroundColor: MustParseHexColor(t.CandidateWindow.BackgroundColor, color.RGBA{255, 255, 255, 255}),
 			BorderColor:     MustParseHexColor(t.CandidateWindow.BorderColor, color.RGBA{200, 200, 200, 255}),
 			TextColor:       MustParseHexColor(t.CandidateWindow.TextColor, color.RGBA{30, 30, 30, 255}),
 			IndexColor:      MustParseHexColor(t.CandidateWindow.IndexColor, color.RGBA{255, 255, 255, 255}),
@@ -196,7 +196,7 @@ func (t *Theme) Resolve() *ResolvedTheme {
 			ShadowColor:     MustParseHexColor(t.CandidateWindow.ShadowColor, color.RGBA{0, 0, 0, 15}),
 		},
 		Toolbar: ResolvedToolbarColors{
-			BackgroundColor:     MustParseHexColor(t.Toolbar.BackgroundColor, color.RGBA{255, 255, 255, 250}),
+			BackgroundColor:     MustParseHexColor(t.Toolbar.BackgroundColor, color.RGBA{255, 255, 255, 255}),
 			BorderColor:         MustParseHexColor(t.Toolbar.BorderColor, color.RGBA{199, 209, 224, 255}),
 			GripColor:           MustParseHexColor(t.Toolbar.GripColor, color.RGBA{153, 173, 199, 179}),
 			ModeChineseBgColor:  MustParseHexColor(t.Toolbar.ModeChineseBgColor, color.RGBA{51, 154, 245, 255}),

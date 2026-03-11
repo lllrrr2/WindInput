@@ -61,18 +61,30 @@ func (m *Manager) SetGDIFontParams(weight int, scale float64) {
 	m.logger.Info("GDI font params updated (candidate/toolbar/tooltip)", "weight", weight, "scale", scale)
 }
 
-// SetMenuFontParams 设置菜单的GDI字体粗细（独立于候选框）
+// SetMenuFontParams 设置所有菜单的GDI字体粗细（独立于候选框）
 func (m *Manager) SetMenuFontParams(weight int, scale float64) {
 	if m.unifiedPopupMenu != nil {
 		m.unifiedPopupMenu.SetGDIFontParams(weight, scale)
 	}
+	if m.toolbar != nil {
+		m.toolbar.SetMenuFontParams(weight, scale)
+	}
+	if m.window != nil {
+		m.window.SetMenuFontParams(weight, scale)
+	}
 	m.logger.Info("GDI font params updated (menu)", "weight", weight, "scale", scale)
 }
 
-// SetMenuFontSize 设置菜单字体大小（DPI缩放前基础值）
+// SetMenuFontSize 设置所有菜单字体大小（DPI缩放前基础值）
 func (m *Manager) SetMenuFontSize(size float64) {
 	if m.unifiedPopupMenu != nil {
 		m.unifiedPopupMenu.SetMenuFontSize(size)
+	}
+	if m.toolbar != nil {
+		m.toolbar.SetMenuFontSize(size)
+	}
+	if m.window != nil {
+		m.window.SetMenuFontSize(size)
 	}
 	m.logger.Info("Menu font size updated", "size", size)
 }

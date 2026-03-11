@@ -4,7 +4,7 @@ meta:
   author: "WindInput"
 
 candidate_window:
-  background_color: "#FFFFFFF5"  # 略微透明的白色
+  background_color: "#FFFFFF"
   border_color: "#C8C8C8"
   text_color: "#1E1E1E"
   index_color: "#FFFFFF"
@@ -16,7 +16,7 @@ candidate_window:
   shadow_color: "#0000000F"
 
 toolbar:
-  background_color: "#FFFFFFFA"
+  background_color: "#FFFFFF"
   border_color: "#C7D1E0"        # 浅蓝灰边框
   grip_color: "#99ADC7B3"
   mode_chinese_bg_color: "#339AF5"   # 亮蓝色

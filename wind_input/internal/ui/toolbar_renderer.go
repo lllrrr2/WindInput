@@ -101,7 +101,7 @@ func (r *ToolbarRenderer) getToolbarColors() *theme.ResolvedToolbarColors {
 	}
 	// Return default colors
 	return &theme.ResolvedToolbarColors{
-		BackgroundColor:     color.RGBA{255, 255, 255, 250},
+		BackgroundColor:     color.RGBA{255, 255, 255, 255},
 		BorderColor:         color.RGBA{199, 209, 224, 255},
 		GripColor:           color.RGBA{153, 173, 199, 179},
 		ModeChineseBgColor:  color.RGBA{51, 154, 245, 255},

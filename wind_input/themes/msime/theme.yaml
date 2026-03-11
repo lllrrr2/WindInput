@@ -1,0 +1,56 @@
+meta:
+  name: "微软风格"
+  version: "1.0"
+  author: "清风输入法"
+
+style:
+  index_style: "text"
+  accent_bar_color: "#0078D4"
+
+candidate_window:
+  background_color: "#FFFFFF"
+  border_color: "#E5E5E5"
+  text_color: "#1A1A1A"
+  index_color: "#888888"
+  index_bg_color: "#0078D4"
+  hover_bg_color: "#EBF0FE"
+  input_bg_color: "#F5F5F5"
+  input_text_color: "#666666"
+  comment_color: "#999999"
+  shadow_color: "#00000008"
+
+toolbar:
+  background_color: "#FFFFFF"
+  border_color: "#E0E0E0"
+  grip_color: "#C0C0C0B3"
+  mode_chinese_bg_color: "#0078D4"
+  mode_english_bg_color: "#8A8A8A"
+  mode_text_color: "#FFFFFF"
+  full_width_on_bg_color: "#0078D4"
+  full_width_off_bg_color: "#F0F0F0"
+  full_width_on_color: "#FFFFFF"
+  full_width_off_color: "#666666"
+  punct_chinese_bg_color: "#0078D4"
+  punct_english_bg_color: "#F0F0F0"
+  punct_chinese_color: "#FFFFFF"
+  punct_english_color: "#666666"
+  settings_bg_color: "#F0F0F0"
+  settings_icon_color: "#666666"
+  settings_hole_color: "#F0F0F0"
+
+popup_menu:
+  background_color: "#FFFFFF"
+  border_color: "#E0E0E0"
+  text_color: "#1A1A1A"
+  disabled_color: "#AAAAAA"
+  hover_bg_color: "#EBF0FE"
+  hover_text_color: "#1A1A1A"
+  separator_color: "#E5E5E5"
+
+tooltip:
+  background_color: "#2D2D2DF0"
+  text_color: "#FFFFFF"
+
+mode_indicator:
+  background_color: "#2D2D2DE6"
+  text_color: "#FFFFFF"

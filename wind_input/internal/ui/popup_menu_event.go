@@ -236,7 +236,7 @@ func (m *PopupMenu) handleClick(lParam uintptr) {
 // hitTest returns the item index at the given Y position
 func (m *PopupMenu) hitTest(mouseY int) int {
 	scale := GetDPIScale()
-	itemH := int(float64(menuItemHeight) * scale)
+	itemH := int(float64(m.getMenuItemHeight()) * scale)
 	sepH := int(float64(menuSeparatorHeight) * scale)
 	padY := int(float64(menuPaddingY) * scale)
 
@@ -284,7 +284,7 @@ func (m *PopupMenu) showSubmenu(index int) {
 
 	// Calculate submenu position (right side of parent item)
 	scale := GetDPIScale()
-	itemH := int(float64(menuItemHeight) * scale)
+	itemH := int(float64(m.getMenuItemHeight()) * scale)
 	sepH := int(float64(menuSeparatorHeight) * scale)
 	padY := int(float64(menuPaddingY) * scale)
 

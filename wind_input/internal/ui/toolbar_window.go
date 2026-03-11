@@ -254,13 +254,24 @@ func (w *ToolbarWindow) SetCallback(callback *ToolbarCallback) {
 	w.mu.Unlock()
 }
 
-// SetGDIFontParams updates GDI font weight and scale for toolbar and its popup menu
+// SetGDIFontParams updates GDI font weight and scale for toolbar text rendering
 func (w *ToolbarWindow) SetGDIFontParams(weight int, scale float64) {
 	if w.renderer != nil {
 		w.renderer.SetGDIFontParams(weight, scale)
 	}
+}
+
+// SetMenuFontParams updates GDI font weight and scale for toolbar's popup menu
+func (w *ToolbarWindow) SetMenuFontParams(weight int, scale float64) {
 	if w.popupMenu != nil {
 		w.popupMenu.SetGDIFontParams(weight, scale)
+	}
+}
+
+// SetMenuFontSize sets the base font size for toolbar's popup menu
+func (w *ToolbarWindow) SetMenuFontSize(size float64) {
+	if w.popupMenu != nil {
+		w.popupMenu.SetMenuFontSize(size)
 	}
 }
 

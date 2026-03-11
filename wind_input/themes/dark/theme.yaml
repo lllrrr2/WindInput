@@ -4,7 +4,7 @@ meta:
   author: "WindInput"
 
 candidate_window:
-  background_color: "#2D2D2DF5"
+  background_color: "#2D2D2D"
   border_color: "#404040"
   text_color: "#E0E0E0"
   index_color: "#FFFFFF"
@@ -16,7 +16,7 @@ candidate_window:
   shadow_color: "#0000001A"
 
 toolbar:
-  background_color: "#2D2D2DFA"
+  background_color: "#2D2D2D"
   border_color: "#404040"
   grip_color: "#5A5A5AB3"
   mode_chinese_bg_color: "#339AF5"

@@ -9,7 +9,7 @@ func DefaultTheme() *Theme {
 			Author:  "清风输入法",
 		},
 		CandidateWindow: CandidateWindowColors{
-			BackgroundColor: "#FFFFFFF5", // Slightly transparent white
+			BackgroundColor: "#FFFFFF",
 			BorderColor:     "#C8C8C8",
 			TextColor:       "#1E1E1E",
 			IndexColor:      "#FFFFFF",
@@ -21,7 +21,7 @@ func DefaultTheme() *Theme {
 			ShadowColor:     "#0000000F", // 15/255 alpha
 		},
 		Toolbar: ToolbarColors{
-			BackgroundColor:     "#FFFFFFFA",
+			BackgroundColor:     "#FFFFFF",
 			BorderColor:         "#C7D1E0", // Light blue-gray
 			GripColor:           "#99ADC7B3",
 			ModeChineseBgColor:  "#339AF5", // Bright blue
@@ -68,7 +68,7 @@ func DarkTheme() *Theme {
 			Author:  "清风输入法",
 		},
 		CandidateWindow: CandidateWindowColors{
-			BackgroundColor: "#2D2D2DF5",
+			BackgroundColor: "#2D2D2D",
 			BorderColor:     "#404040",
 			TextColor:       "#E0E0E0",
 			IndexColor:      "#FFFFFF",
@@ -80,7 +80,7 @@ func DarkTheme() *Theme {
 			ShadowColor:     "#0000001A",
 		},
 		Toolbar: ToolbarColors{
-			BackgroundColor:     "#2D2D2DFA",
+			BackgroundColor:     "#2D2D2D",
 			BorderColor:         "#404040",
 			GripColor:           "#5A5A5AB3",
 			ModeChineseBgColor:  "#339AF5",
@@ -127,7 +127,7 @@ func MSIMETheme() *Theme {
 			Author:  "清风输入法",
 		},
 		CandidateWindow: CandidateWindowColors{
-			BackgroundColor: "#FFFFFFFA",
+			BackgroundColor: "#FFFFFF",
 			BorderColor:     "#E5E5E5",
 			TextColor:       "#1A1A1A",
 			IndexColor:      "#888888", // Gray index text in "text" mode
@@ -143,7 +143,7 @@ func MSIMETheme() *Theme {
 			AccentBarColor: "#0078D4", // Microsoft blue accent bar
 		},
 		Toolbar: ToolbarColors{
-			BackgroundColor:     "#FFFFFFFA",
+			BackgroundColor:     "#FFFFFF",
 			BorderColor:         "#E0E0E0",
 			GripColor:           "#C0C0C0B3",
 			ModeChineseBgColor:  "#0078D4",
