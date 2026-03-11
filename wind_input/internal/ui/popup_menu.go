@@ -227,22 +227,34 @@ func NewPopupMenu() *PopupMenu {
 // This avoids duplicating fontCache, TextRenderer, and FontConfig per submenu,
 // significantly reducing memory when submenus are created/destroyed frequently.
 func newPopupMenuShared(parent *PopupMenu) *PopupMenu {
+	parent.mu.Lock()
+	menuFontSizeOverride := parent.menuFontSizeOverride
+	resolvedTheme := parent.resolvedTheme
+	parent.mu.Unlock()
+
 	return &PopupMenu{
-		hoverIndex:   -1,
-		submenuIndex: -1,
-		fontCache:    parent.fontCache,
-		textRenderer: parent.textRenderer,
-		textDrawer:   parent.textDrawer,
-		fontConfig:   parent.fontConfig,
+		hoverIndex:           -1,
+		submenuIndex:         -1,
+		fontCache:            parent.fontCache,
+		textRenderer:         parent.textRenderer,
+		textDrawer:           parent.textDrawer,
+		fontConfig:           parent.fontConfig,
+		menuFontSizeOverride: menuFontSizeOverride,
+		resolvedTheme:        resolvedTheme,
 	}
 }
 
 // SetGDIFontParams updates GDI font weight and scale for text rendering
 func (m *PopupMenu) SetGDIFontParams(weight int, scale float64) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	sub := m.submenu
 	if m.textRenderer != nil {
 		m.textRenderer.SetGDIParams(weight, scale)
+	}
+	m.mu.Unlock()
+
+	if sub != nil {
+		sub.SetGDIFontParams(weight, scale)
 	}
 }
 
@@ -250,8 +262,13 @@ func (m *PopupMenu) SetGDIFontParams(weight int, scale float64) {
 // Pass 0 to use the default (menuFontSize constant = 12.0).
 func (m *PopupMenu) SetMenuFontSize(size float64) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.menuFontSizeOverride = size
+	sub := m.submenu
+	m.mu.Unlock()
+
+	if sub != nil {
+		sub.SetMenuFontSize(size)
+	}
 }
 
 // getMenuFontSize returns the effective menu font size (base, before DPI scaling).
@@ -277,19 +294,29 @@ func (m *PopupMenu) getMenuItemHeight() int {
 // SetTextRenderMode switches between GDI and FreeType text rendering
 func (m *PopupMenu) SetTextRenderMode(mode TextRenderMode) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if mode == TextRenderModeFreetype {
 		m.textDrawer = newFreeTypeDrawer(m.fontCache, m.fontConfig)
 	} else {
 		m.textDrawer = newGDIDrawer(m.textRenderer)
+	}
+	sub := m.submenu
+	m.mu.Unlock()
+
+	if sub != nil {
+		sub.SetTextRenderMode(mode)
 	}
 }
 
 // SetTheme sets the theme for the popup menu
 func (m *PopupMenu) SetTheme(resolved *theme.ResolvedTheme) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.resolvedTheme = resolved
+	sub := m.submenu
+	m.mu.Unlock()
+
+	if sub != nil {
+		sub.SetTheme(resolved)
+	}
 }
 
 // SetFlipRefY sets the Y coordinate to flip above when there's not enough space below.
