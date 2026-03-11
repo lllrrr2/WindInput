@@ -70,10 +70,17 @@ type ModeIndicatorColors struct {
 	TextColor       string `yaml:"text_color" json:"text_color"`
 }
 
+// CandidateWindowStyle defines rendering style options for the candidate window
+type CandidateWindowStyle struct {
+	IndexStyle     string `yaml:"index_style" json:"index_style"`           // "circle" (default) or "text"
+	AccentBarColor string `yaml:"accent_bar_color" json:"accent_bar_color"` // Left accent bar color, empty = no bar
+}
+
 // Theme represents a complete theme configuration
 type Theme struct {
 	Meta            ThemeMeta             `yaml:"meta" json:"meta"`
 	CandidateWindow CandidateWindowColors `yaml:"candidate_window" json:"candidate_window"`
+	Style           CandidateWindowStyle  `yaml:"style" json:"style"`
 	Toolbar         ToolbarColors         `yaml:"toolbar" json:"toolbar"`
 	PopupMenu       PopupMenuColors       `yaml:"popup_menu" json:"popup_menu"`
 	Tooltip         TooltipColors         `yaml:"tooltip" json:"tooltip"`
@@ -138,20 +145,44 @@ type ResolvedModeIndicatorColors struct {
 	TextColor       color.Color
 }
 
+// ResolvedCandidateWindowStyle contains parsed style options
+type ResolvedCandidateWindowStyle struct {
+	IndexStyle     string      // "circle" or "text"
+	AccentBarColor color.Color // nil if no accent bar
+	HasAccentBar   bool
+}
+
 // ResolvedTheme contains all resolved (parsed) colors
 type ResolvedTheme struct {
 	Meta            ThemeMeta
 	CandidateWindow ResolvedCandidateWindowColors
+	Style           ResolvedCandidateWindowStyle
 	Toolbar         ResolvedToolbarColors
 	PopupMenu       ResolvedPopupMenuColors
 	Tooltip         ResolvedTooltipColors
 	ModeIndicator   ResolvedModeIndicatorColors
 }
 
+// resolveStyle parses the style configuration
+func (t *Theme) resolveStyle() ResolvedCandidateWindowStyle {
+	style := ResolvedCandidateWindowStyle{
+		IndexStyle: "circle", // default
+	}
+	if t.Style.IndexStyle == "text" {
+		style.IndexStyle = "text"
+	}
+	if t.Style.AccentBarColor != "" {
+		style.AccentBarColor = MustParseHexColor(t.Style.AccentBarColor, color.RGBA{0, 120, 212, 255})
+		style.HasAccentBar = true
+	}
+	return style
+}
+
 // Resolve parses all color strings into color.Color values
 func (t *Theme) Resolve() *ResolvedTheme {
 	return &ResolvedTheme{
-		Meta: t.Meta,
+		Meta:  t.Meta,
+		Style: t.resolveStyle(),
 		CandidateWindow: ResolvedCandidateWindowColors{
 			BackgroundColor: MustParseHexColor(t.CandidateWindow.BackgroundColor, color.RGBA{255, 255, 255, 245}),
 			BorderColor:     MustParseHexColor(t.CandidateWindow.BorderColor, color.RGBA{200, 200, 200, 255}),

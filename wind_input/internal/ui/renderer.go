@@ -30,6 +30,9 @@ type RenderConfig struct {
 	HoverBgColor    color.Color // Background color for hovered candidate
 	Layout          string      // "horizontal" or "vertical"
 	HidePreedit     bool        // Hide preedit area when inline_preedit is enabled
+	IndexStyle      string      // "circle" (default) or "text" (plain text index)
+	AccentBarColor  color.Color // Left accent bar color, nil = no bar
+	HasAccentBar    bool        // Whether to draw accent bar
 }
 
 // DefaultRenderConfig returns default rendering configuration with DPI scaling
@@ -188,6 +191,10 @@ func (r *Renderer) SetTheme(resolved *theme.ResolvedTheme) {
 	r.config.HoverBgColor = colors.HoverBgColor
 	r.config.InputBgColor = colors.InputBgColor
 	r.config.InputTextColor = colors.InputTextColor
+	// Update style from theme
+	r.config.IndexStyle = resolved.Style.IndexStyle
+	r.config.AccentBarColor = resolved.Style.AccentBarColor
+	r.config.HasAccentBar = resolved.Style.HasAccentBar
 }
 
 // getCommentColor returns the comment color from theme or default
@@ -251,6 +258,32 @@ func (r *Renderer) ensureFontLoaded() {
 			return
 		}
 	}
+}
+
+// drawChevronLeft draws a left-pointing chevron (‹) at the given center position
+func (r *Renderer) drawChevronLeft(dc *gg.Context, cx, cy, size, lineWidth float64) {
+	halfH := size / 2
+	halfW := size * 0.35 // narrower for elegance
+	dc.SetLineWidth(lineWidth)
+	dc.SetLineCap(gg.LineCapRound)
+	dc.SetLineJoin(gg.LineJoinRound)
+	dc.MoveTo(cx+halfW, cy-halfH)
+	dc.LineTo(cx-halfW, cy)
+	dc.LineTo(cx+halfW, cy+halfH)
+	dc.Stroke()
+}
+
+// drawChevronRight draws a right-pointing chevron (›) at the given center position
+func (r *Renderer) drawChevronRight(dc *gg.Context, cx, cy, size, lineWidth float64) {
+	halfH := size / 2
+	halfW := size * 0.35
+	dc.SetLineWidth(lineWidth)
+	dc.SetLineCap(gg.LineCapRound)
+	dc.SetLineJoin(gg.LineJoinRound)
+	dc.MoveTo(cx-halfW, cy-halfH)
+	dc.LineTo(cx+halfW, cy)
+	dc.LineTo(cx-halfW, cy+halfH)
+	dc.Stroke()
 }
 
 func (r *Renderer) drawRoundedRect(dc *gg.Context, x, y, w, h, radius float64) {

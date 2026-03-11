@@ -145,14 +145,33 @@ onUnmounted(() => {
                   borderColor: themePreview.candidate_window?.border_color,
                 }"
               >
+                <div
+                  v-if="themePreview.style?.accent_bar_color"
+                  class="preview-accent-bar"
+                  :style="{
+                    backgroundColor: themePreview.style.accent_bar_color,
+                  }"
+                ></div>
                 <div class="preview-candidate-item">
                   <span
                     class="preview-index"
-                    :style="{
-                      backgroundColor:
-                        themePreview.candidate_window?.index_bg_color,
-                      color: themePreview.candidate_window?.index_color,
+                    :class="{
+                      'preview-index-text':
+                        themePreview.style?.index_style === 'text',
                     }"
+                    :style="
+                      themePreview.style?.index_style === 'text'
+                        ? {
+                            color:
+                              themePreview.candidate_window?.index_color,
+                          }
+                        : {
+                            backgroundColor:
+                              themePreview.candidate_window?.index_bg_color,
+                            color:
+                              themePreview.candidate_window?.index_color,
+                          }
+                    "
                     >1</span
                   >
                   <span
@@ -172,11 +191,23 @@ onUnmounted(() => {
                 >
                   <span
                     class="preview-index"
-                    :style="{
-                      backgroundColor:
-                        themePreview.candidate_window?.index_bg_color,
-                      color: themePreview.candidate_window?.index_color,
+                    :class="{
+                      'preview-index-text':
+                        themePreview.style?.index_style === 'text',
                     }"
+                    :style="
+                      themePreview.style?.index_style === 'text'
+                        ? {
+                            color:
+                              themePreview.candidate_window?.index_color,
+                          }
+                        : {
+                            backgroundColor:
+                              themePreview.candidate_window?.index_bg_color,
+                            color:
+                              themePreview.candidate_window?.index_color,
+                          }
+                    "
                     >2</span
                   >
                   <span
@@ -429,11 +460,22 @@ onUnmounted(() => {
 }
 .preview-candidate-window {
   display: inline-flex;
+  align-items: center;
   gap: 12px;
   padding: 10px 14px;
   border: 1px solid #ccc;
   border-radius: 6px;
   background: #fff;
+  position: relative;
+  overflow: hidden;
+}
+.preview-accent-bar {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
 }
 .preview-candidate-item {
   display: flex;
@@ -454,6 +496,11 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 500;
   border-radius: 3px;
+}
+.preview-index.preview-index-text {
+  background: transparent !important;
+  font-size: 13px;
+  font-weight: 600;
 }
 .preview-text {
   font-size: 14px;

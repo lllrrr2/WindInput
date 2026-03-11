@@ -43,6 +43,10 @@ export interface ThemePreview {
     full_width_on_bg_color: string;
     punct_chinese_bg_color: string;
   };
+  style?: {
+    index_style: string;
+    accent_bar_color: string;
+  };
 }
 
 // 配置管理

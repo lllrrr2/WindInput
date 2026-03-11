@@ -83,6 +83,15 @@ func (m *Manager) LoadTheme(name string) error {
 		return nil
 	}
 
+	if name == "msime" {
+		m.currentTheme = MSIMETheme()
+		m.resolved = m.currentTheme.Resolve()
+		if m.logger != nil {
+			m.logger.Info("Loaded built-in Microsoft IME theme")
+		}
+		return nil
+	}
+
 	// Try to load from file
 	theme, err := m.loadThemeFile(name)
 	if err != nil {
@@ -160,7 +169,7 @@ func (m *Manager) GetResolvedTheme() *ResolvedTheme {
 
 // ListAvailableThemes returns a list of available theme names
 func (m *Manager) ListAvailableThemes() []string {
-	themes := []string{"default", "dark"}
+	themes := []string{"default", "dark", "msime"}
 
 	// Scan theme directories
 	for _, dir := range m.themeDirs {

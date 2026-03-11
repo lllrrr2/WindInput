@@ -86,6 +86,20 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 	smallFace := r.fontCache.getFace(cfg.IndexFontSize)
 	pageFace := r.fontCache.getFace(12 * scale)
 
+	// For text-style index, use slightly larger fonts for index, comment, and page
+	isTextIndex := cfg.IndexStyle == "text"
+	indexTextFace := mainFace
+	indexTextSize := cfg.FontSize
+	commentFace := smallFace
+	commentSize := cfg.IndexFontSize
+	if isTextIndex {
+		indexTextSize = cfg.FontSize + 2*scale
+		indexTextFace = r.fontCache.getFace(indexTextSize)
+		commentSize = cfg.IndexFontSize + 2*scale
+		commentFace = r.fontCache.getFace(commentSize)
+		pageFace = r.fontCache.getFace(14 * scale)
+	}
+
 	y := cfg.Padding
 
 	// Draw input area (if not hidden)
@@ -132,14 +146,36 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		dc.Fill()
 	}
 
-	// First pass: draw all index circles and record bounding boxes
+	// Draw accent bar (if enabled)
+	if cfg.HasAccentBar && cfg.AccentBarColor != nil {
+		barWidth := 3.0 * scale
+		barMargin := height * 0.3
+		if barMargin < cfg.CornerRadius+1 {
+			barMargin = cfg.CornerRadius + 1
+		}
+		dc.SetColor(cfg.AccentBarColor)
+		r.drawRoundedRect(dc, 1, barMargin, barWidth, height-barMargin*2, barWidth/2)
+		dc.Fill()
+	}
+
+	// Determine text offset based on index style
+	textStartX := cfg.Padding + 32*scale // default for circle style
+	if cfg.IndexStyle == "text" {
+		textStartX = cfg.Padding + 24*scale // less space needed for plain text index
+	}
+
+	// First pass: draw all index backgrounds (circles) and record bounding boxes
 	for i := range candidates {
 		itemY := y + float64(i)*cfg.ItemHeight
-		indexX := cfg.Padding + 14*scale
-		indexY := itemY + cfg.ItemHeight/2
-		dc.SetColor(cfg.IndexBgColor)
-		dc.DrawCircle(indexX, indexY, 11*scale)
-		dc.Fill()
+
+		if cfg.IndexStyle != "text" {
+			// Circle style: draw filled circle
+			indexX := cfg.Padding + 14*scale
+			indexY := itemY + cfg.ItemHeight/2
+			dc.SetColor(cfg.IndexBgColor)
+			dc.DrawCircle(indexX, indexY, 11*scale)
+			dc.Fill()
+		}
 
 		// Record bounding rectangle
 		result.Rects[i] = CandidateRect{
@@ -151,17 +187,31 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		}
 	}
 
-	// Second pass: draw all index numbers (small font)
-	if smallFace != nil {
-		dc.SetFontFace(smallFace)
-		dc.SetColor(cfg.IndexColor)
-		for i, cand := range candidates {
-			itemY := y + float64(i)*cfg.ItemHeight
-			indexX := cfg.Padding + 14*scale
-			indexY := itemY + cfg.ItemHeight/2
-			indexStr := string(rune('0' + cand.Index))
-			tw, _ := dc.MeasureString(indexStr)
-			dc.DrawString(indexStr, indexX-tw/2, indexY+cfg.IndexFontSize/3)
+	// Second pass: draw all index numbers
+	if isTextIndex {
+		// Text style: draw plain colored number (slightly larger font)
+		if indexTextFace != nil {
+			dc.SetFontFace(indexTextFace)
+			dc.SetColor(cfg.IndexColor)
+			for i, cand := range candidates {
+				itemY := y + float64(i)*cfg.ItemHeight
+				indexStr := string(rune('0' + cand.Index))
+				dc.DrawString(indexStr, cfg.Padding+4*scale, itemY+cfg.ItemHeight/2+indexTextSize/3)
+			}
+		}
+	} else {
+		// Circle style: draw white number on circle
+		if smallFace != nil {
+			dc.SetFontFace(smallFace)
+			dc.SetColor(cfg.IndexColor)
+			for i, cand := range candidates {
+				itemY := y + float64(i)*cfg.ItemHeight
+				indexX := cfg.Padding + 14*scale
+				indexY := itemY + cfg.ItemHeight/2
+				indexStr := string(rune('0' + cand.Index))
+				tw, _ := dc.MeasureString(indexStr)
+				dc.DrawString(indexStr, indexX-tw/2, indexY+cfg.IndexFontSize/3)
+			}
 		}
 	}
 
@@ -178,22 +228,22 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		dc.SetColor(cfg.TextColor)
 		for i, cand := range candidates {
 			itemY := y + float64(i)*cfg.ItemHeight
-			dc.DrawString(cand.Text, cfg.Padding+32*scale, itemY+cfg.ItemHeight/2+cfg.FontSize/3)
+			dc.DrawString(cand.Text, textStartX, itemY+cfg.ItemHeight/2+cfg.FontSize/3)
 
 			if cand.Comment != "" {
 				candWidth, _ := dc.MeasureString(cand.Text)
 				comments = append(comments, commentInfo{
 					text: cand.Comment,
-					x:    cfg.Padding + 32*scale + candWidth + 8*scale,
-					y:    itemY + cfg.ItemHeight/2 + cfg.IndexFontSize/3,
+					x:    textStartX + candWidth + 8*scale,
+					y:    itemY + cfg.ItemHeight/2 + commentSize/3,
 				})
 			}
 		}
 	}
 
-	// Fourth pass: draw all comments (small font)
-	if len(comments) > 0 && smallFace != nil {
-		dc.SetFontFace(smallFace)
+	// Fourth pass: draw all comments (slightly larger font for text-style index)
+	if len(comments) > 0 && commentFace != nil {
+		dc.SetFontFace(commentFace)
 		dc.SetColor(r.getCommentColor())
 		for _, c := range comments {
 			dc.DrawString(c.text, c.x, c.y)
@@ -230,18 +280,14 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 			dc.Fill()
 		}
 
-		// Draw left arrow triangle (page up)
+		// Draw left chevron (page up)
 		leftArrowColor := cfg.IndexBgColor
 		if page <= 1 {
 			leftArrowColor = cfg.InputTextColor
 		}
 		leftCenterX := startX + arrowW/2
 		dc.SetColor(leftArrowColor)
-		dc.MoveTo(leftCenterX+arrowSize/2, centerY-arrowSize/2)
-		dc.LineTo(leftCenterX-arrowSize/2, centerY)
-		dc.LineTo(leftCenterX+arrowSize/2, centerY+arrowSize/2)
-		dc.ClosePath()
-		dc.Fill()
+		r.drawChevronLeft(dc, leftCenterX, centerY, arrowSize, 1.5*scale)
 		result.PageUpRect = &pageUpBtnRect
 
 		// Draw page text
@@ -263,18 +309,14 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 			dc.Fill()
 		}
 
-		// Draw right arrow triangle (page down)
+		// Draw right chevron (page down)
 		rightArrowColor := cfg.IndexBgColor
 		if page >= totalPages {
 			rightArrowColor = cfg.InputTextColor
 		}
 		rightCenterX := startX + arrowW + pageW + arrowW/2
 		dc.SetColor(rightArrowColor)
-		dc.MoveTo(rightCenterX-arrowSize/2, centerY-arrowSize/2)
-		dc.LineTo(rightCenterX+arrowSize/2, centerY)
-		dc.LineTo(rightCenterX-arrowSize/2, centerY+arrowSize/2)
-		dc.ClosePath()
-		dc.Fill()
+		r.drawChevronRight(dc, rightCenterX, centerY, arrowSize, 1.5*scale)
 		result.PageDownRect = &pageDownBtnRect
 	}
 
@@ -291,6 +333,20 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	smallFace := r.fontCache.getFace(cfg.IndexFontSize)
 	pageFace := r.fontCache.getFace(12 * scale)
 
+	// For text-style index, use slightly larger fonts for index, comment, and page
+	isTextIndex := cfg.IndexStyle == "text"
+	indexTextFace := mainFace
+	indexTextSize := cfg.FontSize
+	commentFace := smallFace
+	commentSize := cfg.IndexFontSize
+	if isTextIndex {
+		indexTextSize = cfg.FontSize + 2*scale
+		indexTextFace = r.fontCache.getFace(indexTextSize)
+		commentSize = cfg.IndexFontSize + 2*scale
+		commentFace = r.fontCache.getFace(commentSize)
+		pageFace = r.fontCache.getFace(14 * scale)
+	}
+
 	// Measure all candidates to calculate total width
 	type candMeasure struct {
 		textWidth    float64
@@ -299,11 +355,29 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	}
 	measures := make([]candMeasure, len(candidates))
 
-	indexSize := 18.0 * scale   // Index circle size
+	indexSize := 18.0 * scale   // Index circle diameter
 	indexMargin := 4.0 * scale  // Margin between index and text
 	itemSpacing := 12.0 * scale // Space between items
 
+	// For text-style index, adjust spacing
+	if isTextIndex {
+		indexMargin = 2.0 * scale  // Tighter margin for text-style (number is already spaced)
+		itemSpacing = 16.0 * scale // More space between items for cleaner look
+	}
+	indexTextWidths := make([]float64, len(candidates))
+
 	tmpDc := gg.NewContext(1, 1)
+
+	// Measure index text widths for text style (use larger font)
+	if isTextIndex && indexTextFace != nil {
+		tmpDc.SetFontFace(indexTextFace)
+		for i, cand := range candidates {
+			indexStr := string(rune('0' + cand.Index))
+			w, _ := tmpDc.MeasureString(indexStr)
+			indexTextWidths[i] = w
+		}
+	}
+
 	if mainFace != nil {
 		tmpDc.SetFontFace(mainFace)
 		for i, cand := range candidates {
@@ -311,8 +385,8 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 			measures[i].textWidth = tw
 		}
 	}
-	if smallFace != nil {
-		tmpDc.SetFontFace(smallFace)
+	if commentFace != nil {
+		tmpDc.SetFontFace(commentFace)
 		for i, cand := range candidates {
 			if cand.Comment != "" {
 				cw, _ := tmpDc.MeasureString(cand.Comment)
@@ -323,7 +397,11 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 
 	// Calculate total width for each candidate
 	for i, cand := range candidates {
-		measures[i].totalWidth = indexSize + indexMargin + measures[i].textWidth
+		if isTextIndex {
+			measures[i].totalWidth = indexTextWidths[i] + indexMargin + measures[i].textWidth
+		} else {
+			measures[i].totalWidth = indexSize + indexMargin + measures[i].textWidth
+		}
 		if cand.Comment != "" {
 			measures[i].totalWidth += 6*scale + measures[i].commentWidth
 		}
@@ -362,13 +440,19 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 		inputHeight = 24 * scale
 	}
 
+	// Extra padding for accent bar
+	accentBarExtra := 0.0
+	if cfg.HasAccentBar && cfg.AccentBarColor != nil {
+		accentBarExtra = 3.0*scale + 2*scale
+	}
+
 	// Total width
 	minWidth := 200.0 * scale
-	contentWidth := cfg.Padding*2 + candidatesWidth + pageInfoWidth
+	contentWidth := cfg.Padding*2 + accentBarExtra + candidatesWidth + pageInfoWidth
 	if inputWidth > 0 {
-		contentWidth = cfg.Padding*2 + inputWidth
-		if candidatesWidth+pageInfoWidth > inputWidth {
-			contentWidth = cfg.Padding*2 + candidatesWidth + pageInfoWidth
+		contentWidth = cfg.Padding*2 + accentBarExtra + inputWidth
+		if accentBarExtra+candidatesWidth+pageInfoWidth > accentBarExtra+inputWidth {
+			contentWidth = cfg.Padding*2 + accentBarExtra + candidatesWidth + pageInfoWidth
 		}
 	}
 	width := contentWidth
@@ -404,15 +488,30 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 
 	y := cfg.Padding
 
+	// Draw accent bar (if enabled) - draw before preedit so it's behind everything
+	accentBarOffset := 0.0
+	if cfg.HasAccentBar && cfg.AccentBarColor != nil {
+		barWidth := 3.0 * scale
+		barMargin := height * 0.3
+		if barMargin < cfg.CornerRadius+1 {
+			barMargin = cfg.CornerRadius + 1
+		}
+		dc.SetColor(cfg.AccentBarColor)
+		r.drawRoundedRect(dc, 1, barMargin, barWidth, height-barMargin*2, barWidth/2)
+		dc.Fill()
+		accentBarOffset = barWidth + 2*scale
+	}
+
 	// Draw input area (preedit) - if not hidden
 	if !cfg.HidePreedit && input != "" {
+		preeditX := cfg.Padding + accentBarOffset
 		dc.SetColor(cfg.InputBgColor)
-		r.drawRoundedRect(dc, cfg.Padding, y, width-cfg.Padding*2-2, inputHeight, 4*scale)
+		r.drawRoundedRect(dc, preeditX, y, width-preeditX-cfg.Padding-2, inputHeight, 4*scale)
 		dc.Fill()
 
 		if mainFace != nil {
 			dc.SetFontFace(mainFace)
-			textX := cfg.Padding + 8*scale
+			textX := preeditX + 8*scale
 			textY := y + inputHeight/2 + cfg.FontSize/3
 
 			dc.SetColor(cfg.InputTextColor)
@@ -440,7 +539,7 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	}
 
 	// Draw candidates horizontally
-	x := cfg.Padding
+	x := cfg.Padding + accentBarOffset
 	candY := y + candidateRowHeight/2
 
 	for i, cand := range candidates {
@@ -462,35 +561,46 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 			dc.Fill()
 		}
 
-		// Draw index circle
-		indexX := x + indexSize/2
-		dc.SetColor(cfg.IndexBgColor)
-		dc.DrawCircle(indexX, candY, indexSize/2)
-		dc.Fill()
-
-		// Draw index number
-		if smallFace != nil {
-			dc.SetFontFace(smallFace)
-			dc.SetColor(cfg.IndexColor)
+		var textX float64
+		if isTextIndex {
+			// Text style: draw plain colored number (slightly larger font)
 			indexStr := string(rune('0' + cand.Index))
-			tw, _ := dc.MeasureString(indexStr)
-			dc.DrawString(indexStr, indexX-tw/2, candY+cfg.IndexFontSize/3)
+			if indexTextFace != nil {
+				dc.SetFontFace(indexTextFace)
+				dc.SetColor(cfg.IndexColor)
+				dc.DrawString(indexStr, x, candY+indexTextSize/3)
+			}
+			textX = x + indexTextWidths[i] + indexMargin
+		} else {
+			// Circle style: draw filled circle + white number
+			indexX := x + indexSize/2
+			dc.SetColor(cfg.IndexBgColor)
+			dc.DrawCircle(indexX, candY, indexSize/2)
+			dc.Fill()
+
+			if smallFace != nil {
+				dc.SetFontFace(smallFace)
+				dc.SetColor(cfg.IndexColor)
+				indexStr := string(rune('0' + cand.Index))
+				tw, _ := dc.MeasureString(indexStr)
+				dc.DrawString(indexStr, indexX-tw/2, candY+cfg.IndexFontSize/3)
+			}
+			textX = x + indexSize + indexMargin
 		}
 
 		// Draw candidate text
-		textX := x + indexSize + indexMargin
 		if mainFace != nil {
 			dc.SetFontFace(mainFace)
 			dc.SetColor(cfg.TextColor)
 			dc.DrawString(cand.Text, textX, candY+cfg.FontSize/3)
 		}
 
-		// Draw comment if present
-		if cand.Comment != "" && smallFace != nil {
+		// Draw comment if present (slightly larger font for text-style index)
+		if cand.Comment != "" && commentFace != nil {
 			commentX := textX + measures[i].textWidth + 6*scale
-			dc.SetFontFace(smallFace)
+			dc.SetFontFace(commentFace)
 			dc.SetColor(r.getCommentColor())
-			dc.DrawString(cand.Comment, commentX, candY+cfg.IndexFontSize/3)
+			dc.DrawString(cand.Comment, commentX, candY+commentSize/3)
 		}
 
 		// Move to next item
@@ -522,18 +632,14 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 			dc.Fill()
 		}
 
-		// Draw left arrow triangle (page up)
+		// Draw left chevron (page up)
 		leftArrowColor := cfg.IndexBgColor
 		if page <= 1 {
 			leftArrowColor = cfg.InputTextColor
 		}
 		leftCenterX := startX + arrowW/2
 		dc.SetColor(leftArrowColor)
-		dc.MoveTo(leftCenterX+arrowSize/2, candY-arrowSize/2)
-		dc.LineTo(leftCenterX-arrowSize/2, candY)
-		dc.LineTo(leftCenterX+arrowSize/2, candY+arrowSize/2)
-		dc.ClosePath()
-		dc.Fill()
+		r.drawChevronLeft(dc, leftCenterX, candY, arrowSize, 1.5*scale)
 		result.PageUpRect = &pageUpBtnRect
 
 		// Draw page text
@@ -555,18 +661,14 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 			dc.Fill()
 		}
 
-		// Draw right arrow triangle (page down)
+		// Draw right chevron (page down)
 		rightArrowColor := cfg.IndexBgColor
 		if page >= totalPages {
 			rightArrowColor = cfg.InputTextColor
 		}
 		rightCenterX := startX + arrowW + pageW + arrowW/2
 		dc.SetColor(rightArrowColor)
-		dc.MoveTo(rightCenterX-arrowSize/2, candY-arrowSize/2)
-		dc.LineTo(rightCenterX+arrowSize/2, candY)
-		dc.LineTo(rightCenterX-arrowSize/2, candY+arrowSize/2)
-		dc.ClosePath()
-		dc.Fill()
+		r.drawChevronRight(dc, rightCenterX, candY, arrowSize, 1.5*scale)
 		result.PageDownRect = &pageDownBtnRect
 	}
 

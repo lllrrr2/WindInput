@@ -111,7 +111,7 @@ func (a *App) GetAvailableThemes() ([]ThemeInfo, error) {
 	for _, name := range themeNames {
 		info := ThemeInfo{
 			Name:      name,
-			IsBuiltin: name == "default" || name == "dark",
+			IsBuiltin: name == "default" || name == "dark" || name == "msime",
 			IsActive:  name == currentTheme,
 		}
 
@@ -170,6 +170,10 @@ func (a *App) GetThemePreview(themeName string) (map[string]interface{}, error) 
 			"mode_english_bg_color":  t.Toolbar.ModeEnglishBgColor,
 			"full_width_on_bg_color": t.Toolbar.FullWidthOnBgColor,
 			"punct_chinese_bg_color": t.Toolbar.PunctChineseBgColor,
+		},
+		"style": map[string]string{
+			"index_style":      t.Style.IndexStyle,
+			"accent_bar_color": t.Style.AccentBarColor,
 		},
 	}
 

@@ -118,11 +118,76 @@ func DarkTheme() *Theme {
 	}
 }
 
+// MSIMETheme returns a Microsoft IME style theme (Windows 11 Fluent Design)
+func MSIMETheme() *Theme {
+	return &Theme{
+		Meta: ThemeMeta{
+			Name:    "微软风格",
+			Version: "1.0",
+			Author:  "清风输入法",
+		},
+		CandidateWindow: CandidateWindowColors{
+			BackgroundColor: "#FFFFFFFA",
+			BorderColor:     "#E5E5E5",
+			TextColor:       "#1A1A1A",
+			IndexColor:      "#888888", // Gray index text in "text" mode
+			IndexBgColor:    "#0078D4", // Microsoft blue (used for arrows etc.)
+			HoverBgColor:    "#EBF0FE",
+			InputBgColor:    "#F5F5F5",
+			InputTextColor:  "#666666",
+			CommentColor:    "#999999",
+			ShadowColor:     "#00000008",
+		},
+		Style: CandidateWindowStyle{
+			IndexStyle:     "text",
+			AccentBarColor: "#0078D4", // Microsoft blue accent bar
+		},
+		Toolbar: ToolbarColors{
+			BackgroundColor:     "#FFFFFFFA",
+			BorderColor:         "#E0E0E0",
+			GripColor:           "#C0C0C0B3",
+			ModeChineseBgColor:  "#0078D4",
+			ModeEnglishBgColor:  "#8A8A8A",
+			ModeTextColor:       "#FFFFFF",
+			FullWidthOnBgColor:  "#0078D4",
+			FullWidthOffBgColor: "#F0F0F0",
+			FullWidthOnColor:    "#FFFFFF",
+			FullWidthOffColor:   "#666666",
+			PunctChineseBgColor: "#0078D4",
+			PunctEnglishBgColor: "#F0F0F0",
+			PunctChineseColor:   "#FFFFFF",
+			PunctEnglishColor:   "#666666",
+			SettingsBgColor:     "#F0F0F0",
+			SettingsIconColor:   "#666666",
+			SettingsHoleColor:   "#F0F0F0",
+		},
+		PopupMenu: PopupMenuColors{
+			BackgroundColor: "#FFFFFF",
+			BorderColor:     "#E0E0E0",
+			TextColor:       "#1A1A1A",
+			DisabledColor:   "#AAAAAA",
+			HoverBgColor:    "#EBF0FE",
+			HoverTextColor:  "#1A1A1A",
+			SeparatorColor:  "#E5E5E5",
+		},
+		Tooltip: TooltipColors{
+			BackgroundColor: "#2D2D2DF0",
+			TextColor:       "#FFFFFF",
+		},
+		ModeIndicator: ModeIndicatorColors{
+			BackgroundColor: "#2D2D2DE6",
+			TextColor:       "#FFFFFF",
+		},
+	}
+}
+
 // GetBuiltinTheme returns a built-in theme by name
 func GetBuiltinTheme(name string) *Theme {
 	switch name {
 	case "dark", "暗色主题":
 		return DarkTheme()
+	case "msime", "微软风格":
+		return MSIMETheme()
 	default:
 		return DefaultTheme()
 	}
