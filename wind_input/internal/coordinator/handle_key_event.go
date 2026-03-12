@@ -212,10 +212,15 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.enterTempPinyinMode()
 	}
 
-	// 中文模式下，Shift+字母进入临时英文模式（CapsLock OFF 时）
+	// 中文模式下，Shift+字母处理（CapsLock OFF 时）
 	if c.chineseMode && !data.IsCapsLockOn() && hasShift {
-		if c.config != nil && c.config.Input.ShiftTempEnglish.Enabled {
-			if len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')) {
+		if len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')) {
+			if len(c.inputBuffer) > 0 {
+				// 已有输入缓冲时，将大写字母直接追加到输入缓冲
+				return c.handleAlphaKey(strings.ToUpper(key))
+			}
+			// 无输入缓冲时，进入临时英文模式
+			if c.config != nil && c.config.Input.ShiftTempEnglish.Enabled {
 				return c.enterTempEnglishMode(key)
 			}
 		}
