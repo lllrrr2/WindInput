@@ -3,6 +3,7 @@
 #endif
 #include <windows.h>
 #include <dwrite.h>
+#include <dwrite_2.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -53,14 +54,17 @@ constexpr size_t kMaxTextFormats = 32;
 
 // ---------------------------------------------------------------------------
 // GdiTextRenderer: bridges IDWriteTextLayout::Draw() to
-// IDWriteBitmapRenderTarget::DrawGlyphRun(), eliminating D2D entirely.
+// IDWriteBitmapRenderTarget::DrawGlyphRun(), with color emoji support via
+// IDWriteFactory2::TranslateColorGlyphRun and per-layer alpha blending.
 // ---------------------------------------------------------------------------
 class GdiTextRenderer : public IDWriteTextRenderer {
 public:
     GdiTextRenderer(IDWriteBitmapRenderTarget* bitmapRT,
                     IDWriteRenderingParams* params,
+                    IDWriteFactory* factory,
                     COLORREF textColor)
-        : refCount_(1), bitmapRT_(bitmapRT), params_(params), textColor_(textColor) {}
+        : refCount_(1), bitmapRT_(bitmapRT), params_(params),
+          factory_(factory), textColor_(textColor) {}
 
     // IUnknown
     ULONG STDMETHODCALLTYPE AddRef() override {
@@ -99,14 +103,34 @@ public:
 
     // IDWriteTextRenderer
     HRESULT STDMETHODCALLTYPE DrawGlyphRun(
-        void*,
+        void* clientDrawingContext,
         FLOAT baselineOriginX,
         FLOAT baselineOriginY,
         DWRITE_MEASURING_MODE measuringMode,
         const DWRITE_GLYPH_RUN* glyphRun,
-        const DWRITE_GLYPH_RUN_DESCRIPTION*,
+        const DWRITE_GLYPH_RUN_DESCRIPTION* glyphRunDescription,
         IUnknown*) override
     {
+        // Try color emoji path via IDWriteFactory2.
+        ComPtr<IDWriteFactory2> factory2;
+        if (SUCCEEDED(factory_->QueryInterface(factory2.GetAddressOf()))) {
+            DWRITE_MATRIX transform{};
+            bitmapRT_->GetCurrentTransform(&transform);
+
+            ComPtr<IDWriteColorGlyphRunEnumerator> colorEnum;
+            HRESULT hr = factory2->TranslateColorGlyphRun(
+                baselineOriginX, baselineOriginY,
+                glyphRun, glyphRunDescription,
+                measuringMode, &transform,
+                0, &colorEnum);
+
+            if (hr == S_OK) {
+                return DrawColorLayers(colorEnum.Get(), measuringMode);
+            }
+            // DWRITE_E_NOCOLOR → not a color glyph, fall through.
+        }
+
+        // Standard monochrome glyph rendering.
         return bitmapRT_->DrawGlyphRun(
             baselineOriginX, baselineOriginY,
             measuringMode, glyphRun,
@@ -123,12 +147,129 @@ public:
         return S_OK;
     }
 
-    void SetTextColor(COLORREF color) { textColor_ = color; }
-
 private:
+    // Draw each color layer of a color emoji glyph run.
+    HRESULT DrawColorLayers(IDWriteColorGlyphRunEnumerator* colorEnum,
+                            DWRITE_MEASURING_MODE measuringMode) {
+        BOOL hasRun = FALSE;
+        while (SUCCEEDED(colorEnum->MoveNext(&hasRun)) && hasRun) {
+            const DWRITE_COLOR_GLYPH_RUN* colorRun = nullptr;
+            if (FAILED(colorEnum->GetCurrentRun(&colorRun))) {
+                continue;
+            }
+
+            COLORREF layerColor;
+            float layerAlpha;
+            if (colorRun->paletteIndex == 0xFFFF) {
+                // Sentinel: use the original text color.
+                layerColor = textColor_;
+                layerAlpha = 1.0f;
+            } else {
+                layerColor = RGB(
+                    static_cast<BYTE>(colorRun->runColor.r * 255.0f + 0.5f),
+                    static_cast<BYTE>(colorRun->runColor.g * 255.0f + 0.5f),
+                    static_cast<BYTE>(colorRun->runColor.b * 255.0f + 0.5f));
+                layerAlpha = colorRun->runColor.a;
+            }
+
+            if (layerAlpha < 1.0f / 255.0f) {
+                continue; // Fully transparent layer, skip.
+            }
+
+            if (layerAlpha >= 254.0f / 255.0f) {
+                // Opaque layer — draw directly.
+                bitmapRT_->DrawGlyphRun(
+                    colorRun->baselineOriginX,
+                    colorRun->baselineOriginY,
+                    measuringMode,
+                    &colorRun->glyphRun,
+                    params_, layerColor);
+            } else {
+                // Semi-transparent layer — needs pixel-level alpha blending.
+                DrawAlphaLayer(colorRun, measuringMode, layerColor, layerAlpha);
+            }
+        }
+        return S_OK;
+    }
+
+    // Alpha-blend a semi-transparent color glyph layer onto the BitmapRT.
+    void DrawAlphaLayer(const DWRITE_COLOR_GLYPH_RUN* colorRun,
+                        DWRITE_MEASURING_MODE measuringMode,
+                        COLORREF layerColor, float alpha) {
+        // Get direct pixel access to the BitmapRT's internal DIB.
+        HDC hdc = bitmapRT_->GetMemoryDC();
+        HBITMAP hbm = static_cast<HBITMAP>(GetCurrentObject(hdc, OBJ_BITMAP));
+        BITMAP bm{};
+        GetObject(hbm, sizeof(bm), &bm);
+
+        if (!bm.bmBits || bm.bmBitsPixel != 32) {
+            // Cannot access pixels; fall back to opaque draw.
+            bitmapRT_->DrawGlyphRun(
+                colorRun->baselineOriginX, colorRun->baselineOriginY,
+                measuringMode, &colorRun->glyphRun, params_, layerColor);
+            return;
+        }
+
+        // Compute glyph bounding box from font metrics + advances.
+        const DWRITE_GLYPH_RUN& gr = colorRun->glyphRun;
+        float totalAdv = 0;
+        for (UINT32 i = 0; i < gr.glyphCount; ++i) {
+            totalAdv += gr.glyphAdvances[i];
+        }
+        DWRITE_FONT_METRICS fm{};
+        gr.fontFace->GetMetrics(&fm);
+        float scale = gr.fontEmSize / static_cast<float>(fm.designUnitsPerEm);
+        float asc = fm.ascent * scale;
+        float desc = fm.descent * scale;
+
+        int x0 = (std::max)(0, static_cast<int>(std::floor(colorRun->baselineOriginX)) - 2);
+        int y0 = (std::max)(0, static_cast<int>(std::floor(colorRun->baselineOriginY - asc)) - 2);
+        int x1 = (std::min)(static_cast<int>(bm.bmWidth),
+                            static_cast<int>(std::ceil(colorRun->baselineOriginX + totalAdv)) + 2);
+        int y1 = (std::min)(static_cast<int>(bm.bmHeight),
+                            static_cast<int>(std::ceil(colorRun->baselineOriginY + desc)) + 2);
+
+        if (x1 <= x0 || y1 <= y0) return;
+
+        const int boxW = x1 - x0;
+        const int boxH = y1 - y0;
+        const int bmStride = bm.bmWidthBytes;
+        auto* pixels = static_cast<uint8_t*>(bm.bmBits);
+
+        // Save the bounding-box region before drawing.
+        std::vector<uint8_t> saved(boxW * 4 * boxH);
+        for (int row = 0; row < boxH; ++row) {
+            memcpy(&saved[row * boxW * 4],
+                   &pixels[(y0 + row) * bmStride + x0 * 4],
+                   boxW * 4);
+        }
+
+        // Draw at full opacity.
+        bitmapRT_->DrawGlyphRun(
+            colorRun->baselineOriginX, colorRun->baselineOriginY,
+            measuringMode, &colorRun->glyphRun, params_, layerColor);
+        GdiFlush();
+
+        // Alpha-blend: result = new * alpha + old * (1 - alpha)
+        const uint32_t a = static_cast<uint32_t>(alpha * 255.0f + 0.5f);
+        const uint32_t inv_a = 255 - a;
+        for (int row = 0; row < boxH; ++row) {
+            uint8_t* dst = &pixels[(y0 + row) * bmStride + x0 * 4];
+            const uint8_t* src = &saved[row * boxW * 4];
+            for (int col = 0; col < boxW * 4; col += 4) {
+                if (dst[col] != src[col] || dst[col + 1] != src[col + 1] || dst[col + 2] != src[col + 2]) {
+                    dst[col + 0] = static_cast<uint8_t>((dst[col + 0] * a + src[col + 0] * inv_a + 127) / 255);
+                    dst[col + 1] = static_cast<uint8_t>((dst[col + 1] * a + src[col + 1] * inv_a + 127) / 255);
+                    dst[col + 2] = static_cast<uint8_t>((dst[col + 2] * a + src[col + 2] * inv_a + 127) / 255);
+                }
+            }
+        }
+    }
+
     ULONG refCount_;
     IDWriteBitmapRenderTarget* bitmapRT_;
     IDWriteRenderingParams* params_;
+    IDWriteFactory* factory_;
     COLORREF textColor_;
 };
 
@@ -525,8 +666,8 @@ public:
         // Convert RGBA to COLORREF (0x00BBGGRR).
         COLORREF textColor = RGB(rgba & 0xFF, (rgba >> 8) & 0xFF, (rgba >> 16) & 0xFF);
 
-        // Draw using our GDI text renderer bridge.
-        auto* renderer = new GdiTextRenderer(bitmapRT_, renderingParams_, textColor);
+        // Draw using our GDI text renderer bridge (with color emoji support).
+        auto* renderer = new GdiTextRenderer(bitmapRT_, renderingParams_, shared->DWriteFactory(), textColor);
         float originX = static_cast<float>(x);
         float originY = static_cast<float>(y) - baseline;
         layout->Draw(nullptr, renderer, originX, originY);
