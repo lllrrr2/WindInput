@@ -331,6 +331,32 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 
 	return c
 }
+
+// hasPendingInput 检查是否有任何类型的待处理输入
+func (c *Coordinator) hasPendingInput() bool {
+	return len(c.inputBuffer) > 0 || len(c.tempEnglishBuffer) > 0 || len(c.tempPinyinBuffer) > 0
+}
+
+// getPendingBufferText 获取当前待处理缓冲区的文本（用于 CommitOnSwitch 上屏）
+// 优先级：主输入缓冲 > 临时英文缓冲 > 临时拼音缓冲
+func (c *Coordinator) getPendingBufferText() string {
+	var text string
+	switch {
+	case len(c.inputBuffer) > 0:
+		text = c.inputBuffer
+	case len(c.tempEnglishBuffer) > 0:
+		text = c.tempEnglishBuffer
+	case len(c.tempPinyinBuffer) > 0:
+		text = c.tempPinyinBuffer
+	default:
+		return ""
+	}
+	if c.fullWidth {
+		return transform.ToFullWidth(text)
+	}
+	return text
+}
+
 func (c *Coordinator) clearState() {
 	c.inputBuffer = ""
 	c.inputCursorPos = 0

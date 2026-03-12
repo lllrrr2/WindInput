@@ -4,7 +4,6 @@ package coordinator
 import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/engine"
-	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/pkg/config"
 )
 
@@ -49,13 +48,9 @@ func (c *Coordinator) HandleToggleMode() (commitText string, chineseMode bool) {
 	// Check if CommitOnSwitch is enabled and there's pending input
 	// When switching from Chinese to English, commit the raw input code (not the candidate)
 	// because the user wants to type English, so we output the original typed characters
-	if c.config != nil && c.config.Hotkeys.CommitOnSwitch && len(c.inputBuffer) > 0 {
-		// Only commit when switching from Chinese to English
-		if c.chineseMode {
-			commitText = c.inputBuffer
-			if c.fullWidth {
-				commitText = transform.ToFullWidth(commitText)
-			}
+	if c.config != nil && c.config.Hotkeys.CommitOnSwitch && c.chineseMode {
+		commitText = c.getPendingBufferText()
+		if commitText != "" {
 			c.logger.Debug("CommitOnSwitch: committing input code")
 		}
 	}
@@ -64,7 +59,7 @@ func (c *Coordinator) HandleToggleMode() (commitText string, chineseMode bool) {
 	c.logger.Debug("Mode toggled via IPC", "chineseMode", c.chineseMode, "hasCommitText", commitText != "")
 
 	// Clear any pending input when switching modes
-	if len(c.inputBuffer) > 0 {
+	if c.hasPendingInput() {
 		c.clearState()
 		c.hideUI()
 	}

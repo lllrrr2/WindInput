@@ -52,21 +52,15 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 			// 检查是否需要在切换前上屏已有内容
 			// CommitOnSwitch: 上屏编码（而非候选词），因为用户切换到英文意味着想输入英文
 			var commitText string
-			if c.config.Hotkeys.CommitOnSwitch && len(c.inputBuffer) > 0 {
-				// 只在从中文切换到英文时上屏
-				if c.chineseMode {
-					commitText = c.inputBuffer
-					if c.fullWidth {
-						commitText = transform.ToFullWidth(commitText)
-					}
-				}
+			if c.config.Hotkeys.CommitOnSwitch && c.chineseMode {
+				commitText = c.getPendingBufferText()
 			}
 
 			c.chineseMode = !c.chineseMode
 			c.logger.Debug("Mode toggled", "key", toggleKey, "chineseMode", c.chineseMode)
 
 			// Clear any pending input when switching modes
-			if len(c.inputBuffer) > 0 {
+			if c.hasPendingInput() {
 				c.clearState()
 				c.hideUI()
 			}
