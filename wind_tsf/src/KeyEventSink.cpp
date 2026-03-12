@@ -14,6 +14,7 @@ CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     , _hasCandidates(FALSE)
     , _pendingKeyUpKey(0)
     , _pendingKeyUpModifiers(0)
+    , _pendingKeyDownTime(0)
     , _modsState(0)
     , _eventSeq(0)
     , _nextBarrierSeq(1)
@@ -263,6 +264,7 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         }
         _pendingKeyUpKey = specificKey;
         _pendingKeyUpModifiers = modifiers;
+        _pendingKeyDownTime = GetTickCount();
 
         WIND_LOG_DEBUG(L"OnKeyDown: Toggle mode key pending for KeyUp\n");
 
@@ -398,8 +400,19 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
         if (_IsMatchingKeyUp(wParam, _pendingKeyUpKey))
         {
             uint32_t pendingKey = _pendingKeyUpKey;
+            DWORD pressDuration = GetTickCount() - _pendingKeyDownTime;
             _pendingKeyUpKey = 0;
             _pendingKeyUpModifiers = 0;
+            _pendingKeyDownTime = 0;
+
+            // Long press should NOT trigger mode toggle - only short taps count
+            if (pressDuration > TOGGLE_TAP_THRESHOLD_MS)
+            {
+                WIND_LOG_DEBUG_FMT(L"OnKeyUp: Toggle key held too long (%lu ms > %lu ms), ignoring\n",
+                    pressDuration, TOGGLE_TAP_THRESHOLD_MS);
+                *pfEaten = TRUE;
+                return S_OK;
+            }
 
             // For Shift/Ctrl toggle: Send KeyUp event to Go service
             // Go side will check config (e.g., only LShift vs both L/R Shift)

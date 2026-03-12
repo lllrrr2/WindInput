@@ -47,6 +47,11 @@ private:
     BOOL _hasCandidates;         // True if there are candidates to select
     uint32_t _pendingKeyUpKey;   // Key code of pending KeyUp toggle key
     uint32_t _pendingKeyUpModifiers; // Modifiers when KeyDown was pressed
+    DWORD    _pendingKeyDownTime;    // GetTickCount() when toggle key was pressed down
+
+    // Maximum duration (ms) for a toggle key press to count as a "tap"
+    // Long presses beyond this threshold will NOT trigger mode toggle
+    static constexpr DWORD TOGGLE_TAP_THRESHOLD_MS = 500;
 
     // ========================================================================
     // Modifier key state machine (replaces GetAsyncKeyState for consistency)
