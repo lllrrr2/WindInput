@@ -273,7 +273,8 @@ func (m *PopupMenu) ensureFontCacheLocked() *fontCache {
 	if m.fontCache == nil {
 		m.fontCache = newFontCache()
 	}
-	if resolved := m.resolvePrimaryFontPathLocked(); resolved != "" {
+	// 菜单走 gg/text 时必须跳过 TTC，否则用户把主字体设成 msyh.ttc 会直接失效。
+	if resolved := m.fontConfig.ResolveTextPrimaryFont(); resolved != "" {
 		m.fontCache.mu.Lock()
 		_ = m.fontCache.loadFont(resolved)
 		m.fontCache.mu.Unlock()
@@ -363,10 +364,12 @@ func (m *PopupMenu) SetFontPath(path string) {
 	sub := m.submenu
 	m.fontConfig.SetPrimaryFont(path)
 	resolved := m.resolvePrimaryFontPathLocked()
+	textResolved := m.fontConfig.ResolveTextPrimaryFont()
 	if resolved != "" {
-		if m.fontCache != nil {
+		if m.fontCache != nil && textResolved != "" {
 			m.fontCache.mu.Lock()
-			_ = m.fontCache.loadFont(resolved)
+			// 原生后端和 gg/text 后端分别更新，避免把 TTC 路径喂给 gg/text。
+			_ = m.fontCache.loadFont(textResolved)
 			m.fontCache.mu.Unlock()
 		}
 		if m.textRenderer != nil {

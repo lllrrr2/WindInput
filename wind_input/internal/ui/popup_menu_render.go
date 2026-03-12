@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"unsafe"
 
-	"github.com/fogleman/gg"
+	"github.com/gogpu/gg"
 )
 
 // menuTextItem holds deferred text drawing info for Phase 2

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"image"
 
-	"github.com/fogleman/gg"
+	"github.com/gogpu/gg"
 )
 
 // RenderCandidates renders candidates to an image

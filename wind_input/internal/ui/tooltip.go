@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/fogleman/gg"
+	"github.com/gogpu/gg"
 	"github.com/huanfeng/wind_input/pkg/theme"
 	"golang.org/x/sys/windows"
 )
@@ -82,7 +82,8 @@ func (w *TooltipWindow) ensureFontCacheLocked() *fontCache {
 	if w.fontCache == nil {
 		w.fontCache = newFontCache()
 	}
-	if resolved := w.resolvePrimaryFontPathLocked(); resolved != "" {
+	// Tooltip 也可能复用用户配置的主字体，因此这里同样需要走 TTF-only 解析。
+	if resolved := w.fontConfig.ResolveTextPrimaryFont(); resolved != "" {
 		w.fontCache.mu.Lock()
 		_ = w.fontCache.loadFont(resolved)
 		w.fontCache.mu.Unlock()
@@ -132,13 +133,15 @@ func (w *TooltipWindow) SetFontPath(path string) {
 
 	w.fontConfig.SetPrimaryFont(path)
 	resolved := w.resolvePrimaryFontPathLocked()
+	textResolved := w.fontConfig.ResolveTextPrimaryFont()
 	if resolved == "" {
 		return
 	}
 
-	if w.fontCache != nil {
+	if w.fontCache != nil && textResolved != "" {
 		w.fontCache.mu.Lock()
-		_ = w.fontCache.loadFont(resolved)
+		// 原生渲染仍使用 resolved；这里只更新 gg/text 的安全路径。
+		_ = w.fontCache.loadFont(textResolved)
 		w.fontCache.mu.Unlock()
 	}
 	if w.textRenderer != nil {

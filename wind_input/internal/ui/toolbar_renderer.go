@@ -5,7 +5,7 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/fogleman/gg"
+	"github.com/gogpu/gg"
 	"github.com/huanfeng/wind_input/pkg/theme"
 )
 
@@ -80,7 +80,11 @@ func (r *ToolbarRenderer) ensureFontCache() *fontCache {
 	if r.fontCache == nil {
 		r.fontCache = newFontCache()
 	}
-	if resolved := r.resolvePrimaryFontPath(); resolved != "" {
+	if r.fontPath != "" {
+		r.fontConfig.SetPrimaryFont(r.fontPath)
+	}
+	// 工具栏和候选窗保持同一套规则：gg/text 只走可直接加载的 TTF/OTF。
+	if resolved := r.fontConfig.ResolveTextPrimaryFont(); resolved != "" {
 		r.fontCache.mu.Lock()
 		_ = r.fontCache.loadFont(resolved)
 		r.fontCache.mu.Unlock()
@@ -153,9 +157,11 @@ func (r *ToolbarRenderer) SetTextRenderMode(mode TextRenderMode) {
 func (r *ToolbarRenderer) SetFontPath(path string) {
 	r.fontPath = path
 	resolved := r.resolvePrimaryFontPath()
-	if r.fontCache != nil && resolved != "" {
+	textResolved := r.fontConfig.ResolveTextPrimaryFont()
+	if r.fontCache != nil && textResolved != "" {
 		r.fontCache.mu.Lock()
-		_ = r.fontCache.loadFont(resolved)
+		// gg/text cache 和原生 renderer 的字体路径在这里分流更新。
+		_ = r.fontCache.loadFont(textResolved)
 		r.fontCache.mu.Unlock()
 	}
 	if r.textRenderer != nil && resolved != "" {
@@ -393,7 +399,7 @@ func (r *ToolbarRenderer) drawSettingsButton(dc *gg.Context, x, y, w, h float64,
 	for i := 0; i < teeth; i++ {
 		angle := float64(i) * 360.0 / float64(teeth)
 		dc.Push()
-		dc.RotateAbout(gg.Radians(angle), centerX, centerY)
+		dc.RotateAbout(radians(angle), centerX, centerY)
 		dc.DrawRectangle(centerX-toothHeight/2, centerY-outerR, toothHeight, toothHeight)
 		dc.Fill()
 		dc.Pop()

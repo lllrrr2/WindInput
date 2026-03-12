@@ -1,18 +1,18 @@
 package ui
 
 import (
-	"errors"
 	"image"
 	"image/color"
+	"math"
 	"sync"
 
-	"github.com/fogleman/gg"
-	"github.com/golang/freetype/truetype"
+	"github.com/gogpu/gg"
+	ggtext "github.com/gogpu/gg/text"
 	"github.com/huanfeng/wind_input/pkg/theme"
-	"golang.org/x/image/font"
 )
 
-// RenderConfig contains rendering configuration
+// RenderConfig contains rendering configuration.
+// 这里只描述候选窗的视觉参数；字体文件选择与 fallback 细节由 FontConfig 接管。
 type RenderConfig struct {
 	FontPath        string
 	FontSize        float64
@@ -61,66 +61,64 @@ func DefaultRenderConfig() RenderConfig {
 	}
 }
 
-// fontCache caches loaded fonts and font faces
-// maxFontFaces limits the number of cached font.Face instances per fontCache.
+// fontCache caches loaded gg/text FontSource instances and per-size faces.
+// The shared FontSource is global; this struct only tracks the small face cache
+// that varies by requested font size inside one renderer.
+// maxFontFaces limits the number of cached ggtext.Face instances per fontCache.
 // When exceeded, the least recently used face is closed and evicted.
 const maxFontFaces = 16
 
 type fontCache struct {
 	mu        sync.RWMutex
-	font      *truetype.Font
+	source    *ggtext.FontSource
 	fontPath  string
-	faces     map[float64]font.Face // Cache font faces by size
-	faceOrder []float64             // LRU order: most recently used at end
+	faces     map[float64]ggtext.Face // Cache font faces by size
+	faceOrder []float64               // LRU order: most recently used at end
 }
 
+// newFontCache creates an empty per-renderer face cache.
 func newFontCache() *fontCache {
 	return &fontCache{
-		faces: make(map[float64]font.Face),
+		faces: make(map[float64]ggtext.Face),
 	}
 }
 
 // loadFont records the font path for lazy loading.
-// The actual truetype.Font is NOT parsed here — it is deferred to getFace()
-// on first use. This ensures GDI-mode components never load FreeType font data.
 func (fc *fontCache) loadFont(path string) error {
-	if fc.fontPath == path && fc.font != nil {
-		return nil // Already loaded
+	if fc.fontPath == path && fc.source != nil {
+		return nil
 	}
-	// Close existing faces when switching fonts
-	for _, face := range fc.faces {
-		face.Close()
-	}
-	fc.faces = make(map[float64]font.Face)
+	// Switching fonts invalidates all per-size faces because gg/text Face objects
+	// are derived from the FontSource and size together.
+	fc.faces = make(map[float64]ggtext.Face)
 	fc.faceOrder = nil
-	fc.font = nil // Will be loaded lazily in getFace()
+	fc.source = nil
 	fc.fontPath = path
 	return nil
 }
 
-// ensureFontParsed loads the truetype.Font from the global registry on demand.
+// ensureFontSource loads the gg/text FontSource from the global registry on demand.
 // Must be called with fc.mu held for writing.
-func (fc *fontCache) ensureFontParsed() error {
-	if fc.font != nil {
+func (fc *fontCache) ensureFontSource() error {
+	if fc.source != nil {
 		return nil
 	}
 	if fc.fontPath == "" {
-		return errors.New("no font path set")
+		return nil
 	}
-	f, err := GetSharedFont(fc.fontPath)
+	source, err := GetSharedFontSource(fc.fontPath)
 	if err != nil {
 		return err
 	}
-	fc.font = f
+	fc.source = source
 	return nil
 }
 
-// getFace returns a cached font face for the given size, with LRU eviction.
-func (fc *fontCache) getFace(size float64) font.Face {
+// getFace returns a cached gg/text face for the given size, with LRU eviction.
+func (fc *fontCache) getFace(size float64) ggtext.Face {
 	fc.mu.RLock()
 	if face, ok := fc.faces[size]; ok {
 		fc.mu.RUnlock()
-		// Promote to most-recently-used (deferred to avoid write lock contention)
 		fc.mu.Lock()
 		fc.touchLRU(size)
 		fc.mu.Unlock()
@@ -131,29 +129,23 @@ func (fc *fontCache) getFace(size float64) font.Face {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
 
-	// Double-check
 	if face, ok := fc.faces[size]; ok {
 		fc.touchLRU(size)
 		return face
 	}
 
-	// Lazy load the truetype.Font on first getFace call
-	if err := fc.ensureFontParsed(); err != nil {
+	if err := fc.ensureFontSource(); err != nil || fc.source == nil {
 		return nil
 	}
 
-	face := truetype.NewFace(fc.font, &truetype.Options{
-		Size:    size,
-		DPI:     72,
-		Hinting: font.HintingFull,
-	})
+	// gg/text Face is lightweight, so creating it lazily and caching by size keeps
+	// repeated measurements and draws cheap without duplicating font file data.
+	face := fc.source.Face(size)
 
-	// Evict LRU if at capacity
 	if len(fc.faces) >= maxFontFaces && len(fc.faceOrder) > 0 {
 		oldest := fc.faceOrder[0]
 		fc.faceOrder = fc.faceOrder[1:]
-		if oldFace, ok := fc.faces[oldest]; ok {
-			oldFace.Close()
+		if _, ok := fc.faces[oldest]; ok {
 			delete(fc.faces, oldest)
 		}
 	}
@@ -172,20 +164,17 @@ func (fc *fontCache) touchLRU(size float64) {
 			return
 		}
 	}
-	// Not found (shouldn't happen), add it
 	fc.faceOrder = append(fc.faceOrder, size)
 }
 
-// Close releases all cached font.Face instances.
+// Close releases per-instance face references. FontSource instances are shared
+// globally and intentionally stay alive for the process lifetime.
 func (fc *fontCache) Close() {
 	fc.mu.Lock()
 	defer fc.mu.Unlock()
-	for _, face := range fc.faces {
-		face.Close()
-	}
-	fc.faces = make(map[float64]font.Face)
+	fc.faces = make(map[float64]ggtext.Face)
 	fc.faceOrder = nil
-	fc.font = nil
+	fc.source = nil
 }
 
 // Renderer renders candidate window content
@@ -217,6 +206,7 @@ func (r *Renderer) resolvePrimaryFontPath() string {
 	if r.fontPath != "" {
 		r.fontConfig.SetPrimaryFont(r.fontPath)
 	}
+	// 原生文本后端允许继续落到 TTC 主字体，所以这里走 general path。
 	resolved := r.fontConfig.ResolvePrimaryFont()
 	if resolved != "" {
 		r.fontPath = resolved
@@ -250,11 +240,18 @@ func (r *Renderer) ensureDWriteRenderer() *DWriteRenderer {
 	return dwr
 }
 
+// ensureFontCache prepares the gg/text font cache.
+// 这里故意不复用 resolvePrimaryFontPath()，因为 gg/text 不能直接消费 TTC。
 func (r *Renderer) ensureFontCache() *fontCache {
 	if r.fontCache == nil {
 		r.fontCache = newFontCache()
 	}
-	resolved := r.resolvePrimaryFontPath()
+	if r.fontPath != "" {
+		r.fontConfig.SetPrimaryFont(r.fontPath)
+	}
+	// The gg/text path must resolve through the TTF-only chain; GDI / DirectWrite
+	// keep using resolvePrimaryFontPath() so TTC system fonts still work there.
+	resolved := r.fontConfig.ResolveTextPrimaryFont()
 	if resolved == "" {
 		return r.fontCache
 	}
@@ -287,7 +284,8 @@ func (r *Renderer) releaseFreeTypeBackend() {
 	r.fontReady = false
 }
 
-// updateTextDrawer creates the appropriate TextDrawer based on current render mode
+// updateTextDrawer recreates the active backend and releases the inactive ones.
+// 这样可以避免不同文字后端长期同时持有字体或设备资源。
 func (r *Renderer) updateTextDrawer() {
 	switch r.config.TextRenderMode {
 	case TextRenderModeFreetype:
@@ -327,7 +325,7 @@ func (r *Renderer) SetGDIFontParams(weight int, scale float64) {
 	}
 }
 
-// SetTextRenderMode switches between GDI and FreeType text rendering
+// SetTextRenderMode switches between GDI, gg/text, and DirectWrite rendering.
 func (r *Renderer) SetTextRenderMode(mode TextRenderMode) {
 	r.config.TextRenderMode = mode
 	r.updateTextDrawer()
@@ -350,11 +348,13 @@ func (r *Renderer) SetFontPath(path string) {
 	r.fontPath = path
 	r.fontReady = false
 	resolved := r.resolvePrimaryFontPath()
+	textResolved := r.fontConfig.ResolveTextPrimaryFont()
 	if r.fontCache != nil && resolved != "" {
 		r.fontCache.mu.Lock()
-		_ = r.fontCache.loadFont(resolved)
+		// gg/text 使用经过 TTF-only 过滤的路径；GDI / DWrite 仍用 resolved。
+		_ = r.fontCache.loadFont(textResolved)
 		r.fontCache.mu.Unlock()
-		r.fontReady = true
+		r.fontReady = textResolved != ""
 	}
 	if r.textRenderer != nil && resolved != "" {
 		r.textRenderer.SetFont(resolved)
@@ -377,11 +377,12 @@ func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
 		r.fontPath = fontPath
 		r.fontReady = false
 		resolved := r.resolvePrimaryFontPath()
+		textResolved := r.fontConfig.ResolveTextPrimaryFont()
 		if r.fontCache != nil && resolved != "" {
 			r.fontCache.mu.Lock()
-			_ = r.fontCache.loadFont(resolved)
+			_ = r.fontCache.loadFont(textResolved)
 			r.fontCache.mu.Unlock()
-			r.fontReady = true
+			r.fontReady = textResolved != ""
 		}
 		if r.textRenderer != nil && resolved != "" {
 			r.textRenderer.SetFont(resolved)
@@ -488,17 +489,21 @@ func (r *Renderer) drawChevronRight(dc *gg.Context, cx, cy, size, lineWidth floa
 	dc.Stroke()
 }
 
+func radians(degrees float64) float64 {
+	return degrees * math.Pi / 180
+}
+
 func (r *Renderer) drawRoundedRect(dc *gg.Context, x, y, w, h, radius float64) {
 	dc.NewSubPath()
 	dc.MoveTo(x+radius, y)
 	dc.LineTo(x+w-radius, y)
-	dc.DrawArc(x+w-radius, y+radius, radius, -gg.Radians(90), 0)
+	dc.DrawArc(x+w-radius, y+radius, radius, -radians(90), 0)
 	dc.LineTo(x+w, y+h-radius)
-	dc.DrawArc(x+w-radius, y+h-radius, radius, 0, gg.Radians(90))
+	dc.DrawArc(x+w-radius, y+h-radius, radius, 0, radians(90))
 	dc.LineTo(x+radius, y+h)
-	dc.DrawArc(x+radius, y+h-radius, radius, gg.Radians(90), gg.Radians(180))
+	dc.DrawArc(x+radius, y+h-radius, radius, radians(90), radians(180))
 	dc.LineTo(x, y+radius)
-	dc.DrawArc(x+radius, y+radius, radius, gg.Radians(180), gg.Radians(270))
+	dc.DrawArc(x+radius, y+radius, radius, radians(180), radians(270))
 	dc.ClosePath()
 }
 

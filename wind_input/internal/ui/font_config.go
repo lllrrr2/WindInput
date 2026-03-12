@@ -3,12 +3,14 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
-	"github.com/golang/freetype/truetype"
+	ggtext "github.com/gogpu/gg/text"
 )
 
-// GDI font weight constants (Windows LOGFONT.lfWeight values)
+// GDI font weight constants (Windows LOGFONT.lfWeight values).
+// 这些值直接映射到 Windows LOGFONT.lfWeight，便于配置层和原生渲染层统一。
 const (
 	FontWeightThin       = 100
 	FontWeightExtraLight = 200
@@ -22,11 +24,15 @@ const (
 // FontConfig holds centralized font configuration for all UI components.
 // Instead of each component maintaining its own hardcoded font list,
 // all components share this configuration for consistent font management.
+// GDI / DirectWrite use the general system font chain, while gogpu/gg text
+// uses a separate TTF/OTF-only chain because TTC collections are unsupported.
 type FontConfig struct {
-	// PrimaryFont is the user-configured font file path (may be empty for auto-detection)
+	// PrimaryFont is the user-configured font file path (may be empty for auto-detection).
+	// It may be TTC, so callers that use gogpu/gg text must not consume it blindly.
 	PrimaryFont string
 	// SystemFonts lists system fonts in priority order for fallback.
 	// When a font lacks certain glyphs, subsequent fonts in the list are tried.
+	// GDI / DirectWrite use this general Windows font chain directly.
 	SystemFonts []string
 	// UserFonts holds user-configured additional fonts (prepended before SystemFonts).
 	// Reserved for future use: users can configure preferred fonts via config file.
@@ -38,16 +44,16 @@ type FontConfig struct {
 	// Note: GDI weight 400 and 500 look nearly identical; 600 is the minimum
 	// for visibly bolder text. Menu components use their own weight setting.
 	GDIFontWeight int
-
 	// GDIFontScale controls the font size multiplier for GDI rendering.
 	// Default 1.0 means lfHeight = -fontSize (character height = fontSize pixels).
 	// Values > 1.0 produce larger text (e.g., 1.15 makes GDI text ~15% larger).
-	// Useful for matching visual size between GDI and FreeType backends.
+	// Useful for matching visual size between GDI and gg/text backends.
 	GDIFontScale float64
 }
 
 // defaultSystemFontNames lists font file names (relative to system Fonts directory).
 // Ordered by priority: CJK-capable fonts first, then symbol/Latin fonts.
+// TTC entries are allowed here because GDI / DirectWrite can handle them.
 var defaultSystemFontNames = []string{
 	"msyh.ttc",     // Microsoft YaHei (best CJK + Latin coverage)
 	"segoeui.ttf",  // Segoe UI (Latin, UI symbols)
@@ -55,8 +61,32 @@ var defaultSystemFontNames = []string{
 	"arial.ttf",    // Arial (Latin fallback)
 }
 
+// defaultTextPrimaryFontNames is the TTF/OTF-only primary chain for gogpu/gg text.
+// It mirrors the original intent of "pick a CJK-capable UI font first", but avoids TTC.
+var defaultTextPrimaryFontNames = []string{
+	"simhei.ttf",  // SimHei
+	"Deng.ttf",    // DengXian Regular
+	"Dengb.ttf",   // DengXian Bold
+	"simkai.ttf",  // KaiTi
+	"simfang.ttf", // FangSong
+}
+
+// defaultTextFallbackFontNames is ordered for common IME UI fallback cases.
+// Symbol fonts come first so menu glyphs like ✓ / ▸ do not trigger loading the
+// entire CJK fallback chain before reaching Segoe UI Symbol.
+var defaultTextFallbackFontNames = []string{
+	"seguisym.ttf", // Segoe UI Symbol
+	"segoeui.ttf",  // Segoe UI
+	"arial.ttf",    // Arial
+	"simhei.ttf",   // SimHei
+	"Deng.ttf",     // DengXian Regular
+	"Dengb.ttf",    // DengXian Bold
+	"simkai.ttf",   // KaiTi
+	"simfang.ttf",  // FangSong
+}
+
 // getSystemFontsDir returns the system Fonts directory path.
-// Uses WINDIR environment variable to avoid hardcoding "C:\Windows".
+// Uses WINDIR environment variable to avoid hardcoding "C:\\Windows".
 func getSystemFontsDir() string {
 	winDir := os.Getenv("WINDIR")
 	if winDir == "" {
@@ -70,14 +100,57 @@ func getSystemFontsDir() string {
 	return filepath.Join(winDir, "Fonts")
 }
 
-// buildDefaultSystemFonts constructs full paths from font file names and system Fonts directory.
-func buildDefaultSystemFonts() []string {
+// buildFontPaths converts file names into absolute paths under the system font dir.
+func buildFontPaths(names []string) []string {
 	fontsDir := getSystemFontsDir()
-	fonts := make([]string, len(defaultSystemFontNames))
-	for i, name := range defaultSystemFontNames {
+	fonts := make([]string, len(names))
+	for i, name := range names {
 		fonts[i] = filepath.Join(fontsDir, name)
 	}
 	return fonts
+}
+
+func buildDefaultSystemFonts() []string {
+	return buildFontPaths(defaultSystemFontNames)
+}
+
+func buildDefaultTextPrimaryFonts() []string {
+	return buildFontPaths(defaultTextPrimaryFontNames)
+}
+
+func buildDefaultTextFallbackFonts() []string {
+	return buildFontPaths(defaultTextFallbackFontNames)
+}
+
+// isGGTextCompatibleFont reports whether gogpu/gg text can load the file directly.
+// 当前只接受单字体文件；TTC collection 仍留给 GDI / DirectWrite 路径处理。
+func isGGTextCompatibleFont(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".ttf", ".otf":
+		return true
+	default:
+		return false
+	}
+}
+
+func availableFont(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func appendUnique(paths []string, seen map[string]struct{}, path string) []string {
+	if path == "" {
+		return paths
+	}
+	key := strings.ToLower(path)
+	if _, ok := seen[key]; ok {
+		return paths
+	}
+	seen[key] = struct{}{}
+	return append(paths, path)
 }
 
 // NewFontConfig creates a FontConfig with the default system font chain.
@@ -107,16 +180,79 @@ func (fc *FontConfig) allFonts() []string {
 	return combined
 }
 
-// ResolvePrimaryFont returns the first available font path.
-// Search order: PrimaryFont → UserFonts → SystemFonts.
-func (fc *FontConfig) ResolvePrimaryFont() string {
-	if fc.PrimaryFont != "" {
-		if _, err := os.Stat(fc.PrimaryFont); err == nil {
-			return fc.PrimaryFont
+// textPrimaryFonts returns a deduplicated primary font list for gogpu/gg text rendering.
+// Only TTF / OTF entries are returned, because this path must never select a
+// TTC collection such as msyh.ttc.
+func (fc *FontConfig) textPrimaryFonts() []string {
+	seen := make(map[string]struct{})
+	fonts := make([]string, 0, len(fc.UserFonts)+len(fc.SystemFonts)+len(defaultTextPrimaryFontNames))
+
+	for _, path := range fc.UserFonts {
+		if isGGTextCompatibleFont(path) {
+			fonts = appendUnique(fonts, seen, path)
 		}
 	}
+	for _, path := range buildDefaultTextPrimaryFonts() {
+		fonts = appendUnique(fonts, seen, path)
+	}
+	for _, path := range fc.SystemFonts {
+		if isGGTextCompatibleFont(path) {
+			fonts = appendUnique(fonts, seen, path)
+		}
+	}
+
+	return fonts
+}
+
+// textFallbackFonts returns a deduplicated fallback chain for gogpu/gg text rendering.
+// The order is intentionally different from primary selection: common UI symbol
+// fonts are placed first to avoid eagerly parsing multiple large CJK fonts when
+// rendering menu markers such as ✓ and ▸.
+func (fc *FontConfig) textFallbackFonts() []string {
+	seen := make(map[string]struct{})
+	fonts := make([]string, 0, len(fc.UserFonts)+len(fc.SystemFonts)+len(defaultTextFallbackFontNames))
+
+	for _, path := range fc.UserFonts {
+		if isGGTextCompatibleFont(path) {
+			fonts = appendUnique(fonts, seen, path)
+		}
+	}
+	for _, path := range buildDefaultTextFallbackFonts() {
+		fonts = appendUnique(fonts, seen, path)
+	}
+	for _, path := range fc.SystemFonts {
+		if isGGTextCompatibleFont(path) {
+			fonts = appendUnique(fonts, seen, path)
+		}
+	}
+
+	return fonts
+}
+
+// ResolvePrimaryFont returns the first available font path.
+// Search order: PrimaryFont → UserFonts → SystemFonts.
+// Native Windows backends may still resolve to TTC fonts here.
+func (fc *FontConfig) ResolvePrimaryFont() string {
+	if fc.PrimaryFont != "" && availableFont(fc.PrimaryFont) {
+		return fc.PrimaryFont
+	}
 	for _, path := range fc.allFonts() {
-		if _, err := os.Stat(path); err == nil {
+		if availableFont(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+// ResolveTextPrimaryFont returns the first available TTF / OTF path for gogpu/gg text.
+// If PrimaryFont points to an unsupported TTC file, this intentionally falls back
+// to the dedicated TTF-only chain instead of failing hard.
+func (fc *FontConfig) ResolveTextPrimaryFont() string {
+	if isGGTextCompatibleFont(fc.PrimaryFont) && availableFont(fc.PrimaryFont) {
+		return fc.PrimaryFont
+	}
+	for _, path := range fc.textPrimaryFonts() {
+		if availableFont(path) {
 			return path
 		}
 	}
@@ -129,10 +265,22 @@ func (fc *FontConfig) GetFallbackFonts() []string {
 	primary := fc.ResolvePrimaryFont()
 	var fallbacks []string
 	for _, path := range fc.allFonts() {
-		if path != primary {
-			if _, err := os.Stat(path); err == nil {
-				fallbacks = append(fallbacks, path)
-			}
+		if path != primary && availableFont(path) {
+			fallbacks = append(fallbacks, path)
+		}
+	}
+	return fallbacks
+}
+
+// GetTextFallbackFonts returns all available TTF / OTF fonts after the gg/text primary.
+// The list is ordered to handle common UI symbols cheaply before trying larger
+// CJK fallback fonts.
+func (fc *FontConfig) GetTextFallbackFonts() []string {
+	primary := fc.ResolveTextPrimaryFont()
+	var fallbacks []string
+	for _, path := range fc.textFallbackFonts() {
+		if path != primary && availableFont(path) {
+			fallbacks = append(fallbacks, path)
 		}
 	}
 	return fallbacks
@@ -183,59 +331,49 @@ func (fc *FontConfig) GetEffectiveGDIScale() float64 {
 }
 
 // --- Global font registry (package-level singleton) ---
-// All UI components share parsed truetype.Font instances to avoid loading
-// the same font file multiple times. Each font file (e.g., msyh.ttc ~25MB)
-// is read and parsed only once, regardless of how many components use it.
-
+// All UI components share parsed gg/text FontSource instances to avoid loading
+// the same font file multiple times. Each font file is read and parsed only once,
+// regardless of how many components use it.
 var (
-	globalFontsMu sync.Mutex
-	globalFonts   map[string]*truetype.Font // path -> parsed font
+	globalFontSourcesMu sync.Mutex
+	globalFontSources   map[string]*ggtext.FontSource
 )
 
-// GetSharedFont returns a shared parsed truetype.Font for the given path.
-// The font is loaded and parsed only once; subsequent calls return the cached instance.
-// This is used by both fontCache (primary font) and freeTypeDrawer (fallback fonts)
-// to ensure font data is not duplicated in memory.
-func GetSharedFont(path string) (*truetype.Font, error) {
-	globalFontsMu.Lock()
-	defer globalFontsMu.Unlock()
+func GetSharedFontSource(path string) (*ggtext.FontSource, error) {
+	globalFontSourcesMu.Lock()
+	defer globalFontSourcesMu.Unlock()
 
-	if globalFonts == nil {
-		globalFonts = make(map[string]*truetype.Font)
+	if globalFontSources == nil {
+		globalFontSources = make(map[string]*ggtext.FontSource)
+	}
+	if source, ok := globalFontSources[path]; ok {
+		return source, nil
 	}
 
-	if f, ok := globalFonts[path]; ok {
-		return f, nil
-	}
-
-	data, err := os.ReadFile(path)
+	source, err := ggtext.NewFontSourceFromFile(path)
 	if err != nil {
 		return nil, err
 	}
-	f, err := truetype.Parse(data)
-	if err != nil {
-		return nil, err
-	}
-	globalFonts[path] = f
-	return f, nil
+	globalFontSources[path] = source
+	return source, nil
 }
 
-// fallbackFontEntry holds a parsed font and its source path.
+// fallbackFontEntry holds a fallback font path.
+// The actual FontSource is still loaded lazily through fontCache.getFace(),
+// so merely enabling freetype mode does not parse the entire fallback chain.
 type fallbackFontEntry struct {
-	font *truetype.Font
 	path string
 }
 
-// GetSharedFallbackFonts returns shared fallback font entries for the given paths.
-// Each font is loaded via GetSharedFont (global cache), so no duplication occurs.
+// GetSharedFallbackFonts returns fallback font entries for the given paths.
+// Unsupported or missing fonts are skipped, but the actual font file is not
+// parsed here; parsing stays lazy and only happens when a glyph lookup needs it.
 func GetSharedFallbackFonts(fallbackPaths []string) []fallbackFontEntry {
 	var entries []fallbackFontEntry
 	for _, path := range fallbackPaths {
-		f, err := GetSharedFont(path)
-		if err != nil {
-			continue
+		if availableFont(path) {
+			entries = append(entries, fallbackFontEntry{path: path})
 		}
-		entries = append(entries, fallbackFontEntry{font: f, path: path})
 	}
 	return entries
 }

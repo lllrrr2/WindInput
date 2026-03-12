@@ -3,19 +3,20 @@ package ui
 import (
 	"image"
 	"image/color"
+	"image/draw"
 	"unicode/utf8"
 
-	"github.com/fogleman/gg"
-	"github.com/golang/freetype/truetype"
-	"golang.org/x/image/font"
+	"github.com/gogpu/gg"
+	ggtext "github.com/gogpu/gg/text"
 )
 
-// TextRenderMode defines the text rendering backend
+// TextRenderMode defines the text rendering backend.
+// 历史上配置值已经对外暴露，所以这里保留了 "freetype" 这个模式名。
 type TextRenderMode string
 
 const (
 	TextRenderModeGDI         TextRenderMode = "gdi"         // Windows GDI native rendering
-	TextRenderModeFreetype    TextRenderMode = "freetype"    // FreeType rendering (original)
+	TextRenderModeFreetype    TextRenderMode = "freetype"    // gogpu/gg text rendering
 	TextRenderModeDirectWrite TextRenderMode = "directwrite" // DirectWrite + Direct2D rendering
 )
 
@@ -25,7 +26,7 @@ const (
 // (FreeType, GDI, DirectWrite, etc.) can be swapped transparently.
 type TextDrawer interface {
 	// SetFont sets the font by file path. The backend resolves it to the
-	// appropriate internal representation (e.g., GDI family name, freetype font).
+	// appropriate internal representation (e.g., GDI family name, gg/text source).
 	SetFont(fontPath string)
 	// MeasureString measures text width in pixels for the given font size.
 	MeasureString(text string, fontSize float64) float64
@@ -42,16 +43,17 @@ type TextDrawer interface {
 
 // --- FreeType (original) implementation with font fallback ---
 
-// freeTypeDrawer wraps gg/freetype for text rendering with glyph-level font fallback.
-// When the primary font lacks a glyph (e.g., ✓ or ▸), it automatically tries
-// fallback fonts from the shared font pool until one is found that contains the glyph.
-// Fallback fonts are shared across all freeTypeDrawer instances to minimize memory usage.
+// freeTypeDrawer keeps the existing TextRenderMode name for config compatibility,
+// but the implementation now uses gogpu/gg text faces instead of fogleman/gg.
+// Fallback still happens at glyph granularity so symbols like ✓ and ▸ can be
+// resolved independently of the primary font.
 type freeTypeDrawer struct {
 	cache          *fontCache
 	dc             *gg.Context
+	target         *image.RGBA
 	fontConfig     *FontConfig
-	fallbackCaches []*fontCache        // Font face caches (one per shared fallback font)
-	fallbackFonts  []fallbackFontEntry // References to shared font pool entries
+	fallbackCaches []*fontCache        // Font face caches (one per fallback font path)
+	fallbackFonts  []fallbackFontEntry // References to fallback font entries
 	fallbackInited bool                // Whether fallback has been initialized
 }
 
@@ -65,16 +67,17 @@ func newFreeTypeDrawer(cache *fontCache, fontConfig *FontConfig) *freeTypeDrawer
 func (d *freeTypeDrawer) SetFont(fontPath string) {
 	d.cache.mu.Lock()
 	defer d.cache.mu.Unlock()
-	d.cache.loadFont(fontPath)
-	// Reset fallback when primary font changes
+	_ = d.cache.loadFont(fontPath)
+	// 主字体变化后，fallback 选择顺序也可能变化，所以一并重建。
 	d.fallbackInited = false
 	d.fallbackCaches = nil
 	d.fallbackFonts = nil
 }
 
-// initFallbacks lazily initializes fallback using the shared font pool.
-// The actual font files are loaded only once globally via GetSharedFallbackFonts.
-// Each drawer only creates its own fontCache (for size-specific font.Face caching).
+// initFallbacks lazily initializes fallback metadata.
+// The actual font files are not parsed here. Each drawer only creates its own
+// lightweight fontCache descriptors, and the underlying FontSource is loaded on
+// first glyph lookup through fontCache.getFace().
 func (d *freeTypeDrawer) initFallbacks() {
 	if d.fallbackInited {
 		return
@@ -85,32 +88,23 @@ func (d *freeTypeDrawer) initFallbacks() {
 		return
 	}
 
-	fallbackPaths := d.fontConfig.GetFallbackFonts()
+	fallbackPaths := d.fontConfig.GetTextFallbackFonts()
 	shared := GetSharedFallbackFonts(fallbackPaths)
 
 	for _, entry := range shared {
-		// Create a lightweight fontCache that references the shared parsed font.
-		// Only the font.Face cache (per size) is per-drawer; the font data is shared.
+		// Create a lightweight fontCache descriptor for each fallback path.
+		// The font file itself is still loaded lazily in getFace().
 		fc := newFontCache()
-		fc.font = entry.font
 		fc.fontPath = entry.path
 		d.fallbackCaches = append(d.fallbackCaches, fc)
 		d.fallbackFonts = append(d.fallbackFonts, entry)
 	}
 }
 
-// hasGlyph checks if the given font contains a glyph for the rune.
-func hasGlyph(f *truetype.Font, r rune) bool {
-	if f == nil {
-		return false
-	}
-	return f.Index(r) != 0
-}
-
 // fontSegment represents a contiguous run of text that uses the same font.
 type fontSegment struct {
 	text string
-	face font.Face
+	face ggtext.Face
 }
 
 // segmentByFont splits text into segments, each using the best available font.
@@ -118,20 +112,18 @@ type fontSegment struct {
 func (d *freeTypeDrawer) segmentByFont(text string, fontSize float64) []fontSegment {
 	d.initFallbacks()
 
-	primaryFont := d.cache.font
 	primaryFace := d.cache.getFace(fontSize)
 	if primaryFace == nil {
 		return nil
 	}
 
-	// Fast path: if no fallbacks, just use primary for everything
-	if len(d.fallbackFonts) == 0 {
+	if len(d.fallbackCaches) == 0 {
 		return []fontSegment{{text: text, face: primaryFace}}
 	}
 
 	var segments []fontSegment
 	var currentText []byte
-	var currentFace font.Face
+	var currentFace ggtext.Face
 
 	for i := 0; i < len(text); {
 		r, size := utf8.DecodeRuneInString(text[i:])
@@ -140,26 +132,23 @@ func (d *freeTypeDrawer) segmentByFont(text string, fontSize float64) []fontSegm
 			continue
 		}
 
-		// Determine which face to use for this rune
-		var bestFace font.Face
-		if hasGlyph(primaryFont, r) {
-			bestFace = primaryFace
-		} else {
-			// Try fallback fonts from the shared pool
-			for j, entry := range d.fallbackFonts {
-				if hasGlyph(entry.font, r) {
-					bestFace = d.fallbackCaches[j].getFace(fontSize)
+		// Determine which face to use for this rune.
+		bestFace := primaryFace
+		if !primaryFace.HasGlyph(r) {
+			// Try fallback fonts in priority order. These faces are loaded lazily,
+			// so common strings never pay the cost of parsing the whole chain.
+			for j := range d.fallbackCaches {
+				face := d.fallbackCaches[j].getFace(fontSize)
+				if face != nil && face.HasGlyph(r) {
+					bestFace = face
 					break
 				}
-			}
-			if bestFace == nil {
-				// No font has this glyph, use primary anyway
-				bestFace = primaryFace
 			}
 		}
 
 		if bestFace != currentFace {
-			// Flush current segment
+			// Flush current segment. gg/text still works one face at a time, so
+			// segmented runs preserve the old glyph-level fallback behavior.
 			if len(currentText) > 0 {
 				segments = append(segments, fontSegment{text: string(currentText), face: currentFace})
 				currentText = currentText[:0]
@@ -170,7 +159,6 @@ func (d *freeTypeDrawer) segmentByFont(text string, fontSize float64) []fontSegm
 		i += size
 	}
 
-	// Flush last segment
 	if len(currentText) > 0 {
 		segments = append(segments, fontSegment{text: string(currentText), face: currentFace})
 	}
@@ -193,9 +181,11 @@ func (d *freeTypeDrawer) MeasureString(text string, fontSize float64) float64 {
 		dc = gg.NewContext(1, 1)
 	}
 
+	// gg.MeasureString works per current font, so segmented fallback text needs
+	// to be measured run by run and summed manually.
 	var totalW float64
 	for _, seg := range segments {
-		dc.SetFontFace(seg.face)
+		dc.SetFont(seg.face)
 		w, _ := dc.MeasureString(seg.text)
 		totalW += w
 	}
@@ -203,7 +193,12 @@ func (d *freeTypeDrawer) MeasureString(text string, fontSize float64) float64 {
 }
 
 func (d *freeTypeDrawer) BeginDraw(img *image.RGBA) {
-	d.dc = gg.NewContextForRGBA(img)
+	// TODO(gogpu/gg): NewContextForImage 的文本路径有 bug，DrawString 不会稳定落到目标位图上。
+	// 等上游修复后可改为 NewContextForImage + overlay 复用，避免每帧分配新 RGBA 缓冲。
+	// 当前 workaround：在独立 overlay 上绘字，EndDraw 阶段合成回原图。
+	bounds := img.Bounds()
+	d.target = img
+	d.dc = gg.NewContext(bounds.Dx(), bounds.Dy())
 }
 
 func (d *freeTypeDrawer) DrawString(text string, x, y float64, fontSize float64, clr color.Color) {
@@ -219,20 +214,29 @@ func (d *freeTypeDrawer) DrawString(text string, x, y float64, fontSize float64,
 	d.dc.SetColor(clr)
 	drawX := x
 	for _, seg := range segments {
-		d.dc.SetFontFace(seg.face)
+		d.dc.SetFont(seg.face)
 		d.dc.DrawString(seg.text, drawX, y)
+		// Advance by the measured width of the segment so mixed-font runs keep the
+		// same baseline flow as the old implementation.
 		w, _ := d.dc.MeasureString(seg.text)
 		drawX += w
 	}
 }
 
 func (d *freeTypeDrawer) EndDraw() {
+	if d.target != nil && d.dc != nil {
+		if overlay, ok := d.dc.Image().(*image.RGBA); ok {
+			draw.Draw(d.target, d.target.Bounds(), overlay, overlay.Bounds().Min, draw.Over)
+		}
+	}
 	d.dc = nil
+	d.target = nil
 }
 
 func (d *freeTypeDrawer) Close() {
-	// fontCache is shared, not owned by this drawer
+	// d.cache 由外层 renderer 持有和复用，这里只释放当前 drawer 私有状态。
 	d.dc = nil
+	d.target = nil
 	d.fallbackCaches = nil
 	d.fallbackFonts = nil
 }
