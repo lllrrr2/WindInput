@@ -400,7 +400,8 @@ func (w *ToolbarWindow) updateLayeredWindow(img *image.RGBA, x, y int) error {
 
 	procSelectObject.Call(hdcMem, hBitmap)
 
-	// Copy image data (RGBA to BGRA with premultiplied alpha)
+	// Copy image data (RGBA to BGRA channel swap).
+	// image.RGBA is already premultiplied alpha, matching UpdateLayeredWindow's expectation.
 	pixelCount := width * height
 	dstSlice := unsafe.Slice((*byte)(bits), pixelCount*4)
 
@@ -408,27 +409,10 @@ func (w *ToolbarWindow) updateLayeredWindow(img *image.RGBA, x, y int) error {
 		srcIdx := i * 4
 		dstIdx := i * 4
 
-		r := img.Pix[srcIdx+0]
-		g := img.Pix[srcIdx+1]
-		b := img.Pix[srcIdx+2]
-		a := img.Pix[srcIdx+3]
-
-		if a == 255 {
-			dstSlice[dstIdx+0] = b
-			dstSlice[dstIdx+1] = g
-			dstSlice[dstIdx+2] = r
-			dstSlice[dstIdx+3] = a
-		} else if a == 0 {
-			dstSlice[dstIdx+0] = 0
-			dstSlice[dstIdx+1] = 0
-			dstSlice[dstIdx+2] = 0
-			dstSlice[dstIdx+3] = 0
-		} else {
-			dstSlice[dstIdx+0] = byte(uint16(b) * uint16(a) / 255)
-			dstSlice[dstIdx+1] = byte(uint16(g) * uint16(a) / 255)
-			dstSlice[dstIdx+2] = byte(uint16(r) * uint16(a) / 255)
-			dstSlice[dstIdx+3] = a
-		}
+		dstSlice[dstIdx+0] = img.Pix[srcIdx+2] // B
+		dstSlice[dstIdx+1] = img.Pix[srcIdx+1] // G
+		dstSlice[dstIdx+2] = img.Pix[srcIdx+0] // R
+		dstSlice[dstIdx+3] = img.Pix[srcIdx+3] // A
 	}
 
 	// Update layered window

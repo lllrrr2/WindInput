@@ -447,7 +447,10 @@ func (w *CandidateWindow) updateLayeredWindow(img *image.RGBA, x, y int) error {
 	// Select bitmap into DC
 	procSelectObject.Call(hdcMem, hBitmap)
 
-	// Copy image data to DIB (convert RGBA to BGRA with premultiplied alpha)
+	// Copy image data to DIB (convert RGBA to BGRA).
+	// Go's image.RGBA stores premultiplied alpha by convention, and gg's
+	// rasterizer follows this. Windows UpdateLayeredWindow with AC_SRC_ALPHA
+	// also expects premultiplied alpha, so we only need the channel swap.
 	pixelCount := width * height
 	dstSlice := unsafe.Slice((*byte)(bits), pixelCount*4)
 
@@ -455,28 +458,10 @@ func (w *CandidateWindow) updateLayeredWindow(img *image.RGBA, x, y int) error {
 		srcIdx := i * 4
 		dstIdx := i * 4
 
-		r := img.Pix[srcIdx+0]
-		g := img.Pix[srcIdx+1]
-		b := img.Pix[srcIdx+2]
-		a := img.Pix[srcIdx+3]
-
-		// Premultiply alpha
-		if a == 255 {
-			dstSlice[dstIdx+0] = b
-			dstSlice[dstIdx+1] = g
-			dstSlice[dstIdx+2] = r
-			dstSlice[dstIdx+3] = a
-		} else if a == 0 {
-			dstSlice[dstIdx+0] = 0
-			dstSlice[dstIdx+1] = 0
-			dstSlice[dstIdx+2] = 0
-			dstSlice[dstIdx+3] = 0
-		} else {
-			dstSlice[dstIdx+0] = byte(uint16(b) * uint16(a) / 255)
-			dstSlice[dstIdx+1] = byte(uint16(g) * uint16(a) / 255)
-			dstSlice[dstIdx+2] = byte(uint16(r) * uint16(a) / 255)
-			dstSlice[dstIdx+3] = a
-		}
+		dstSlice[dstIdx+0] = img.Pix[srcIdx+2] // B
+		dstSlice[dstIdx+1] = img.Pix[srcIdx+1] // G
+		dstSlice[dstIdx+2] = img.Pix[srcIdx+0] // R
+		dstSlice[dstIdx+3] = img.Pix[srcIdx+3] // A
 	}
 
 	// Update layered window

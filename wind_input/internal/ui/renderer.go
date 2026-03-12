@@ -494,17 +494,7 @@ func radians(degrees float64) float64 {
 }
 
 func (r *Renderer) drawRoundedRect(dc *gg.Context, x, y, w, h, radius float64) {
-	dc.NewSubPath()
-	dc.MoveTo(x+radius, y)
-	dc.LineTo(x+w-radius, y)
-	dc.DrawArc(x+w-radius, y+radius, radius, -radians(90), 0)
-	dc.LineTo(x+w, y+h-radius)
-	dc.DrawArc(x+w-radius, y+h-radius, radius, 0, radians(90))
-	dc.LineTo(x+radius, y+h)
-	dc.DrawArc(x+radius, y+h-radius, radius, radians(90), radians(180))
-	dc.LineTo(x, y+radius)
-	dc.DrawArc(x+radius, y+radius, radius, radians(180), radians(270))
-	dc.ClosePath()
+	dc.DrawRoundedRectangle(x, y, w, h, radius)
 }
 
 // RenderModeIndicator renders a mode indicator with adaptive width
