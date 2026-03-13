@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"sync"
 	"syscall"
-	"unsafe"
 
 	"github.com/gogpu/gg"
 	"github.com/huanfeng/wind_input/pkg/theme"
@@ -24,162 +23,38 @@ type TooltipWindow struct {
 	text          string
 	resolvedTheme *theme.ResolvedTheme
 
-	// Text rendering
-	fontCache      *fontCache
-	textRenderer   *TextRenderer
-	dwriteRenderer *DWriteRenderer
-	textDrawer     TextDrawer
-	fontConfig     *FontConfig
+	TextBackendManager
 }
 
 // NewTooltipWindow creates a new tooltip window
 func NewTooltipWindow(logger *slog.Logger) *TooltipWindow {
-	fontCfg := NewFontConfig()
-
 	w := &TooltipWindow{
-		logger:     logger,
-		fontConfig: fontCfg,
+		logger:             logger,
+		TextBackendManager: NewTextBackendManager("tooltip"),
 	}
 	w.SetTextRenderMode(TextRenderModeGDI)
 	return w
-}
-
-func (w *TooltipWindow) resolvePrimaryFontPathLocked() string {
-	resolved := w.fontConfig.ResolvePrimaryFont()
-	if resolved != "" {
-		w.fontConfig.SetPrimaryFont(resolved)
-	}
-	return resolved
-}
-
-func (w *TooltipWindow) ensureTextRendererLocked() *TextRenderer {
-	if w.textRenderer != nil {
-		return w.textRenderer
-	}
-	tr := NewTextRenderer()
-	tr.SetGDIParams(w.fontConfig.GetEffectiveGDIWeight(), w.fontConfig.GetEffectiveGDIScale())
-	if resolved := w.resolvePrimaryFontPathLocked(); resolved != "" {
-		tr.SetFont(resolved)
-	}
-	w.textRenderer = tr
-	return tr
-}
-
-func (w *TooltipWindow) ensureDWriteRendererLocked() *DWriteRenderer {
-	if w.dwriteRenderer != nil {
-		return w.dwriteRenderer
-	}
-	dwr := NewDWriteRenderer("tooltip")
-	dwr.SetGDIParams(w.fontConfig.GetEffectiveGDIWeight(), w.fontConfig.GetEffectiveGDIScale())
-	if resolved := w.resolvePrimaryFontPathLocked(); resolved != "" {
-		dwr.SetFont(resolved)
-	}
-	w.dwriteRenderer = dwr
-	return dwr
-}
-
-func (w *TooltipWindow) ensureFontCacheLocked() *fontCache {
-	if w.fontCache == nil {
-		w.fontCache = newFontCache()
-	}
-	// Tooltip 也可能复用用户配置的主字体，因此这里同样需要走 TTF-only 解析。
-	if resolved := w.fontConfig.ResolveTextPrimaryFont(); resolved != "" {
-		w.fontCache.mu.Lock()
-		_ = w.fontCache.loadFont(resolved)
-		w.fontCache.mu.Unlock()
-	}
-	return w.fontCache
-}
-
-func (w *TooltipWindow) releaseGDIBackendLocked() {
-	if w.textRenderer != nil {
-		w.textRenderer.Close()
-		w.textRenderer = nil
-	}
-}
-
-func (w *TooltipWindow) releaseDWriteBackendLocked() {
-	if w.dwriteRenderer != nil {
-		w.dwriteRenderer.Close()
-		w.dwriteRenderer = nil
-	}
-}
-
-func (w *TooltipWindow) releaseFreeTypeBackendLocked() {
-	if w.fontCache != nil {
-		w.fontCache.Close()
-		w.fontCache = nil
-	}
 }
 
 // SetGDIFontParams updates GDI font weight and scale for text rendering
 func (w *TooltipWindow) SetGDIFontParams(weight int, scale float64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.fontConfig.SetGDIFontWeight(weight)
-	w.fontConfig.SetGDIFontScale(scale)
-	if w.textRenderer != nil {
-		w.textRenderer.SetGDIParams(weight, scale)
-	}
-	if w.dwriteRenderer != nil {
-		w.dwriteRenderer.SetGDIParams(weight, scale)
-	}
+	w.TextBackendManager.SetGDIFontParams(weight, scale)
 }
 
 // SetFontPath updates the primary font for tooltip rendering.
 func (w *TooltipWindow) SetFontPath(path string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-
-	w.fontConfig.SetPrimaryFont(path)
-	resolved := w.resolvePrimaryFontPathLocked()
-	textResolved := w.fontConfig.ResolveTextPrimaryFont()
-	if resolved == "" {
-		return
-	}
-
-	if w.fontCache != nil && textResolved != "" {
-		w.fontCache.mu.Lock()
-		// 原生渲染仍使用 resolved；这里只更新 gg/text 的安全路径。
-		_ = w.fontCache.loadFont(textResolved)
-		w.fontCache.mu.Unlock()
-	}
-	if w.textRenderer != nil {
-		w.textRenderer.SetFont(resolved)
-	}
-	if w.dwriteRenderer != nil {
-		w.dwriteRenderer.SetFont(resolved)
-	}
+	w.TextBackendManager.SetFontPath(path)
 }
 
 // SetTextRenderMode switches between GDI, FreeType, and DirectWrite text rendering
 func (w *TooltipWindow) SetTextRenderMode(mode TextRenderMode) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	switch mode {
-	case TextRenderModeFreetype:
-		fc := w.ensureFontCacheLocked()
-		w.releaseGDIBackendLocked()
-		w.releaseDWriteBackendLocked()
-		w.textDrawer = newFreeTypeDrawer(fc, w.fontConfig)
-	case TextRenderModeDirectWrite:
-		dwr := w.ensureDWriteRendererLocked()
-		if dwr != nil && dwr.IsAvailable() {
-			w.releaseGDIBackendLocked()
-			w.releaseFreeTypeBackendLocked()
-			w.textDrawer = newDirectWriteDrawer(dwr)
-			return
-		}
-		w.releaseDWriteBackendLocked()
-		tr := w.ensureTextRendererLocked()
-		w.releaseFreeTypeBackendLocked()
-		w.textDrawer = newGDIDrawer(tr)
-	default:
-		tr := w.ensureTextRendererLocked()
-		w.releaseDWriteBackendLocked()
-		w.releaseFreeTypeBackendLocked()
-		w.textDrawer = newGDIDrawer(tr)
-	}
+	w.TextBackendManager.SetTextRenderMode(mode)
 }
 
 // SetTheme sets the theme for the tooltip window
@@ -200,28 +75,13 @@ func (w *TooltipWindow) getTooltipColors() (bgColor, textColor color.Color) {
 }
 
 // Global tooltip window registry
-var (
-	tooltipWindowsMu sync.RWMutex
-	tooltipWindows   = make(map[windows.HWND]*TooltipWindow)
-)
-
-func registerTooltipWindow(hwnd windows.HWND, w *TooltipWindow) {
-	tooltipWindowsMu.Lock()
-	tooltipWindows[hwnd] = w
-	tooltipWindowsMu.Unlock()
-}
-
-func unregisterTooltipWindow(hwnd windows.HWND) {
-	tooltipWindowsMu.Lock()
-	delete(tooltipWindows, hwnd)
-	tooltipWindowsMu.Unlock()
-}
+var tooltipWindows = NewWindowRegistry[TooltipWindow]()
 
 // tooltipWndProc is the window procedure for tooltip
 func tooltipWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	switch msg {
 	case WM_DESTROY:
-		unregisterTooltipWindow(windows.HWND(hwnd))
+		tooltipWindows.Unregister(windows.HWND(hwnd))
 		return 0
 	case WM_NCHITTEST:
 		// Return HTTRANSPARENT so mouse events pass through
@@ -233,39 +93,18 @@ func tooltipWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 // Create creates the tooltip window (must be called from the UI thread)
 func (w *TooltipWindow) Create() error {
-	className, _ := syscall.UTF16PtrFromString("IMETooltipWindow")
-
-	wc := WNDCLASSEXW{
-		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
-		LpfnWndProc:   syscall.NewCallback(tooltipWndProc),
-		LpszClassName: className,
-	}
-
-	ret, _, err := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
-	if ret == 0 {
-		w.logger.Warn("RegisterClassExW for tooltip failed (may already exist)", "error", err)
-	}
-
-	// Create layered window
-	exStyle := uint32(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT)
-	style := uint32(WS_POPUP)
-
-	hwnd, _, err := procCreateWindowExW.Call(
-		uintptr(exStyle),
-		uintptr(unsafe.Pointer(className)),
-		0, // No title
-		uintptr(style),
-		0, 0, 1, 1, // Initial position and size
-		0, 0, 0, 0,
-	)
-
-	if hwnd == 0 {
+	hwnd, err := CreateLayeredWindow(LayeredWindowConfig{
+		ClassName:  "IMETooltipWindow",
+		WndProc:    syscall.NewCallback(tooltipWndProc),
+		ExtraStyle: WS_EX_TRANSPARENT,
+	})
+	if err != nil {
 		return err
 	}
 
-	w.hwnd = windows.HWND(hwnd)
-	registerTooltipWindow(w.hwnd, w)
-	w.logger.Debug("Tooltip window created", "hwnd", hwnd)
+	w.hwnd = hwnd
+	tooltipWindows.Register(w.hwnd, w)
+	w.logger.Debug("Tooltip window created", "hwnd", w.hwnd)
 
 	return nil
 }
@@ -321,9 +160,7 @@ func (w *TooltipWindow) Destroy() {
 		w.hwnd = 0
 	}
 	w.mu.Lock()
-	w.releaseFreeTypeBackendLocked()
-	w.releaseGDIBackendLocked()
-	w.releaseDWriteBackendLocked()
+	w.TextBackendManager.Close()
 	w.mu.Unlock()
 }
 
@@ -333,7 +170,7 @@ func (w *TooltipWindow) render(text string) *image.RGBA {
 	bgColor, textColor := w.getTooltipColors()
 
 	w.mu.Lock()
-	td := w.textDrawer
+	td := w.TextDrawer()
 	w.mu.Unlock()
 
 	fontSize := 14.0 * scale
@@ -361,89 +198,5 @@ func (w *TooltipWindow) render(text string) *image.RGBA {
 
 // updateLayeredWindow updates the tooltip's layered window
 func (w *TooltipWindow) updateLayeredWindow(img *image.RGBA, x, y int) error {
-	bounds := img.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
-
-	// Get screen DC
-	hdcScreen, _, _ := procGetDC.Call(0)
-	if hdcScreen == 0 {
-		return nil
-	}
-	defer procReleaseDC.Call(0, hdcScreen)
-
-	// Create compatible DC
-	hdcMem, _, _ := procCreateCompatibleDC.Call(hdcScreen)
-	if hdcMem == 0 {
-		return nil
-	}
-	defer procDeleteDC.Call(hdcMem)
-
-	// Create DIB section
-	bi := BITMAPINFO{
-		BmiHeader: BITMAPINFOHEADER{
-			BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
-			BiWidth:       int32(width),
-			BiHeight:      -int32(height), // Top-down DIB
-			BiPlanes:      1,
-			BiBitCount:    32,
-			BiCompression: BI_RGB,
-		},
-	}
-
-	var bits unsafe.Pointer
-	hBitmap, _, _ := procCreateDIBSection.Call(
-		hdcMem,
-		uintptr(unsafe.Pointer(&bi)),
-		DIB_RGB_COLORS,
-		uintptr(unsafe.Pointer(&bits)),
-		0, 0,
-	)
-	if hBitmap == 0 {
-		return nil
-	}
-	defer procDeleteObject.Call(hBitmap)
-
-	// Select bitmap into DC
-	procSelectObject.Call(hdcMem, hBitmap)
-
-	// Copy image data to DIB (RGBA to BGRA channel swap).
-	// image.RGBA is already premultiplied alpha, matching UpdateLayeredWindow's expectation.
-	pixelCount := width * height
-	dstSlice := unsafe.Slice((*byte)(bits), pixelCount*4)
-
-	for i := 0; i < pixelCount; i++ {
-		srcIdx := i * 4
-		dstIdx := i * 4
-
-		dstSlice[dstIdx+0] = img.Pix[srcIdx+2] // B
-		dstSlice[dstIdx+1] = img.Pix[srcIdx+1] // G
-		dstSlice[dstIdx+2] = img.Pix[srcIdx+0] // R
-		dstSlice[dstIdx+3] = img.Pix[srcIdx+3] // A
-	}
-
-	// Update layered window
-	ptSrc := POINT{X: 0, Y: 0}
-	ptDst := POINT{X: int32(x), Y: int32(y)}
-	size := SIZE{Cx: int32(width), Cy: int32(height)}
-	blend := BLENDFUNCTION{
-		BlendOp:             AC_SRC_OVER,
-		BlendFlags:          0,
-		SourceConstantAlpha: 255,
-		AlphaFormat:         AC_SRC_ALPHA,
-	}
-
-	procUpdateLayeredWindow.Call(
-		uintptr(w.hwnd),
-		hdcScreen,
-		uintptr(unsafe.Pointer(&ptDst)),
-		uintptr(unsafe.Pointer(&size)),
-		hdcMem,
-		uintptr(unsafe.Pointer(&ptSrc)),
-		0,
-		uintptr(unsafe.Pointer(&blend)),
-		ULW_ALPHA,
-	)
-
-	return nil
+	return UpdateLayeredWindowFromImage(w.hwnd, img, x, y)
 }

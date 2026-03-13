@@ -179,189 +179,30 @@ func (fc *fontCache) Close() {
 
 // Renderer renders candidate window content
 type Renderer struct {
-	config         RenderConfig
-	fontPath       string
-	fontCache      *fontCache
-	fontReady      bool
-	resolvedTheme  *theme.ResolvedTheme
-	textRenderer   *TextRenderer   // GDI text renderer for native Windows text quality
-	dwriteRenderer *DWriteRenderer // DirectWrite text renderer
-	textDrawer     TextDrawer      // Active text drawing backend (GDI, FreeType, or DirectWrite)
-	fontConfig     *FontConfig     // Centralized font configuration
+	config        RenderConfig
+	resolvedTheme *theme.ResolvedTheme
+	TextBackendManager
 }
 
 // NewRenderer creates a new renderer
 func NewRenderer(config RenderConfig) *Renderer {
-	fontCfg := NewFontConfig()
-
 	r := &Renderer{
-		config:     config,
-		fontConfig: fontCfg,
+		config:             config,
+		TextBackendManager: NewTextBackendManager("candidate"),
 	}
-	r.updateTextDrawer()
+	r.SetTextRenderMode(config.TextRenderMode)
 	return r
-}
-
-func (r *Renderer) resolvePrimaryFontPath() string {
-	if r.fontPath != "" {
-		r.fontConfig.SetPrimaryFont(r.fontPath)
-	}
-	// 原生文本后端允许继续落到 TTC 主字体，所以这里走 general path。
-	resolved := r.fontConfig.ResolvePrimaryFont()
-	if resolved != "" {
-		r.fontPath = resolved
-	}
-	return resolved
-}
-
-func (r *Renderer) ensureTextRenderer() *TextRenderer {
-	if r.textRenderer != nil {
-		return r.textRenderer
-	}
-	tr := NewTextRenderer()
-	tr.SetGDIParams(r.fontConfig.GetEffectiveGDIWeight(), r.fontConfig.GetEffectiveGDIScale())
-	if resolved := r.resolvePrimaryFontPath(); resolved != "" {
-		tr.SetFont(resolved)
-	}
-	r.textRenderer = tr
-	return tr
-}
-
-func (r *Renderer) ensureDWriteRenderer() *DWriteRenderer {
-	if r.dwriteRenderer != nil {
-		return r.dwriteRenderer
-	}
-	dwr := NewDWriteRenderer("candidate")
-	dwr.SetGDIParams(r.fontConfig.GetEffectiveGDIWeight(), r.fontConfig.GetEffectiveGDIScale())
-	if resolved := r.resolvePrimaryFontPath(); resolved != "" {
-		dwr.SetFont(resolved)
-	}
-	r.dwriteRenderer = dwr
-	return dwr
-}
-
-// ensureFontCache prepares the gg/text font cache.
-// 这里故意不复用 resolvePrimaryFontPath()，因为 gg/text 不能直接消费 TTC。
-func (r *Renderer) ensureFontCache() *fontCache {
-	if r.fontCache == nil {
-		r.fontCache = newFontCache()
-	}
-	if r.fontPath != "" {
-		r.fontConfig.SetPrimaryFont(r.fontPath)
-	}
-	// The gg/text path must resolve through the TTF-only chain; GDI / DirectWrite
-	// keep using resolvePrimaryFontPath() so TTC system fonts still work there.
-	resolved := r.fontConfig.ResolveTextPrimaryFont()
-	if resolved == "" {
-		return r.fontCache
-	}
-	r.fontCache.mu.Lock()
-	defer r.fontCache.mu.Unlock()
-	_ = r.fontCache.loadFont(resolved)
-	r.fontReady = true
-	return r.fontCache
-}
-
-func (r *Renderer) releaseGDIBackend() {
-	if r.textRenderer != nil {
-		r.textRenderer.Close()
-		r.textRenderer = nil
-	}
-}
-
-func (r *Renderer) releaseDWriteBackend() {
-	if r.dwriteRenderer != nil {
-		r.dwriteRenderer.Close()
-		r.dwriteRenderer = nil
-	}
-}
-
-func (r *Renderer) releaseFreeTypeBackend() {
-	if r.fontCache != nil {
-		r.fontCache.Close()
-		r.fontCache = nil
-	}
-	r.fontReady = false
-}
-
-// updateTextDrawer recreates the active backend and releases the inactive ones.
-// 这样可以避免不同文字后端长期同时持有字体或设备资源。
-func (r *Renderer) updateTextDrawer() {
-	switch r.config.TextRenderMode {
-	case TextRenderModeFreetype:
-		fc := r.ensureFontCache()
-		r.releaseGDIBackend()
-		r.releaseDWriteBackend()
-		r.textDrawer = newFreeTypeDrawer(fc, r.fontConfig)
-	case TextRenderModeDirectWrite:
-		dwr := r.ensureDWriteRenderer()
-		if dwr != nil && dwr.IsAvailable() {
-			r.releaseGDIBackend()
-			r.releaseFreeTypeBackend()
-			r.textDrawer = newDirectWriteDrawer(dwr)
-			return
-		}
-		r.releaseDWriteBackend()
-		tr := r.ensureTextRenderer()
-		r.releaseFreeTypeBackend()
-		r.textDrawer = newGDIDrawer(tr)
-	default:
-		tr := r.ensureTextRenderer()
-		r.releaseDWriteBackend()
-		r.releaseFreeTypeBackend()
-		r.textDrawer = newGDIDrawer(tr)
-	}
-}
-
-// SetGDIFontParams updates GDI font weight and scale for text rendering
-func (r *Renderer) SetGDIFontParams(weight int, scale float64) {
-	r.fontConfig.SetGDIFontWeight(weight)
-	r.fontConfig.SetGDIFontScale(scale)
-	if r.textRenderer != nil {
-		r.textRenderer.SetGDIParams(weight, scale)
-	}
-	if r.dwriteRenderer != nil {
-		r.dwriteRenderer.SetGDIParams(weight, scale)
-	}
 }
 
 // SetTextRenderMode switches between GDI, gg/text, and DirectWrite rendering.
 func (r *Renderer) SetTextRenderMode(mode TextRenderMode) {
 	r.config.TextRenderMode = mode
-	r.updateTextDrawer()
+	r.TextBackendManager.SetTextRenderMode(mode)
 }
 
 // GetTextRenderMode returns the current text rendering mode
 func (r *Renderer) GetTextRenderMode() TextRenderMode {
-	switch r.config.TextRenderMode {
-	case TextRenderModeFreetype:
-		return TextRenderModeFreetype
-	case TextRenderModeDirectWrite:
-		return TextRenderModeDirectWrite
-	default:
-		return TextRenderModeGDI
-	}
-}
-
-// SetFontPath sets the font path
-func (r *Renderer) SetFontPath(path string) {
-	r.fontPath = path
-	r.fontReady = false
-	resolved := r.resolvePrimaryFontPath()
-	textResolved := r.fontConfig.ResolveTextPrimaryFont()
-	if r.fontCache != nil && resolved != "" {
-		r.fontCache.mu.Lock()
-		// gg/text 使用经过 TTF-only 过滤的路径；GDI / DWrite 仍用 resolved。
-		_ = r.fontCache.loadFont(textResolved)
-		r.fontCache.mu.Unlock()
-		r.fontReady = textResolved != ""
-	}
-	if r.textRenderer != nil && resolved != "" {
-		r.textRenderer.SetFont(resolved)
-	}
-	if r.dwriteRenderer != nil && resolved != "" {
-		r.dwriteRenderer.SetFont(resolved)
-	}
+	return r.config.TextRenderMode
 }
 
 // UpdateFont updates font settings
@@ -373,31 +214,9 @@ func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
 		r.config.IndexFontSize = (fontSize - 4) * scale
 	}
 
-	if fontPath != "" && fontPath != r.fontPath {
-		r.fontPath = fontPath
-		r.fontReady = false
-		resolved := r.resolvePrimaryFontPath()
-		textResolved := r.fontConfig.ResolveTextPrimaryFont()
-		if r.fontCache != nil && resolved != "" {
-			r.fontCache.mu.Lock()
-			_ = r.fontCache.loadFont(textResolved)
-			r.fontCache.mu.Unlock()
-			r.fontReady = textResolved != ""
-		}
-		if r.textRenderer != nil && resolved != "" {
-			r.textRenderer.SetFont(resolved)
-		}
-		if r.dwriteRenderer != nil && resolved != "" {
-			r.dwriteRenderer.SetFont(resolved)
-		}
+	if fontPath != "" && fontPath != r.FontPath() {
+		r.SetFontPath(fontPath)
 	}
-}
-
-// Close releases renderer-owned font and text resources.
-func (r *Renderer) Close() {
-	r.releaseFreeTypeBackend()
-	r.releaseGDIBackend()
-	r.releaseDWriteBackend()
 }
 
 // SetLayout sets the candidate layout mode
@@ -500,7 +319,7 @@ func (r *Renderer) drawRoundedRect(dc *gg.Context, x, y, w, h, radius float64) {
 // RenderModeIndicator renders a mode indicator with adaptive width
 func (r *Renderer) RenderModeIndicator(mode string) *image.RGBA {
 	scale := GetDPIScale()
-	td := r.textDrawer
+	td := r.TextDrawer()
 
 	minWidth := 50.0 * scale
 	height := 36.0 * scale

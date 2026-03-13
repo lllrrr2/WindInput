@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"sync"
 	"syscall"
-	"unsafe"
 
 	"github.com/huanfeng/wind_input/pkg/theme"
 	"golang.org/x/sys/windows"
@@ -94,46 +93,24 @@ var (
 const VK_LBUTTON = 0x01
 
 // Global popup menu registry
-var (
-	popupMenusMu sync.RWMutex
-	popupMenus   = make(map[windows.HWND]*PopupMenu)
-)
-
-func registerPopupMenu(hwnd windows.HWND, m *PopupMenu) {
-	popupMenusMu.Lock()
-	popupMenus[hwnd] = m
-	popupMenusMu.Unlock()
-}
-
-func unregisterPopupMenu(hwnd windows.HWND) {
-	popupMenusMu.Lock()
-	delete(popupMenus, hwnd)
-	popupMenusMu.Unlock()
-}
-
-func getPopupMenu(hwnd windows.HWND) *PopupMenu {
-	popupMenusMu.RLock()
-	m := popupMenus[hwnd]
-	popupMenusMu.RUnlock()
-	return m
-}
+var popupMenus = NewWindowRegistry[PopupMenu]()
 
 // popupMenuWndProc is the window procedure for popup menu
 func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	switch msg {
 	case WM_DESTROY:
-		unregisterPopupMenu(windows.HWND(hwnd))
+		popupMenus.Unregister(windows.HWND(hwnd))
 		return 0
 
 	case WM_MOUSEMOVE:
-		m := getPopupMenu(windows.HWND(hwnd))
+		m := popupMenus.Get(windows.HWND(hwnd))
 		if m != nil {
 			m.handleMouseMove(lParam)
 		}
 		return 0
 
 	case WM_LBUTTONDOWN:
-		m := getPopupMenu(windows.HWND(hwnd))
+		m := popupMenus.Get(windows.HWND(hwnd))
 		if m != nil {
 			m.handleClick(lParam)
 		}
@@ -141,14 +118,14 @@ func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 
 	case WM_RBUTTONDOWN:
 		// Right-click also closes the menu if outside
-		m := getPopupMenu(windows.HWND(hwnd))
+		m := popupMenus.Get(windows.HWND(hwnd))
 		if m != nil {
 			m.handleClick(lParam)
 		}
 		return 0
 
 	case WM_MOUSELEAVE:
-		m := getPopupMenu(windows.HWND(hwnd))
+		m := popupMenus.Get(windows.HWND(hwnd))
 		if m != nil {
 			m.handleMouseLeave()
 		}
@@ -163,7 +140,7 @@ func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 
 	case WM_CAPTURECHANGED:
 		// Capture was taken away from us - hide the menu
-		m := getPopupMenu(windows.HWND(hwnd))
+		m := popupMenus.Get(windows.HWND(hwnd))
 		if m != nil && m.IsVisible() {
 			// Don't hide if capture was taken by our submenu
 			m.mu.Lock()
@@ -177,7 +154,7 @@ func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr 
 		return 0
 
 	case WM_TIMER:
-		m := getPopupMenu(windows.HWND(hwnd))
+		m := popupMenus.Get(windows.HWND(hwnd))
 		if m != nil {
 			switch wParam {
 			case MENU_CHECK_TIMER_ID:
@@ -471,38 +448,16 @@ func (m *PopupMenu) getPopupMenuColors() *theme.ResolvedPopupMenuColors {
 
 // Create creates the popup menu window
 func (m *PopupMenu) Create() error {
-	className, _ := syscall.UTF16PtrFromString("IMEPopupMenu")
-
-	wc := WNDCLASSEXW{
-		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
-		LpfnWndProc:   syscall.NewCallback(popupMenuWndProc),
-		LpszClassName: className,
-	}
-
-	ret, _, err := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
-	if ret == 0 {
-		// Class might already be registered
-		_ = err
-	}
-
-	exStyle := uint32(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
-	style := uint32(WS_POPUP)
-
-	hwnd, _, err := procCreateWindowExW.Call(
-		uintptr(exStyle),
-		uintptr(unsafe.Pointer(className)),
-		0,
-		uintptr(style),
-		0, 0, 1, 1,
-		0, 0, 0, 0,
-	)
-
-	if hwnd == 0 {
+	hwnd, err := CreateLayeredWindow(LayeredWindowConfig{
+		ClassName: "IMEPopupMenu",
+		WndProc:   syscall.NewCallback(popupMenuWndProc),
+	})
+	if err != nil {
 		return err
 	}
 
-	m.hwnd = windows.HWND(hwnd)
-	registerPopupMenu(m.hwnd, m)
+	m.hwnd = hwnd
+	popupMenus.Register(m.hwnd, m)
 
 	return nil
 }

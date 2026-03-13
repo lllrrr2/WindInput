@@ -193,29 +193,7 @@ type BITMAPINFO struct {
 }
 
 // Global window registry for wndProc to access CandidateWindow instances
-var (
-	candidateWindowsMu sync.RWMutex
-	candidateWindows   = make(map[windows.HWND]*CandidateWindow)
-)
-
-func registerCandidateWindow(hwnd windows.HWND, w *CandidateWindow) {
-	candidateWindowsMu.Lock()
-	candidateWindows[hwnd] = w
-	candidateWindowsMu.Unlock()
-}
-
-func unregisterCandidateWindow(hwnd windows.HWND) {
-	candidateWindowsMu.Lock()
-	delete(candidateWindows, hwnd)
-	candidateWindowsMu.Unlock()
-}
-
-func getCandidateWindow(hwnd windows.HWND) *CandidateWindow {
-	candidateWindowsMu.RLock()
-	w := candidateWindows[hwnd]
-	candidateWindowsMu.RUnlock()
-	return w
-}
+var candidateWindows = NewWindowRegistry[CandidateWindow]()
 
 // CandidateWindow represents a native Windows candidate window
 type CandidateWindow struct {
@@ -265,7 +243,7 @@ func NewCandidateWindow(logger *slog.Logger) *CandidateWindow {
 func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	switch msg {
 	case WM_DESTROY:
-		unregisterCandidateWindow(windows.HWND(hwnd))
+		candidateWindows.Unregister(windows.HWND(hwnd))
 		procPostQuitMessage.Call(0)
 		return 0
 
@@ -282,28 +260,28 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return 1
 
 	case WM_MOUSEMOVE:
-		w := getCandidateWindow(windows.HWND(hwnd))
+		w := candidateWindows.Get(windows.HWND(hwnd))
 		if w != nil {
 			w.handleMouseMove(lParam)
 		}
 		return 0
 
 	case WM_LBUTTONDOWN:
-		w := getCandidateWindow(windows.HWND(hwnd))
+		w := candidateWindows.Get(windows.HWND(hwnd))
 		if w != nil {
 			w.handleMouseClick(lParam)
 		}
 		return 0
 
 	case WM_RBUTTONDOWN:
-		w := getCandidateWindow(windows.HWND(hwnd))
+		w := candidateWindows.Get(windows.HWND(hwnd))
 		if w != nil {
 			w.handleRightClick(lParam)
 		}
 		return 0
 
 	case WM_MOUSELEAVE:
-		w := getCandidateWindow(windows.HWND(hwnd))
+		w := candidateWindows.Get(windows.HWND(hwnd))
 		if w != nil {
 			w.handleMouseLeave()
 		}
@@ -317,46 +295,22 @@ func wndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 func (w *CandidateWindow) Create() error {
 	w.logger.Info("Creating candidate window...")
 
-	className, _ := syscall.UTF16PtrFromString("IMECandidateWindow")
-
-	wc := WNDCLASSEXW{
-		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
-		LpfnWndProc:   syscall.NewCallback(wndProc),
-		LpszClassName: className,
+	hwnd, err := CreateLayeredWindow(LayeredWindowConfig{
+		ClassName: "IMECandidateWindow",
+		WndProc:   syscall.NewCallback(wndProc),
+	})
+	if err != nil {
+		return err
 	}
 
-	ret, _, err := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
-	if ret == 0 {
-		// Class might already be registered, continue anyway
-		w.logger.Warn("RegisterClassExW failed (may already exist)", "error", err)
-	}
-
-	// Create layered window
-	exStyle := uint32(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
-	style := uint32(WS_POPUP)
-
-	hwnd, _, err := procCreateWindowExW.Call(
-		uintptr(exStyle),
-		uintptr(unsafe.Pointer(className)),
-		0, // No title
-		uintptr(style),
-		0, 0, 1, 1, // Initial position and size
-		0, 0, 0, 0,
-	)
-
-	if hwnd == 0 {
-		return fmt.Errorf("CreateWindowExW failed: %w", err)
-	}
-
-	w.hwnd = windows.HWND(hwnd)
-	registerCandidateWindow(w.hwnd, w)
-	w.logger.Info("Candidate window created", "hwnd", hwnd)
+	w.hwnd = hwnd
+	candidateWindows.Register(w.hwnd, w)
+	w.logger.Info("Candidate window created", "hwnd", w.hwnd)
 
 	// Create custom popup menu (doesn't steal focus)
 	w.popupMenu = NewPopupMenu()
 	if err := w.popupMenu.Create(); err != nil {
 		w.logger.Warn("Failed to create popup menu", "error", err)
-		// Non-fatal, continue without popup menu
 	}
 
 	return nil
@@ -401,97 +355,7 @@ func (w *CandidateWindow) UpdateContent(img *image.RGBA, x, y int) error {
 }
 
 func (w *CandidateWindow) updateLayeredWindow(img *image.RGBA, x, y int) error {
-	bounds := img.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
-
-	// Get screen DC
-	hdcScreen, _, _ := procGetDC.Call(0)
-	if hdcScreen == 0 {
-		return fmt.Errorf("GetDC failed")
-	}
-	defer procReleaseDC.Call(0, hdcScreen)
-
-	// Create compatible DC
-	hdcMem, _, _ := procCreateCompatibleDC.Call(hdcScreen)
-	if hdcMem == 0 {
-		return fmt.Errorf("CreateCompatibleDC failed")
-	}
-	defer procDeleteDC.Call(hdcMem)
-
-	// Create DIB section
-	bi := BITMAPINFO{
-		BmiHeader: BITMAPINFOHEADER{
-			BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
-			BiWidth:       int32(width),
-			BiHeight:      -int32(height), // Top-down DIB
-			BiPlanes:      1,
-			BiBitCount:    32,
-			BiCompression: BI_RGB,
-		},
-	}
-
-	var bits unsafe.Pointer
-	hBitmap, _, err := procCreateDIBSection.Call(
-		hdcMem,
-		uintptr(unsafe.Pointer(&bi)),
-		DIB_RGB_COLORS,
-		uintptr(unsafe.Pointer(&bits)),
-		0, 0,
-	)
-	if hBitmap == 0 {
-		return fmt.Errorf("CreateDIBSection failed: %w", err)
-	}
-	defer procDeleteObject.Call(hBitmap)
-
-	// Select bitmap into DC
-	procSelectObject.Call(hdcMem, hBitmap)
-
-	// Copy image data to DIB (convert RGBA to BGRA).
-	// Go's image.RGBA stores premultiplied alpha by convention, and gg's
-	// rasterizer follows this. Windows UpdateLayeredWindow with AC_SRC_ALPHA
-	// also expects premultiplied alpha, so we only need the channel swap.
-	pixelCount := width * height
-	dstSlice := unsafe.Slice((*byte)(bits), pixelCount*4)
-
-	for i := 0; i < pixelCount; i++ {
-		srcIdx := i * 4
-		dstIdx := i * 4
-
-		dstSlice[dstIdx+0] = img.Pix[srcIdx+2] // B
-		dstSlice[dstIdx+1] = img.Pix[srcIdx+1] // G
-		dstSlice[dstIdx+2] = img.Pix[srcIdx+0] // R
-		dstSlice[dstIdx+3] = img.Pix[srcIdx+3] // A
-	}
-
-	// Update layered window
-	ptSrc := POINT{X: 0, Y: 0}
-	ptDst := POINT{X: int32(x), Y: int32(y)}
-	size := SIZE{Cx: int32(width), Cy: int32(height)}
-	blend := BLENDFUNCTION{
-		BlendOp:             AC_SRC_OVER,
-		BlendFlags:          0,
-		SourceConstantAlpha: 255,
-		AlphaFormat:         AC_SRC_ALPHA,
-	}
-
-	ret, _, err := procUpdateLayeredWindow.Call(
-		uintptr(w.hwnd),
-		hdcScreen,
-		uintptr(unsafe.Pointer(&ptDst)),
-		uintptr(unsafe.Pointer(&size)),
-		hdcMem,
-		uintptr(unsafe.Pointer(&ptSrc)),
-		0,
-		uintptr(unsafe.Pointer(&blend)),
-		ULW_ALPHA,
-	)
-
-	if ret == 0 {
-		return fmt.Errorf("UpdateLayeredWindow failed: %w", err)
-	}
-
-	return nil
+	return UpdateLayeredWindowFromImage(w.hwnd, img, x, y)
 }
 
 // Show shows the window

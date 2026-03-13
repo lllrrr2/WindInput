@@ -20,163 +20,17 @@ const (
 
 // ToolbarRenderer renders the toolbar UI
 type ToolbarRenderer struct {
-	fontPath       string
-	resolvedTheme  *theme.ResolvedTheme
-	fontCache      *fontCache
-	textRenderer   *TextRenderer
-	dwriteRenderer *DWriteRenderer
-	textDrawer     TextDrawer
-	fontConfig     *FontConfig
+	resolvedTheme *theme.ResolvedTheme
+	TextBackendManager
 }
 
 // NewToolbarRenderer creates a new toolbar renderer
 func NewToolbarRenderer() *ToolbarRenderer {
-	fc := NewFontConfig()
 	r := &ToolbarRenderer{
-		fontConfig: fc,
+		TextBackendManager: NewTextBackendManager("toolbar"),
 	}
 	r.SetTextRenderMode(TextRenderModeGDI)
 	return r
-}
-
-func (r *ToolbarRenderer) resolvePrimaryFontPath() string {
-	if r.fontPath != "" {
-		r.fontConfig.SetPrimaryFont(r.fontPath)
-	}
-	resolved := r.fontConfig.ResolvePrimaryFont()
-	if resolved != "" {
-		r.fontPath = resolved
-	}
-	return resolved
-}
-
-func (r *ToolbarRenderer) ensureTextRenderer() *TextRenderer {
-	if r.textRenderer != nil {
-		return r.textRenderer
-	}
-	tr := NewTextRenderer()
-	tr.SetGDIParams(r.fontConfig.GetEffectiveGDIWeight(), r.fontConfig.GetEffectiveGDIScale())
-	if resolved := r.resolvePrimaryFontPath(); resolved != "" {
-		tr.SetFont(resolved)
-	}
-	r.textRenderer = tr
-	return tr
-}
-
-func (r *ToolbarRenderer) ensureDWriteRenderer() *DWriteRenderer {
-	if r.dwriteRenderer != nil {
-		return r.dwriteRenderer
-	}
-	dwr := NewDWriteRenderer("toolbar")
-	dwr.SetGDIParams(r.fontConfig.GetEffectiveGDIWeight(), r.fontConfig.GetEffectiveGDIScale())
-	if resolved := r.resolvePrimaryFontPath(); resolved != "" {
-		dwr.SetFont(resolved)
-	}
-	r.dwriteRenderer = dwr
-	return dwr
-}
-
-func (r *ToolbarRenderer) ensureFontCache() *fontCache {
-	if r.fontCache == nil {
-		r.fontCache = newFontCache()
-	}
-	if r.fontPath != "" {
-		r.fontConfig.SetPrimaryFont(r.fontPath)
-	}
-	// 工具栏和候选窗保持同一套规则：gg/text 只走可直接加载的 TTF/OTF。
-	if resolved := r.fontConfig.ResolveTextPrimaryFont(); resolved != "" {
-		r.fontCache.mu.Lock()
-		_ = r.fontCache.loadFont(resolved)
-		r.fontCache.mu.Unlock()
-	}
-	return r.fontCache
-}
-
-func (r *ToolbarRenderer) releaseGDIBackend() {
-	if r.textRenderer != nil {
-		r.textRenderer.Close()
-		r.textRenderer = nil
-	}
-}
-
-func (r *ToolbarRenderer) releaseDWriteBackend() {
-	if r.dwriteRenderer != nil {
-		r.dwriteRenderer.Close()
-		r.dwriteRenderer = nil
-	}
-}
-
-func (r *ToolbarRenderer) releaseFreeTypeBackend() {
-	if r.fontCache != nil {
-		r.fontCache.Close()
-		r.fontCache = nil
-	}
-}
-
-// SetGDIFontParams updates GDI font weight and scale for text rendering
-func (r *ToolbarRenderer) SetGDIFontParams(weight int, scale float64) {
-	r.fontConfig.SetGDIFontWeight(weight)
-	r.fontConfig.SetGDIFontScale(scale)
-	if r.textRenderer != nil {
-		r.textRenderer.SetGDIParams(weight, scale)
-	}
-	if r.dwriteRenderer != nil {
-		r.dwriteRenderer.SetGDIParams(weight, scale)
-	}
-}
-
-// SetTextRenderMode switches between GDI, FreeType, and DirectWrite text rendering
-func (r *ToolbarRenderer) SetTextRenderMode(mode TextRenderMode) {
-	switch mode {
-	case TextRenderModeFreetype:
-		fc := r.ensureFontCache()
-		r.releaseGDIBackend()
-		r.releaseDWriteBackend()
-		r.textDrawer = newFreeTypeDrawer(fc, r.fontConfig)
-	case TextRenderModeDirectWrite:
-		dwr := r.ensureDWriteRenderer()
-		if dwr != nil && dwr.IsAvailable() {
-			r.releaseGDIBackend()
-			r.releaseFreeTypeBackend()
-			r.textDrawer = newDirectWriteDrawer(dwr)
-			return
-		}
-		r.releaseDWriteBackend()
-		tr := r.ensureTextRenderer()
-		r.releaseFreeTypeBackend()
-		r.textDrawer = newGDIDrawer(tr)
-	default:
-		tr := r.ensureTextRenderer()
-		r.releaseDWriteBackend()
-		r.releaseFreeTypeBackend()
-		r.textDrawer = newGDIDrawer(tr)
-	}
-}
-
-// SetFontPath sets the font path for rendering
-func (r *ToolbarRenderer) SetFontPath(path string) {
-	r.fontPath = path
-	resolved := r.resolvePrimaryFontPath()
-	textResolved := r.fontConfig.ResolveTextPrimaryFont()
-	if r.fontCache != nil && textResolved != "" {
-		r.fontCache.mu.Lock()
-		// gg/text cache 和原生 renderer 的字体路径在这里分流更新。
-		_ = r.fontCache.loadFont(textResolved)
-		r.fontCache.mu.Unlock()
-	}
-	if r.textRenderer != nil && resolved != "" {
-		r.textRenderer.SetFont(resolved)
-	}
-	if r.dwriteRenderer != nil && resolved != "" {
-		r.dwriteRenderer.SetFont(resolved)
-	}
-}
-
-// Close releases renderer-owned font and text resources.
-func (r *ToolbarRenderer) Close() {
-	r.releaseFreeTypeBackend()
-	r.releaseGDIBackend()
-	r.releaseDWriteBackend()
 }
 
 // SetTheme sets the theme for the toolbar renderer
@@ -275,7 +129,7 @@ func (r *ToolbarRenderer) Render(state ToolbarState) *image.RGBA {
 
 	// ========== Phase 2: Draw all text with TextDrawer ==========
 	img := dc.Image().(*image.RGBA)
-	td := r.textDrawer
+	td := r.TextDrawer()
 	td.BeginDraw(img)
 
 	// Mode button text
@@ -496,7 +350,7 @@ func CreateModeIndicatorColor(chineseMode bool) color.RGBA {
 func (r *ToolbarRenderer) RenderTooltip(text string) *image.RGBA {
 	scale := GetDPIScale()
 	bgColor, textColor, borderColor := r.getTooltipColors()
-	td := r.textDrawer
+	td := r.TextDrawer()
 
 	fontSize := 12.0 * scale
 	padding := 6.0 * scale
