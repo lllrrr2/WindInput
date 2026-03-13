@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-11 | Updated: 2026-03-11 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
 
 # wind_tsf - Windows TSF Input Method Bridge
 
@@ -12,6 +12,7 @@ C++17 DLL implementing the Windows Text Services Framework (TSF) interface for t
 - Provides language bar UI integration and hotkey management
 - Implements display attributes (underline) for composition text
 - Maintains state synchronization with the Go service via binary protocol
+- Provides DirectWrite text rendering shim for candidate UI rendering
 
 The DLL is built with CMake/MSVC and exports standard TSF COM interfaces (DllCanUnloadNow, DllGetClassObject, DllRegisterServer, DllUnregisterServer).
 
@@ -19,7 +20,7 @@ The DLL is built with CMake/MSVC and exports standard TSF COM interfaces (DllCan
 
 | File | Description |
 |------|-------------|
-| `CMakeLists.txt` | CMake build configuration (C++17, UTF-8, outputs to ../build/) |
+| `CMakeLists.txt` | CMake build configuration (C++17, UTF-8, DirectWrite linking, outputs to ../build/) |
 | `wind_tsf.def` | Module definition file (exports COM entry points) |
 | `README.md` | Project documentation |
 
@@ -66,19 +67,25 @@ Output: `../build/wind_tsf.dll`
 - `CClassFactory` - COM class factory for instantiation
 - `CDisplayAttributeInfo` - Composition text styling (underline effect)
 - `CCaretEditSession` - TSF edit session for caret position retrieval
+- Full state sync mechanism (`_DoFullStateSync()`) after reconnection
 
 ### Input Processing (KeyEventSink)
 - `CKeyEventSink` - Keyboard event capture (ITfKeyEventSink)
-- Modifier key state machine (tracks Shift/Ctrl/Alt/Win state)
+- Modifier key state machine (tracks Shift/Ctrl/Alt/Win state, replaces GetAsyncKeyState)
 - Barrier mechanism for commit requests (Space/Enter/number key coordination with Go service)
 - Barrier timeout handling (500ms default)
+- Toggle key tap detection (500ms threshold)
+- Composition state tracking and reset on focus loss
+- Read-only context detection (browser support)
 
 ### IPC Communication (IPCClient)
 - `CIPCClient` - Named pipe client with circuit breaker, async reader thread
-- Binary protocol serialization/deserialization
+- Binary protocol serialization/deserialization (v1.1)
 - Async reader for receiving state pushes from Go service
 - Batch event support for performance optimization
-- Timeout handling and error recovery
+- Timeout handling and error recovery (100ms connect, 50-100ms read/write)
+- Circuit breaker state management (3 failure threshold, 3-second reset interval)
+- Separate read pipe for async push notifications
 
 ### UI Integration (LangBarItemButton)
 - `CLangBarItemButton` - Language bar button (ITfLangBarItemButton, ITfSource)
@@ -86,11 +93,20 @@ Output: `../build/wind_tsf.dll`
 - Context menu for settings/dictionary/about/exit
 - Thread-safe updates via message window (for async callbacks)
 - Caps Lock state indicator
+- Screen-aware context menu positioning
 
 ### Hotkey Management (HotkeyManager)
 - `CHotkeyManager` - Hotkey whitelist from Go service
 - O(1) lookup using unordered_set
 - Classification: toggle mode, letter, number, punctuation, backspace, enter, escape, space, tab, page key, cursor key, select key
+- Key normalization (left/right modifier handling)
+
+### DirectWrite Rendering (WindDWriteShim)
+- `GdiTextRenderer` - Bridge from IDWriteTextLayout to GDI rendering
+- Color emoji support via `IDWriteFactory2::TranslateColorGlyphRun`
+- Per-layer alpha blending for emoji rendering
+- Text format caching with LRU eviction
+- Bitmap render target management for candidate UI
 
 ## Dependencies
 

@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-11 | Updated: 2026-03-11 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
 
 # include/ - Header Files
 
@@ -22,6 +22,7 @@ Public and internal header files defining interfaces, structures, and protocols 
 | `CaretEditSession.h` | CCaretEditSession class (TSF edit session for caret position retrieval) |
 | `DisplayAttributeInfo.h` | CDisplayAttributeInfoInput, CDisplayAttributeProvider (composition text styling) |
 | `Register.h` | RegisterServer, UnregisterServer functions (Windows registry integration) |
+| `WindDWriteShim.h` | (if exists) DirectWrite text rendering bridge and emoji support |
 
 ## Architecture Overview
 
@@ -55,36 +56,48 @@ HotkeyManager.h
 
 ## Key Structures
 
-### BinaryProtocol.h
+### BinaryProtocol.h (v1.1)
 
 **Protocol Header (8 bytes):**
 ```cpp
 struct IpcHeader {
-    uint16_t version;   // Protocol version (PROTOCOL_VERSION = 0x1001)
+    uint16_t version;   // Protocol version (PROTOCOL_VERSION = 0x1001 for v1.1)
     uint16_t command;   // Command type (CMD_KEY_EVENT, CMD_COMMIT_REQUEST, etc.)
     uint32_t length;    // Payload length in bytes
 };
 ```
+
+**Async Flag:** Version field's high bit (0x8000) marks async requests (no response expected)
 
 **Key Event Payload (16 bytes):**
 ```cpp
 struct KeyPayload {
     uint32_t keyCode;     // Virtual key code
     uint32_t scanCode;    // Scan code
-    uint32_t modifiers;   // Modifier flags (KEYMOD_SHIFT, KEYMOD_CTRL, etc.)
+    uint32_t modifiers;   // Modifier flags (KEYMOD_SHIFT, KEYMOD_CTRL, KEYMOD_LSHIFT, KEYMOD_RSHIFT, etc.)
     uint8_t  eventType;   // 0=KeyDown, 1=KeyUp
-    uint8_t  toggles;     // Toggle state (TOGGLE_CAPSLOCK, etc.)
-    uint16_t eventSeq;    // Monotonic event sequence
+    uint8_t  toggles;     // Toggle state (TOGGLE_CAPSLOCK, TOGGLE_NUMLOCK, TOGGLE_SCROLLLOCK)
+    uint16_t eventSeq;    // Monotonic event sequence (for ordering)
+};
+```
+
+**Barrier Mechanism (for commit requests):**
+```cpp
+struct CommitBarrier {
+    uint16_t barrierSeq;        // Sequence to match with response
+    uint16_t triggerKey;        // Triggering key (Space/Enter/number)
+    std::string inputBuffer;    // Current input buffer state
 };
 ```
 
 **Status Flags:**
 ```cpp
-STATUS_CHINESE_MODE    = 0x0001  // Chinese/English mode
-STATUS_FULL_WIDTH      = 0x0002  // Full-width/half-width
-STATUS_CHINESE_PUNCT   = 0x0004  // Chinese/English punctuation
-STATUS_TOOLBAR_VISIBLE = 0x0008  // Toolbar visibility
-STATUS_CAPS_LOCK       = 0x0020  // CapsLock state
+STATUS_CHINESE_MODE     = 0x0001  // Chinese/English mode
+STATUS_FULL_WIDTH       = 0x0002  // Full-width/half-width
+STATUS_CHINESE_PUNCT    = 0x0004  // Chinese/English punctuation
+STATUS_TOOLBAR_VISIBLE  = 0x0008  // Toolbar visibility
+STATUS_MODE_CHANGED     = 0x0010  // Mode was just changed (transient)
+STATUS_CAPS_LOCK        = 0x0020  // CapsLock state
 ```
 
 ### Global State

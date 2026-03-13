@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-11 | Updated: 2026-03-11 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
 
 # src/ - Implementation Files
 
@@ -22,6 +22,7 @@ C++ implementation files for the TSF DLL. All compiled to object files and linke
 | `CaretEditSession.cpp` | CCaretEditSession implementation (TSF edit session for caret position) |
 | `DisplayAttributeInfo.cpp` | Display attribute classes (styling for composition text) |
 | `Register.cpp` | Registry integration (DllRegisterServer, DllUnregisterServer, profile/category registration) |
+| `WindDWriteShim.cpp` | DirectWrite text rendering bridge (GdiTextRenderer, color emoji, text format caching) |
 
 ## Component Responsibilities
 
@@ -54,11 +55,16 @@ C++ implementation files for the TSF DLL. All compiled to object files and linke
 - `_UpdateModsOnKeyDown()` - Update modifier state machine on key down
 - `_UpdateModsOnKeyUp()` - Update modifier state machine on key up
 - `_GetModsSnapshot()` - Get current modifier state for event
+- `_GetTogglesSnapshot()` - Get CapsLock/NumLock/ScrollLock state
 - `_SendKeyToService()` - Serialize and send key event to Go service
 - `_HandleServiceResponse()` - Parse response and apply (consume/pass through)
 - `_SendCommitRequest()` - Send commit request with barrier for Space/Enter/number
 - `_HandleCommitResult()` - Process commit result from Go service
 - `_CheckBarrierTimeout()` - Check if barrier mechanism times out (500ms)
+- `_IsMatchingKeyUp()` - Match KeyUp with pending toggle KeyDown
+- `_IsContextReadOnly()` - Detect read-only input fields (browser support)
+- `OnCompositionUnexpectedlyTerminated()` - Handle composition termination by application
+- Toggle key tap detection (500ms threshold for mode toggle vs long press)
 
 ### IPCClient.cpp
 - `CIPCClient::Connect()` - Connect to named pipe (with timeout)
@@ -69,7 +75,9 @@ C++ implementation files for the TSF DLL. All compiled to object files and linke
 - `SendCaretUpdate()` - Send caret position to Go service
 - `SendFocusGained()` / `SendFocusLost()` - Focus notifications
 - `SendIMEActivated()` / `SendIMEDeactivated()` - IME state notifications
-- `SendToggleMode()` - Toggle mode and get response
+- `SendModeNotify()` - Notify mode change (TSF local toggle, async)
+- `SendToggleMode()` - Toggle mode request from UI (sync)
+- `SendCompositionTerminated()` - Notify composition unexpectedly terminated
 - `SendAsync()` - Send async message (fire-and-forget)
 - `SendSync()` - Send sync message (wait for response)
 - `ReceiveResponse()` - Parse binary response from pipe
@@ -124,6 +132,19 @@ C++ implementation files for the TSF DLL. All compiled to object files and linke
 - `UnregisterProfile()` - Unregister profile
 - `RegisterCategories()` - Register text service categories (TIP, INPUTPROCESSOR, etc.)
 - `UnregisterCategories()` - Unregister categories
+
+### WindDWriteShim.cpp
+- `GdiTextRenderer` - IDWriteTextRenderer implementation
+  - `DrawGlyphRun()` - Render glyphs to bitmap render target
+  - Color emoji support via `IDWriteFactory2::TranslateColorGlyphRun()`
+  - Per-layer alpha blending for emoji rendering
+- Text format cache management
+  - `FormatKey` - Cache key (font family, weight, size, symbol flag)
+  - LRU eviction (max 32 cached formats)
+  - Thread-safe access with synchronization
+- GDI integration
+  - Bitmap render target creation and management
+  - HDC color conversion and blending
 
 ## For AI Agents
 
