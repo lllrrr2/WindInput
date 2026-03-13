@@ -121,6 +121,7 @@ type InputConfig struct {
 	PunctFollowMode  bool                   `yaml:"punct_follow_mode" json:"punct_follow_mode"`
 	SelectKeyGroups  []string               `yaml:"select_key_groups" json:"select_key_groups"`
 	PageKeys         []string               `yaml:"page_keys" json:"page_keys"`
+	PinyinSeparator  string                 `yaml:"pinyin_separator" json:"pinyin_separator"` // 拼音分隔符: "auto", "quote", "backtick", "none"
 	ShiftTempEnglish ShiftTempEnglishConfig `yaml:"shift_temp_english" json:"shift_temp_english"`
 	CapsLockBehavior CapsLockBehaviorConfig `yaml:"capslock_behavior" json:"capslock_behavior"`
 	TempPinyin       TempPinyinConfig       `yaml:"temp_pinyin" json:"temp_pinyin"`
@@ -210,6 +211,7 @@ func DefaultConfig() *Config {
 			PunctFollowMode: false,
 			SelectKeyGroups: []string{"semicolon_quote"},
 			PageKeys:        []string{"pageupdown", "minus_equal"},
+			PinyinSeparator: "auto",
 			ShiftTempEnglish: ShiftTempEnglishConfig{
 				Enabled:               true,
 				ShowEnglishCandidates: true,

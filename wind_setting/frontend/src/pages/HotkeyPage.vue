@@ -159,6 +159,32 @@
       </div>
     </div>
 
+    <!-- 拼音分隔符 -->
+    <div class="settings-card">
+      <div class="card-title">拼音分隔符</div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>分隔符按键</label>
+          <p class="setting-hint">
+            拼音模式下用于消歧的分隔符，如输入 xi'an 得到「西安」
+          </p>
+        </div>
+        <div class="setting-control">
+          <select
+            v-model="formData.input.pinyin_separator"
+            class="select"
+          >
+            <option value="auto">
+              自动（' 被选择键占用时改用 `）
+            </option>
+            <option value="quote">' 单引号</option>
+            <option value="backtick">` 反引号</option>
+            <option value="none">不使用</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <!-- 翻页键 -->
     <div class="settings-card">
       <div class="card-title">翻页键</div>

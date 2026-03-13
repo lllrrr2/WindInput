@@ -108,6 +108,7 @@ export interface InputConfig {
   punct_follow_mode: boolean;
   select_key_groups: string[];
   page_keys: string[];
+  pinyin_separator: string; // 拼音分隔符: "auto", "quote", "backtick", "none"
   temp_pinyin: TempPinyinConfig;
 }
 
@@ -354,6 +355,7 @@ export function getDefaultConfig(): Config {
       punct_follow_mode: false,
       select_key_groups: ["semicolon_quote"],
       page_keys: ["pageupdown", "minus_equal"],
+      pinyin_separator: "auto",
       temp_pinyin: {
         trigger_keys: ["backtick"],
       },

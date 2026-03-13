@@ -297,8 +297,11 @@ func (c *Coordinator) isPageDownKey(key string, keyCode int, modifiers uint32) b
 }
 
 // isPinyinSeparator 判断按键是否应作为拼音分隔符处理
-// 条件：1) 当前是拼音模式 2) 有未提交的输入 3) 按键是 '
-// 4) ' 未被配置为选择键（若 semicolon_quote 组启用，' 优先作为选择键 3）
+// 根据配置 pinyin_separator 决定分隔符按键：
+//   - "auto": ' 未被配置为选择键时用 '，否则用 `
+//   - "quote": 强制用 '
+//   - "backtick": 强制用 `
+//   - "none" / "": 禁用分隔符
 func (c *Coordinator) isPinyinSeparator(key string, keyCode int) bool {
 	if c.engineMgr == nil || c.engineMgr.GetCurrentType() != engine.EngineTypePinyin {
 		return false
@@ -306,20 +309,46 @@ func (c *Coordinator) isPinyinSeparator(key string, keyCode int) bool {
 	if len(c.inputBuffer) == 0 {
 		return false
 	}
-	if key != "'" && uint32(keyCode) != ipc.VK_OEM_7 {
+
+	separatorMode := "auto"
+	if c.config != nil && c.config.Input.PinyinSeparator != "" {
+		separatorMode = c.config.Input.PinyinSeparator
+	}
+
+	switch separatorMode {
+	case "none":
+		return false
+	case "quote":
+		return key == "'" || uint32(keyCode) == ipc.VK_OEM_7
+	case "backtick":
+		return key == "`" || uint32(keyCode) == ipc.VK_OEM_3
+	case "auto":
+		// ' 未被配置为选择键时用 '，否则回退到 `
+		isQuote := key == "'" || uint32(keyCode) == ipc.VK_OEM_7
+		isBacktick := key == "`" || uint32(keyCode) == ipc.VK_OEM_3
+		if isQuote {
+			// ' 同时是选择键时不作为分隔符
+			if c.isSelectKey3(key, keyCode) {
+				return false
+			}
+			return true
+		}
+		if isBacktick {
+			// 只有当 ' 被选择键占用时，` 才作为分隔符
+			quoteIsSelectKey := c.isSelectKey3("'", int(ipc.VK_OEM_7))
+			return quoteIsSelectKey
+		}
+		return false
+	default:
 		return false
 	}
-	// 如果 ' 同时被配置为选择键 3，则不作为分隔符（选择键优先）
-	if c.isSelectKey3(key, keyCode) {
-		return false
-	}
-	return true
 }
 
 // handlePinyinSeparator 将分隔符插入输入缓冲区并刷新候选
+// 无论物理按键是 ' 还是 `，都统一插入 ' 作为拼音分隔符（引擎层只认 '）
 func (c *Coordinator) handlePinyinSeparator() *bridge.KeyEventResult {
 	c.inputBuffer = c.inputBuffer[:c.inputCursorPos] + "'" + c.inputBuffer[c.inputCursorPos:]
-	c.inputCursorPos += 1
+	c.inputCursorPos++
 	c.logger.Debug("Pinyin separator inserted", "buffer", c.inputBuffer, "cursor", c.inputCursorPos)
 
 	c.updateCandidates()
