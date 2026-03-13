@@ -397,6 +397,7 @@ func (e *Engine) checkAutoCommit(result *ConvertResult, input string, candidates
 
 // HandleTopCode 处理顶码（五码顶字）
 // 当输入第五码时，自动上屏首选并将第五码作为新输入
+// 通过 ConvertEx 走完整候选流水线，确保顶码结果与用户看到的首选一致
 func (e *Engine) HandleTopCode(input string) (commitText string, newInput string, shouldCommit bool) {
 	log.Printf("[Wubi] HandleTopCode: input=%s, topCodeCommit=%v, maxCodeLength=%d",
 		input, e.config.TopCodeCommit, e.config.MaxCodeLength)
@@ -412,19 +413,15 @@ func (e *Engine) HandleTopCode(input string) (commitText string, newInput string
 		return "", input, false
 	}
 
-	// 取前四码的首选
+	// 取前四码，走完整候选流水线（包括用户词、短语、Shadow 规则）
 	prefix := input[:e.config.MaxCodeLength]
-	candidates := e.codeTable.Lookup(prefix)
-	if len(candidates) == 0 {
-		candidates = e.codeTable.LookupPrefix(prefix)
-	}
+	result := e.ConvertEx(prefix, 1)
 
-	log.Printf("[Wubi] HandleTopCode: prefix=%s, candidates=%d", prefix, len(candidates))
+	log.Printf("[Wubi] HandleTopCode: prefix=%s, candidates=%d", prefix, len(result.Candidates))
 
-	if len(candidates) > 0 {
-		sort.Sort(candidate.CandidateList(candidates))
-		log.Printf("[Wubi] HandleTopCode: commit=%s, newInput=%s", candidates[0].Text, input[e.config.MaxCodeLength:])
-		return candidates[0].Text, input[e.config.MaxCodeLength:], true
+	if len(result.Candidates) > 0 {
+		log.Printf("[Wubi] HandleTopCode: commit=%s, newInput=%s", result.Candidates[0].Text, input[e.config.MaxCodeLength:])
+		return result.Candidates[0].Text, input[e.config.MaxCodeLength:], true
 	}
 
 	log.Printf("[Wubi] HandleTopCode: no candidates found for prefix %s", prefix)

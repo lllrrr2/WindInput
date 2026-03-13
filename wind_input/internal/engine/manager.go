@@ -195,6 +195,17 @@ func (m *Manager) HandleTopCode(input string) (commitText string, newInput strin
 	return "", input, false
 }
 
+// InvalidateCommandCache 清除命令结果缓存（uuid/date/time 等）
+// 在输入提交或状态清除后调用，确保下次查询生成新的结果
+func (m *Manager) InvalidateCommandCache() {
+	if m.dictManager == nil {
+		return
+	}
+	if phraseLayer := m.dictManager.GetPhraseLayer(); phraseLayer != nil {
+		phraseLayer.InvalidateCache()
+	}
+}
+
 // GetEngineInfo 获取当前引擎信息
 func (m *Manager) GetEngineInfo() string {
 	engine := m.GetCurrentEngine()

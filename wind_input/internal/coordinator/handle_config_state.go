@@ -8,13 +8,16 @@ import (
 
 // saveToolbarConfig saves the toolbar configuration to file
 func (c *Coordinator) saveToolbarConfig() {
+	// Capture value while we hold the lock
+	visible := c.toolbarVisible
+
 	go func() {
 		cfg, err := config.Load()
 		if err != nil {
 			cfg = config.DefaultConfig()
 		}
 
-		cfg.Toolbar.Visible = c.toolbarVisible
+		cfg.Toolbar.Visible = visible
 
 		if err := config.Save(cfg); err != nil {
 			c.logger.Error("Failed to save toolbar config", "error", err)
@@ -99,28 +102,8 @@ func (c *Coordinator) TransformPunctuation(r rune) (string, bool) {
 }
 
 // saveRuntimeState saves the current state if remember_last_state is enabled
+// 调用者必须持有 c.mu 锁
 func (c *Coordinator) saveRuntimeState() {
-	if c.config == nil || !c.config.Startup.RememberLastState {
-		return
-	}
-
-	go func() {
-		state := &config.RuntimeState{
-			ChineseMode:  c.chineseMode,
-			FullWidth:    c.fullWidth,
-			ChinesePunct: c.chinesePunctuation,
-			EngineType:   c.GetCurrentEngineName(),
-		}
-		if err := config.SaveRuntimeState(state); err != nil {
-			c.logger.Error("Failed to save runtime state", "error", err)
-		} else {
-			c.logger.Debug("Runtime state saved", "chineseMode", state.ChineseMode)
-		}
-	}()
-}
-
-// saveRuntimeStateNoLock saves runtime state without acquiring lock (caller must hold lock)
-func (c *Coordinator) saveRuntimeStateNoLock() {
 	if c.config == nil || !c.config.Startup.RememberLastState {
 		return
 	}

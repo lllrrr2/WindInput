@@ -216,7 +216,7 @@ const smartComposeThreshold = 4
 
 // addWubiHints 添加五笔编码提示
 func (e *Engine) addWubiHints(candidates []candidate.Candidate) {
-	if e.config == nil || !e.config.ShowWubiHint || e.wubiReverse == nil {
+	if e.config == nil || !e.config.ShowWubiHint || e.wubiTable == nil {
 		return
 	}
 	for i := range candidates {

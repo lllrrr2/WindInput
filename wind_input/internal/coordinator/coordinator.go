@@ -369,4 +369,7 @@ func (c *Coordinator) clearState() {
 	c.candidates = nil
 	c.currentPage = 1
 	c.totalPages = 1
+
+	// 清除命令结果缓存，确保 uuid/date/time 等下次生成新值
+	c.engineMgr.InvalidateCommandCache()
 }

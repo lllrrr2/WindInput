@@ -74,7 +74,7 @@ func (c *Coordinator) HandleToggleMode() (commitText string, chineseMode bool) {
 	c.showModeIndicator()
 
 	// Save runtime state if remember_last_state is enabled
-	c.saveRuntimeStateNoLock()
+	c.saveRuntimeState()
 
 	// Broadcast state to toolbar and all TSF clients
 	c.broadcastState()
