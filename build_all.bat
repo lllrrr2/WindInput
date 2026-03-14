@@ -21,7 +21,7 @@ if /I "%~1"=="skip" set "WAILS_MODE=skip"
 echo [1/6] 构建 Go 服务(wind_input.exe)...
 if not exist "%SCRIPT_DIR%build" mkdir "%SCRIPT_DIR%build"
 cd "%SCRIPT_DIR%wind_input"
-go build -o ../build/wind_input.exe ./cmd/service
+go build -ldflags "-H windowsgui" -o ../build/wind_input.exe ./cmd/service
 if %errorLevel% neq 0 (
     echo [错误] Go 构建失败
     pause

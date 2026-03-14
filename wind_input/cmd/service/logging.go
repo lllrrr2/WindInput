@@ -1,12 +1,14 @@
-// logging.go — 日志轮转与多路处理器
+// logging.go — 日志轮转与自定义格式化处理器
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -108,45 +110,176 @@ func (w *rotatingWriter) Close() error {
 	return nil
 }
 
-// multiHandler wraps multiple slog handlers
-type multiHandler struct {
-	handlers []slog.Handler
+// levelString 返回固定5字符宽度的日志级别字符串，便于对齐
+func levelString(level slog.Level) string {
+	switch {
+	case level < slog.LevelInfo:
+		return "DEBUG"
+	case level < slog.LevelWarn:
+		return "INFO "
+	case level < slog.LevelError:
+		return "WARN "
+	default:
+		return "ERROR"
+	}
 }
 
-func newMultiHandler(handlers ...slog.Handler) *multiHandler {
-	return &multiHandler{handlers: handlers}
+// formattedHandler 自定义格式化的 slog.Handler
+// 输出格式: 2026-03-14 15:04:05.000 [INFO ] [PID:12345] message key=value ...
+type formattedHandler struct {
+	w     io.Writer
+	mu    *sync.Mutex
+	level slog.Level
+	attrs []slog.Attr
+	group string
+	pid   string
 }
 
-func (h *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	for _, handler := range h.handlers {
-		if handler.Enabled(ctx, level) {
-			return true
+func newFormattedHandler(w io.Writer, level slog.Level) *formattedHandler {
+	pid := fmt.Sprintf("%6d", os.Getpid())
+	return &formattedHandler{
+		w:     w,
+		mu:    &sync.Mutex{},
+		level: level,
+		pid:   pid,
+	}
+}
+
+func (h *formattedHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= h.level
+}
+
+func (h *formattedHandler) Handle(_ context.Context, r slog.Record) error {
+	// 时间格式: 2006-01-02 15:04:05.000
+	timeStr := r.Time.Format("2006-01-02 15:04:05.000")
+	lvl := levelString(r.Level)
+
+	var buf strings.Builder
+	buf.WriteString(timeStr)
+	buf.WriteString(" [")
+	buf.WriteString(lvl)
+	buf.WriteString("] [PID:")
+	buf.WriteString(h.pid)
+	buf.WriteString("] ")
+	buf.WriteString(r.Message)
+
+	// 先输出 handler 级别的预设属性
+	for _, a := range h.attrs {
+		buf.WriteByte(' ')
+		writeAttr(&buf, h.group, a)
+	}
+
+	// 再输出 Record 级别的属性
+	r.Attrs(func(a slog.Attr) bool {
+		buf.WriteByte(' ')
+		writeAttr(&buf, h.group, a)
+		return true
+	})
+
+	buf.WriteByte('\n')
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_, err := h.w.Write([]byte(buf.String()))
+	return err
+}
+
+// writeAttr 将 slog.Attr 格式化为 key=value 写入 Builder
+func writeAttr(buf *strings.Builder, group string, a slog.Attr) {
+	key := a.Key
+	if group != "" {
+		key = group + "." + key
+	}
+
+	v := a.Value.Resolve()
+	switch v.Kind() {
+	case slog.KindGroup:
+		for i, ga := range v.Group() {
+			if i > 0 {
+				buf.WriteByte(' ')
+			}
+			writeAttr(buf, key, ga)
 		}
+	default:
+		buf.WriteString(key)
+		buf.WriteByte('=')
+		buf.WriteString(v.String())
 	}
-	return false
 }
 
-func (h *multiHandler) Handle(ctx context.Context, r slog.Record) error {
-	for _, handler := range h.handlers {
-		if handler.Enabled(ctx, r.Level) {
-			handler.Handle(ctx, r)
-		}
+func (h *formattedHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
+	copy(newAttrs, h.attrs)
+	copy(newAttrs[len(h.attrs):], attrs)
+	return &formattedHandler{
+		w:     h.w,
+		mu:    h.mu,
+		level: h.level,
+		attrs: newAttrs,
+		group: h.group,
+		pid:   h.pid,
 	}
-	return nil
 }
 
-func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	newHandlers := make([]slog.Handler, len(h.handlers))
-	for i, handler := range h.handlers {
-		newHandlers[i] = handler.WithAttrs(attrs)
+func (h *formattedHandler) WithGroup(name string) slog.Handler {
+	newGroup := name
+	if h.group != "" {
+		newGroup = h.group + "." + name
 	}
-	return newMultiHandler(newHandlers...)
+	return &formattedHandler{
+		w:     h.w,
+		mu:    h.mu,
+		level: h.level,
+		attrs: h.attrs,
+		group: newGroup,
+		pid:   h.pid,
+	}
 }
 
-func (h *multiHandler) WithGroup(name string) slog.Handler {
-	newHandlers := make([]slog.Handler, len(h.handlers))
-	for i, handler := range h.handlers {
-		newHandlers[i] = handler.WithGroup(name)
+// discardHandler 丢弃所有日志（用于文件 handler 创建失败时的 fallback）
+type discardHandler struct{}
+
+func (discardHandler) Enabled(context.Context, slog.Level) bool  { return false }
+func (discardHandler) Handle(context.Context, slog.Record) error { return nil }
+func (discardHandler) WithAttrs([]slog.Attr) slog.Handler        { return discardHandler{} }
+func (discardHandler) WithGroup(string) slog.Handler             { return discardHandler{} }
+
+// 确保编译器检查接口实现
+var _ slog.Handler = (*formattedHandler)(nil)
+var _ slog.Handler = discardHandler{}
+
+// setupLogger 初始化日志系统，返回配置好的 logger
+// 日志文件位于 %LOCALAPPDATA%\WindInput\logs\wind_input.log
+func setupLogger(levelStr string) *slog.Logger {
+	var level slog.Level
+	switch levelStr {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
 	}
-	return newMultiHandler(newHandlers...)
+
+	logBase := os.Getenv("LOCALAPPDATA")
+	if logBase == "" {
+		logBase = os.TempDir()
+	}
+	logDir := filepath.Join(logBase, "WindInput", "logs")
+	os.MkdirAll(logDir, 0755)
+	logFilePath := filepath.Join(logDir, "wind_input.log")
+
+	var handler slog.Handler
+	rotWriter, err := newRotatingWriter(logFilePath, 5*1024*1024, 3) // 5MB, 3 backups
+	if err == nil {
+		handler = newFormattedHandler(rotWriter, level)
+	} else {
+		handler = discardHandler{}
+	}
+
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+	return logger
 }

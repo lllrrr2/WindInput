@@ -185,50 +185,8 @@ func main() {
 	}
 	defer windows.CloseHandle(mutexHandle)
 
-	// Setup logging based on config
-	var level slog.Level
-	switch cfg.Advanced.LogLevel {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
-		level = slog.LevelInfo
-	}
-
-	// 创建基础的 stdout handler
-	stdoutHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	})
-
-	// 创建文件日志 handler（日志文件在 %LOCALAPPDATA%\WindInput\logs\wind_input.log）
-	var fileHandler slog.Handler
-	logBase := os.Getenv("LOCALAPPDATA")
-	if logBase == "" {
-		logBase = os.TempDir()
-	}
-	logDir := filepath.Join(logBase, "WindInput", "logs")
-	os.MkdirAll(logDir, 0755)
-	logFilePath := filepath.Join(logDir, "wind_input.log")
-	rotWriter, err := newRotatingWriter(logFilePath, 5*1024*1024, 3) // 5MB, 3 backups
-	if err == nil {
-		fileHandler = slog.NewTextHandler(rotWriter, &slog.HandlerOptions{
-			Level: level,
-		})
-	}
-
-	// 创建 logger（stdout + file）
-	var logger *slog.Logger
-	if fileHandler != nil {
-		logger = slog.New(newMultiHandler(stdoutHandler, fileHandler))
-	} else {
-		logger = slog.New(stdoutHandler)
-	}
-	slog.SetDefault(logger)
+	// 初始化日志系统
+	logger := setupLogger(cfg.Advanced.LogLevel)
 
 	logger.Info("WindInput IME Service starting...")
 
