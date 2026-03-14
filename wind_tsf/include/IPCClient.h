@@ -10,9 +10,9 @@
 namespace IPCConfig
 {
     // Timeout settings (milliseconds)
-    constexpr DWORD CONNECT_TIMEOUT_MS = 100;      // Connection timeout
+    constexpr DWORD CONNECT_TIMEOUT_MS = 200;      // Connection timeout
     constexpr DWORD WRITE_TIMEOUT_MS = 50;         // Write operation timeout
-    constexpr DWORD READ_TIMEOUT_MS = 100;         // Read operation timeout
+    constexpr DWORD READ_TIMEOUT_MS = 200;         // Read operation timeout
 
     // Circuit breaker settings
     constexpr int MAX_CONSECUTIVE_FAILURES = 3;    // Failures before circuit opens

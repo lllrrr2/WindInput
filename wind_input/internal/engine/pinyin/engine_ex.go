@@ -3,6 +3,7 @@ package pinyin
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/dict"
@@ -82,6 +83,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	}
 
 	input = strings.ToLower(input)
+	convertStart := time.Now()
 
 	// 去除显式分隔符，得到纯拼音字符串用于词库查询
 	queryInput := strings.ReplaceAll(input, "'", "")
@@ -104,8 +106,8 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	partial := parsed.PartialSyllable()
 	allSyllables := parsed.SyllableTexts()
 
-	logDebug("[PinyinEngine] input=%q preedit=%q completed=%v partial=%q allSyllables=%v",
-		input, result.PreeditDisplay, completedSyllables, partial, allSyllables)
+	logDebug("[PinyinEngine] input=%q preedit=%q completed=%v partial=%q allSyllables=%v parseElapsed=%v",
+		input, result.PreeditDisplay, completedSyllables, partial, allSyllables, time.Since(convertStart))
 
 	// 检查首个 completed syllable 是否也是输入的第一个段
 	// 例如 sdem → allSyllables=["s","de","m"]，completedSyllables=["de"]
@@ -367,9 +369,14 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	if syllableCount == 0 && len(allSyllables) > 1 {
 		firstPartial := allSyllables[0]
 		possibles := e.syllableTrie.GetPossibleSyllables(firstPartial)
+		const maxMultiPartialPerSyllable = 5
 		for _, syllable := range possibles {
 			charResults := e.dict.Lookup(syllable)
+			added := 0
 			for _, cand := range charResults {
+				if added >= maxMultiPartialPerSyllable {
+					break
+				}
 				if _, exists := candidatesMap[cand.Text]; exists {
 					continue
 				}
@@ -379,6 +386,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 				c.Weight = e.scorerWeight(f)
 				c.ConsumedLength = len(firstPartial)
 				candidatesMap[c.Text] = &c
+				added++
 			}
 		}
 	}
@@ -405,10 +413,17 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 			}
 		}
 		// 按完整音节前缀查找单字
+		// 每个音节限制候选数量，避免单字符输入（如 "s"）展开过多候选导致超时
+		// 每音节取 top 5（按词频降序，dict.Lookup 已排序），确保各音节高频字都能入选
+		const maxPerSyllable = 5
 		possibles := e.syllableTrie.GetPossibleSyllables(partial)
 		for _, syllable := range possibles {
 			charResults := e.dict.Lookup(syllable)
+			added := 0
 			for _, cand := range charResults {
+				if added >= maxPerSyllable {
+					break
+				}
 				if _, exists := candidatesMap[cand.Text]; exists {
 					continue
 				}
@@ -423,6 +438,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 				c.Weight = e.scorerWeight(f)
 				c.ConsumedLength = len(input)
 				candidatesMap[c.Text] = &c
+				added++
 			}
 		}
 	}
@@ -497,10 +513,12 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	}
 
 	// 9. 添加五笔编码提示
+	wubiStart := time.Now()
 	e.addWubiHints(result.Candidates)
+	logDebug("[PinyinEngine] wubiHints elapsed=%v", time.Since(wubiStart))
 
-	logDebug("[PinyinEngine] final candidates=%d isEmpty=%v",
-		len(result.Candidates), result.IsEmpty)
+	logDebug("[PinyinEngine] final candidates=%d isEmpty=%v elapsed=%v",
+		len(result.Candidates), result.IsEmpty, time.Since(convertStart))
 
 	return result
 }
