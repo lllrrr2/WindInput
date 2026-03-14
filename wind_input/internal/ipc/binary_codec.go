@@ -281,9 +281,9 @@ func (c *BinaryCodec) EncodeModeChanged(chineseMode bool) []byte {
 }
 
 // EncodeStatusUpdate encodes a full status update response
-// Format: StatusHeader (12 bytes) + keyHash values
+// Format: StatusHeader (12 bytes) + keyHash values + trailing UTF-8 icon label
 func (c *BinaryCodec) EncodeStatusUpdate(chineseMode, fullWidth, chinesePunct, toolbarVisible, capsLock bool,
-	keyDownHotkeys, keyUpHotkeys []uint32) []byte {
+	keyDownHotkeys, keyUpHotkeys []uint32, iconLabel string) []byte {
 
 	// Build flags
 	var flags uint32
@@ -305,9 +305,10 @@ func (c *BinaryCodec) EncodeStatusUpdate(chineseMode, fullWidth, chinesePunct, t
 
 	keyDownCount := uint32(len(keyDownHotkeys))
 	keyUpCount := uint32(len(keyUpHotkeys))
+	labelBytes := []byte(iconLabel)
 
-	// Calculate payload size: header(12) + hotkeys
-	payloadLen := uint32(12 + (keyDownCount+keyUpCount)*4)
+	// Calculate payload size: header(12) + hotkeys + icon label
+	payloadLen := uint32(12 + (keyDownCount+keyUpCount)*4 + uint32(len(labelBytes)))
 
 	// Encode header
 	header := c.EncodeHeader(CmdStatusUpdate, payloadLen)
@@ -335,6 +336,7 @@ func (c *BinaryCodec) EncodeStatusUpdate(chineseMode, fullWidth, chinesePunct, t
 	result = append(result, header...)
 	result = append(result, statusHeader...)
 	result = append(result, hotkeys...)
+	result = append(result, labelBytes...)
 
 	return result
 }
@@ -387,7 +389,8 @@ func (c *BinaryCodec) WriteMessage(w io.Writer, message []byte) error {
 // EncodeStatePush encodes a state push message (CMD_STATE_PUSH)
 // This is used for proactive state broadcast to all clients
 // Format is the same as StatusUpdate but uses CmdStatePush command
-func (c *BinaryCodec) EncodeStatePush(chineseMode, fullWidth, chinesePunct, toolbarVisible, capsLock bool) []byte {
+// iconLabel is appended as trailing UTF-8 bytes after the structured data
+func (c *BinaryCodec) EncodeStatePush(chineseMode, fullWidth, chinesePunct, toolbarVisible, capsLock bool, iconLabel string) []byte {
 	// Build flags
 	var flags uint32
 	if chineseMode {
@@ -406,8 +409,10 @@ func (c *BinaryCodec) EncodeStatePush(chineseMode, fullWidth, chinesePunct, tool
 		flags |= StatusCapsLock
 	}
 
-	// Calculate payload size: header(12) with no hotkeys
-	payloadLen := uint32(12)
+	labelBytes := []byte(iconLabel)
+
+	// Calculate payload size: header(12) + icon label
+	payloadLen := uint32(12 + len(labelBytes))
 
 	// Encode header with CmdStatePush
 	header := c.EncodeHeader(CmdStatePush, payloadLen)
@@ -422,6 +427,7 @@ func (c *BinaryCodec) EncodeStatePush(chineseMode, fullWidth, chinesePunct, tool
 	result := make([]byte, 0, HeaderSize+payloadLen)
 	result = append(result, header...)
 	result = append(result, statusHeader...)
+	result = append(result, labelBytes...)
 
 	return result
 }

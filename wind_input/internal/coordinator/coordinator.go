@@ -173,6 +173,20 @@ func (c *Coordinator) IsCapsLockOn() bool {
 	return c.capsLockOn
 }
 
+// getIconLabelNoLock computes the taskbar icon label based on current state (caller must hold lock)
+// This determines what character is displayed in the Windows taskbar input indicator
+// Currently uses simple 中/英/A labels; engine-specific labels (拼/五/双) planned for future
+func (c *Coordinator) getIconLabelNoLock() string {
+	effectiveChinese := c.chineseMode && !c.capsLockOn
+	if effectiveChinese {
+		return "中"
+	}
+	if c.capsLockOn {
+		return "A"
+	}
+	return "英"
+}
+
 // buildStatusUpdate creates a StatusUpdateData from current state (caller must hold lock)
 func (c *Coordinator) buildStatusUpdate() *bridge.StatusUpdateData {
 	keyDownHotkeys, keyUpHotkeys := c.getCompiledHotkeys()
@@ -182,6 +196,7 @@ func (c *Coordinator) buildStatusUpdate() *bridge.StatusUpdateData {
 		ChinesePunctuation: c.chinesePunctuation,
 		ToolbarVisible:     c.toolbarVisible,
 		CapsLock:           c.capsLockOn,
+		IconLabel:          c.getIconLabelNoLock(),
 		KeyDownHotkeys:     keyDownHotkeys,
 		KeyUpHotkeys:       keyUpHotkeys,
 	}

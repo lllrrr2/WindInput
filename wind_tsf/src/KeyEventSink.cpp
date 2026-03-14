@@ -688,13 +688,14 @@ BOOL CKeyEventSink::_HandleServiceResponse()
         {
             WIND_LOG_DEBUG(L"Received StatusUpdate (state push), processing and reading next response\n");
 
-            // Update input mode from state push
+            // Update input mode from state push (with icon label from Go service)
             _pTextService->UpdateFullStatus(
                 response.IsChineseMode(),
                 response.IsFullWidth(),
                 response.IsChinesePunct(),
                 response.IsToolbarVisible(),
-                response.IsCapsLock()
+                response.IsCapsLock(),
+                response.iconLabel.empty() ? nullptr : response.iconLabel.c_str()
             );
 
             // Update hotkey whitelist if present
@@ -818,7 +819,8 @@ BOOL CKeyEventSink::_HandleServiceResponse()
             response.IsFullWidth(),
             response.IsChinesePunct(),
             response.IsToolbarVisible(),
-            response.IsCapsLock()
+            response.IsCapsLock(),
+            response.iconLabel.empty() ? nullptr : response.iconLabel.c_str()
         );
         return TRUE;
 

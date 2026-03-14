@@ -102,8 +102,8 @@ func (c *Coordinator) handleCapsLockStateNoLock(on bool) {
 		return
 	}
 
-	// Show A for Caps Lock ON, a for OFF
-	indicator := "a"
+	// Show A for Caps Lock ON, 英 for OFF
+	indicator := "英"
 	if on {
 		indicator = "A"
 	}

@@ -232,6 +232,7 @@ func (c *Coordinator) getStatusUpdate() *bridge.StatusUpdateData {
 		ChinesePunctuation: c.chinesePunctuation,
 		ToolbarVisible:     c.toolbarVisible,
 		CapsLock:           c.capsLockOn,
+		IconLabel:          c.getIconLabelNoLock(),
 	}
 }
 

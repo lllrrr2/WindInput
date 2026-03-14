@@ -50,6 +50,9 @@ struct ServiceResponse
     // For StatusUpdate / ModeChanged
     uint32_t statusFlags = 0;
 
+    // Icon label for taskbar display (from Go service, e.g., "中", "英", "A", "拼", "五")
+    std::wstring iconLabel;
+
     // For SyncHotkeys / StatusUpdate
     std::vector<uint32_t> keyDownHotkeys;
     std::vector<uint32_t> keyUpHotkeys;

@@ -60,10 +60,11 @@ public:
     void UpdateState(BOOL bChineseMode, BOOL bCapsLock);
 
     // Update full status (called when receiving status_update from Go service)
-    void UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock);
+    // iconLabel: display text from Go service (e.g., "中", "英", "A", "拼", "五")
+    void UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel = nullptr);
 
     // Thread-safe update from async thread (posts message to UI thread)
-    void PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock);
+    void PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel = nullptr);
 
     // Thread-safe commit text from async thread (posts message to UI thread)
     // This ensures EndComposition is called before InsertText on the correct thread
@@ -75,6 +76,10 @@ public:
 
     // Force refresh the language bar icon (used when focus is gained)
     void ForceRefresh();
+
+    // Set the input method type label displayed in Chinese mode
+    // label: "中"(default), "拼"(Pinyin), "五"(Wubi), "双"(Shuangpin), etc.
+    void SetInputTypeLabel(const wchar_t* label);
 
 private:
     // Message window for cross-thread updates
@@ -91,6 +96,7 @@ private:
         BOOL bChinesePunct;
         BOOL bToolbarVisible;
         BOOL bCapsLock;
+        wchar_t iconLabel[8];  // Icon label from Go service (e.g., "中", "英", "拼")
     };
 
     // Data for commit text message
@@ -110,6 +116,10 @@ private:
     BOOL _bFullWidth;       // Full-width mode (全角)
     BOOL _bChinesePunct;    // Chinese punctuation mode (中文标点)
     BOOL _bToolbarVisible;  // Toolbar visibility
+
+    // Input method type label for Chinese mode display
+    // Default: "中", future values: "拼"(Pinyin), "五"(Wubi), "双"(Shuangpin)
+    wchar_t _inputTypeLabel[4];
 
     // GUID for this language bar item
     static const GUID _guidLangBarItemButton;

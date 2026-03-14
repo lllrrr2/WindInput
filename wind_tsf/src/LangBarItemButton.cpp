@@ -29,6 +29,8 @@ CLangBarItemButton::CLangBarItemButton(CTextService* pTextService)
     , _bToolbarVisible(FALSE)
     , _hMsgWnd(NULL)
 {
+    // Default input type label
+    wcscpy_s(_inputTypeLabel, L"中");
     // Initialize Caps Lock state
     _bCapsLock = (GetKeyState(VK_CAPITAL) & 0x0001) != 0;
     DllAddRef();
@@ -300,52 +302,51 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
     }
     HBITMAP hOldBitmap = (HBITMAP)SelectObject(hdcMem, hBitmap);
 
-    // Draw background based on effective mode:
-    // - Chinese mode + CapsLock OFF = Chinese (蓝底"中")
-    // - Chinese mode + CapsLock ON = English Upper (灰底"A") - temporary English for caps
-    // - English mode + CapsLock OFF = English Lower (灰底"a")
-    // - English mode + CapsLock ON = English Upper (灰底"A")
-    BOOL effectiveChinese = _bChineseMode && !_bCapsLock;
-
-    RECT rc = { 0, 0, iconSize, iconSize };
-    HBRUSH hBrush;
-    if (effectiveChinese)
+    // Fill with opaque black (BGRA = 0,0,0,255) so GDI can properly anti-alias
+    // against a solid background. Alpha will be replaced later from text luminance.
     {
-        hBrush = CreateSolidBrush(RGB(66, 133, 244)); // Blue for Chinese
+        BYTE* initPixels = (BYTE*)pBits;
+        for (int i = 0; i < iconSize * iconSize; i++)
+        {
+            initPixels[i * 4 + 0] = 0;    // B
+            initPixels[i * 4 + 1] = 0;    // G
+            initPixels[i * 4 + 2] = 0;    // R
+            initPixels[i * 4 + 3] = 255;  // A = opaque
+        }
     }
-    else
-    {
-        hBrush = CreateSolidBrush(RGB(128, 128, 128)); // Gray for English
-    }
-    FillRect(hdcMem, &rc, hBrush);
-    DeleteObject(hBrush);
 
-    // Draw text - use a font that supports Chinese
+    // Display text is determined by Go service via _inputTypeLabel
+    // (e.g., "中", "英", "A", "拼", "五", "双")
+    const wchar_t* text = _inputTypeLabel;
+
+    // Draw white text on opaque black background for proper anti-aliasing
+    // TF_LBI_STYLE_TEXTCOLORICON will recolor the icon based on system theme
     SetBkMode(hdcMem, TRANSPARENT);
     SetTextColor(hdcMem, RGB(255, 255, 255));
 
-    int fontSize = MulDiv(12, dpi, 96);
+    // Large font to fill most of the icon area
+    int fontSize = iconSize - 2;
     HFONT hFont = CreateFontW(
-        fontSize, 0, 0, 0, FW_BOLD,
+        -fontSize, 0, 0, 0, FW_MEDIUM,
         FALSE, FALSE, FALSE,
-        GB2312_CHARSET,  // Chinese charset
+        DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS,
         CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY,  // Use ClearType for better rendering
+        ANTIALIASED_QUALITY,  // Grayscale AA, avoid ClearType subpixel artifacts
         DEFAULT_PITCH | FF_DONTCARE,
-        L"Microsoft YaHei"  // Microsoft YaHei has better coverage
+        L"Microsoft YaHei"
     );
 
     if (hFont == NULL)
     {
         // Fallback to SimHei
         hFont = CreateFontW(
-            fontSize, 0, 0, 0, FW_BOLD,
+            -fontSize, 0, 0, 0, FW_MEDIUM,
             FALSE, FALSE, FALSE,
-            GB2312_CHARSET,
+            DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS,
             CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
+            ANTIALIASED_QUALITY,
             DEFAULT_PITCH | FF_DONTCARE,
             L"SimHei"
         );
@@ -359,19 +360,7 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
 
     HFONT hOldFont = (HFONT)SelectObject(hdcMem, hFont);
 
-    // Display text based on effective mode:
-    // - effectiveChinese = true: "中"
-    // - effectiveChinese = false + CapsLock ON: "A"
-    // - effectiveChinese = false + CapsLock OFF: "a"
-    const wchar_t* text;
-    if (effectiveChinese)
-    {
-        text = L"中";
-    }
-    else
-    {
-        text = _bCapsLock ? L"A" : L"a";
-    }
+    RECT rc = { 0, 0, iconSize, iconSize };
     DrawTextW(hdcMem, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(hdcMem, hOldFont);
@@ -380,16 +369,23 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
         DeleteObject(hFont);
     }
 
-    // Set alpha channel to fully opaque for all pixels
-    // DIB section pixels are in BGRA format
+    // Convert white-on-black text to alpha mask for theme-aware rendering
+    // Text luminance becomes alpha; RGB set to 0 for TF_LBI_STYLE_TEXTCOLORICON
     BYTE* pixels = (BYTE*)pBits;
     for (int i = 0; i < iconSize * iconSize; i++)
     {
-        pixels[i * 4 + 3] = 255;  // Set alpha to opaque
+        BYTE b = pixels[i * 4 + 0];
+        BYTE g = pixels[i * 4 + 1];
+        BYTE r = pixels[i * 4 + 2];
+        // max(r, g, b) as alpha - preserves anti-aliased edge transitions
+        BYTE alpha = r > g ? (r > b ? r : b) : (g > b ? g : b);
+        pixels[i * 4 + 0] = 0;      // B = 0
+        pixels[i * 4 + 1] = 0;      // G = 0
+        pixels[i * 4 + 2] = 0;      // R = 0
+        pixels[i * 4 + 3] = alpha;   // A = text coverage
     }
 
-    // Create monochrome mask bitmap (all zeros = fully opaque)
-    // Use CreateDIBSection for proper initialization
+    // Create monochrome mask bitmap (all zeros for 32-bit alpha icon)
     BITMAPINFO bmiMask = { 0 };
     bmiMask.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmiMask.bmiHeader.biWidth = iconSize;
@@ -410,8 +406,7 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
         return E_FAIL;
     }
 
-    // Fill mask with zeros (0 = opaque in mask)
-    // Each row is padded to DWORD boundary
+    // Fill mask with zeros (alpha channel handles transparency for 32-bit icons)
     int maskRowBytes = ((iconSize + 31) / 32) * 4;
     memset(pMaskBits, 0, maskRowBytes * iconSize);
 
@@ -430,8 +425,8 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
     DeleteObject(hBitmap);
     DeleteObject(hMaskBitmap);
 
-    WIND_LOG_DEBUG_FMT(L"GetIcon: size=%d, mode=%s, icon=%p\n",
-              iconSize, _bChineseMode ? L"Chinese" : L"English", *phIcon);
+    WIND_LOG_DEBUG_FMT(L"GetIcon: size=%d, text=%ls, icon=%p\n",
+              iconSize, text, *phIcon);
 
     return (*phIcon != nullptr) ? S_OK : E_FAIL;
 }
@@ -441,18 +436,8 @@ STDAPI CLangBarItemButton::GetText(BSTR* pbstrText)
     if (pbstrText == nullptr)
         return E_INVALIDARG;
 
-    // Use effective mode: Chinese mode + CapsLock ON = English Upper
-    BOOL effectiveChinese = _bChineseMode && !_bCapsLock;
-
-    if (effectiveChinese)
-    {
-        *pbstrText = SysAllocString(L"中");
-    }
-    else
-    {
-        // English mode: show "A" or "a" based on Caps Lock state
-        *pbstrText = SysAllocString(_bCapsLock ? L"A" : L"a");
-    }
+    // Display text is determined by Go service via _inputTypeLabel
+    *pbstrText = SysAllocString(_inputTypeLabel);
 
     return (*pbstrText != nullptr) ? S_OK : E_OUTOFMEMORY;
 }
@@ -500,9 +485,10 @@ LRESULT CALLBACK CLangBarItemButton::_MsgWndProc(HWND hwnd, UINT msg, WPARAM wPa
         if (pThis != nullptr && pData != nullptr)
         {
             WIND_LOG_DEBUG(L"MsgWndProc: Processing WM_UPDATE_STATUS\n");
-            // Call UpdateFullStatus on the UI thread
+            // Call UpdateFullStatus on the UI thread (with icon label from Go service)
             pThis->UpdateFullStatus(pData->bChineseMode, pData->bFullWidth,
-                                     pData->bChinesePunct, pData->bToolbarVisible, pData->bCapsLock);
+                                     pData->bChinesePunct, pData->bToolbarVisible, pData->bCapsLock,
+                                     pData->iconLabel[0] != L'\0' ? pData->iconLabel : nullptr);
         }
 
         // Free the data allocated by sender
@@ -683,15 +669,25 @@ void CLangBarItemButton::UpdateState(BOOL bChineseMode, BOOL bCapsLock)
     }
 }
 
-void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
+void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel)
 {
-    // With effective mode, CapsLock affects display in Chinese mode too
-    // (Chinese + CapsLock = English Upper)
+    // Update icon label from Go service (if provided)
+    BOOL labelChanged = FALSE;
+    if (iconLabel != nullptr && iconLabel[0] != L'\0')
+    {
+        if (wcscmp(_inputTypeLabel, iconLabel) != 0)
+        {
+            wcscpy_s(_inputTypeLabel, iconLabel);
+            labelChanged = TRUE;
+        }
+    }
+
     BOOL needUpdate = (_bChineseMode != bChineseMode) ||
                       (_bFullWidth != bFullWidth) ||
                       (_bChinesePunct != bChinesePunct) ||
                       (_bToolbarVisible != bToolbarVisible) ||
-                      (_bCapsLock != bCapsLock);
+                      (_bCapsLock != bCapsLock) ||
+                      labelChanged;
 
     _bChineseMode = bChineseMode;
     _bFullWidth = bFullWidth;
@@ -704,18 +700,18 @@ void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BO
         _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
     }
 
-    WIND_LOG_DEBUG_FMT(L"UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, needUpdate=%d\n",
-              bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock, needUpdate);
+    WIND_LOG_DEBUG_FMT(L"UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, label=%ls, needUpdate=%d\n",
+              bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock, _inputTypeLabel, needUpdate);
 }
 
-void CLangBarItemButton::PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
+void CLangBarItemButton::PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel)
 {
     // Thread-safe update: post message to message window which runs on UI thread
     if (_hMsgWnd == NULL)
     {
         WIND_LOG_WARN(L"PostUpdateFullStatus: No message window, falling back to direct call\n");
         // Fallback to direct call (may not work from async thread)
-        UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
+        UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock, iconLabel);
         return;
     }
 
@@ -726,6 +722,15 @@ void CLangBarItemButton::PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth
     pData->bChinesePunct = bChinesePunct;
     pData->bToolbarVisible = bToolbarVisible;
     pData->bCapsLock = bCapsLock;
+    // Copy icon label
+    if (iconLabel != nullptr && iconLabel[0] != L'\0')
+    {
+        wcscpy_s(pData->iconLabel, iconLabel);
+    }
+    else
+    {
+        pData->iconLabel[0] = L'\0';
+    }
 
     // Post message to UI thread
     if (!PostMessageW(_hMsgWnd, WM_UPDATE_STATUS, 0, reinterpret_cast<LPARAM>(pData)))
@@ -817,6 +822,20 @@ void CLangBarItemButton::ForceRefresh()
     }
 
     WIND_LOG_DEBUG_FMT(L"ForceRefresh: mode=%d, caps=%d\n", _bChineseMode, _bCapsLock);
+}
+
+void CLangBarItemButton::SetInputTypeLabel(const wchar_t* label)
+{
+    if (label == nullptr)
+        return;
+
+    wcscpy_s(_inputTypeLabel, label);
+
+    // Refresh icon to show the new label
+    if (_pLangBarItemSink != nullptr)
+    {
+        _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
+    }
 }
 
 // Show popup menu by sending screen coordinates to Go service

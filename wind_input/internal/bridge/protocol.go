@@ -52,6 +52,9 @@ type StatusUpdateData struct {
 	ChinesePunctuation bool
 	ToolbarVisible     bool
 	CapsLock           bool
+	// Icon label for taskbar display (e.g., "中", "英", "A", "拼", "五", "双")
+	// Go service determines the label; C++ TSF just renders it
+	IconLabel string
 	// Hotkey hashes for C++ side (compiled from config)
 	KeyDownHotkeys []uint32
 	KeyUpHotkeys   []uint32

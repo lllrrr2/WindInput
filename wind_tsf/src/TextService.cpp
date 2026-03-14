@@ -771,7 +771,8 @@ void CTextService::_SyncStateFromResponse(const ServiceResponse& response)
             response.IsFullWidth(),
             response.IsChinesePunct(),
             response.IsToolbarVisible(),
-            bCapsLock
+            bCapsLock,
+            response.iconLabel.empty() ? nullptr : response.iconLabel.c_str()
         );
     }
 
@@ -842,7 +843,8 @@ BOOL CTextService::_InitIPCClient()
                 response.IsFullWidth(),
                 response.IsChinesePunct(),
                 response.IsToolbarVisible(),
-                response.IsCapsLock()
+                response.IsCapsLock(),
+                response.iconLabel.empty() ? nullptr : response.iconLabel.c_str()
             );
         }
     });
@@ -1515,7 +1517,8 @@ void CTextService::SendMenuCommand(const char* command)
             BOOL bToolbarVisible = response.IsToolbarVisible();
             BOOL bCapsLock = response.IsCapsLock();
 
-            UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
+            UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock,
+                            response.iconLabel.empty() ? nullptr : response.iconLabel.c_str());
         }
     }
     else
@@ -1589,17 +1592,18 @@ void CTextService::SendShowContextMenu(int screenX, int screenY)
     }
 }
 
-void CTextService::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock)
+void CTextService::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel)
 {
     _bChineseMode = bChineseMode;
 
     if (_pLangBarItemButton != nullptr)
     {
-        _pLangBarItemButton->UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
+        _pLangBarItemButton->UpdateFullStatus(bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock, iconLabel);
     }
 
-    WIND_LOG_DEBUG_FMT(L"UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d\n",
-                 bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock);
+    WIND_LOG_DEBUG_FMT(L"UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, label=%ls\n",
+                 bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock,
+                 iconLabel ? iconLabel : L"(none)");
 }
 
 // ITfCompositionSink implementation

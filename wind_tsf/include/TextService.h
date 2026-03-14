@@ -101,7 +101,8 @@ public:
     void SendShowContextMenu(int screenX, int screenY);
 
     // Update full status from Go service response
-    void UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock);
+    // iconLabel: display text from Go service for taskbar icon (e.g., "中", "英", "A", "拼")
+    void UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel = nullptr);
 
 private:
     LONG _refCount;

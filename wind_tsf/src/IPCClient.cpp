@@ -938,9 +938,23 @@ BOOL CIPCClient::_ParseResponse(const IpcHeader& header, const std::vector<uint8
                 }
             }
 
-            _LogDebug(L"Response: StatusUpdate mode=%d, width=%d, punct=%d, toolbar=%d, keyDown=%d, keyUp=%d",
+            // Extract trailing icon label (UTF-8, after StatusHeader + hotkeys)
+            size_t structuredSize = hotkeysOffset + totalHotkeys * sizeof(uint32_t);
+            if (payload.size() > structuredSize)
+            {
+                std::string utf8Label(payload.begin() + structuredSize, payload.end());
+                int wideLen = MultiByteToWideChar(CP_UTF8, 0, utf8Label.c_str(), (int)utf8Label.size(), NULL, 0);
+                if (wideLen > 0)
+                {
+                    response.iconLabel.resize(wideLen);
+                    MultiByteToWideChar(CP_UTF8, 0, utf8Label.c_str(), (int)utf8Label.size(), &response.iconLabel[0], wideLen);
+                }
+            }
+
+            _LogDebug(L"Response: StatusUpdate mode=%d, width=%d, punct=%d, toolbar=%d, keyDown=%d, keyUp=%d, label=%ls",
                       response.IsChineseMode(), response.IsFullWidth(), response.IsChinesePunct(),
-                      response.IsToolbarVisible(), (int)response.keyDownHotkeys.size(), (int)response.keyUpHotkeys.size());
+                      response.IsToolbarVisible(), (int)response.keyDownHotkeys.size(), (int)response.keyUpHotkeys.size(),
+                      response.iconLabel.empty() ? L"(none)" : response.iconLabel.c_str());
         }
         break;
 
@@ -996,9 +1010,24 @@ BOOL CIPCClient::_ParseResponse(const IpcHeader& header, const std::vector<uint8
             response.statusFlags = statusHeader->flags;
             response.chineseMode = (statusHeader->flags & STATUS_CHINESE_MODE) != 0;
 
-            _LogInfo(L"Response: StatePush mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d",
+            // Extract trailing icon label (UTF-8, after StatusHeader)
+            size_t structuredSize = sizeof(StatusHeader) +
+                (statusHeader->keyDownCount + statusHeader->keyUpCount) * sizeof(uint32_t);
+            if (payload.size() > structuredSize)
+            {
+                std::string utf8Label(payload.begin() + structuredSize, payload.end());
+                int wideLen = MultiByteToWideChar(CP_UTF8, 0, utf8Label.c_str(), (int)utf8Label.size(), NULL, 0);
+                if (wideLen > 0)
+                {
+                    response.iconLabel.resize(wideLen);
+                    MultiByteToWideChar(CP_UTF8, 0, utf8Label.c_str(), (int)utf8Label.size(), &response.iconLabel[0], wideLen);
+                }
+            }
+
+            _LogInfo(L"Response: StatePush mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, label=%ls",
                      response.IsChineseMode(), response.IsFullWidth(), response.IsChinesePunct(),
-                     response.IsToolbarVisible(), response.IsCapsLock());
+                     response.IsToolbarVisible(), response.IsCapsLock(),
+                     response.iconLabel.empty() ? L"(none)" : response.iconLabel.c_str());
         }
         break;
 

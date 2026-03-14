@@ -365,6 +365,7 @@ func (s *Server) encodeStatusUpdate(status *StatusUpdateData) []byte {
 		status.CapsLock,
 		status.KeyDownHotkeys,
 		status.KeyUpHotkeys,
+		status.IconLabel,
 	)
 }
 

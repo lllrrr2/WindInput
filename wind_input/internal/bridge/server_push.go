@@ -163,6 +163,7 @@ func (s *Server) encodeStatePush(status *StatusUpdateData) []byte {
 		status.ChinesePunctuation,
 		status.ToolbarVisible,
 		status.CapsLock,
+		status.IconLabel,
 	)
 }
 

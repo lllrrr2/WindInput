@@ -236,7 +236,7 @@ func (c *Coordinator) showModeIndicator() {
 	// Build composite mode text: Chinese mode shows "中·五笔" or "中·拼音", English mode shows "En"
 	var modeText string
 	if !c.chineseMode {
-		modeText = "En"
+		modeText = "英"
 	} else if c.engineMgr != nil {
 		switch c.engineMgr.GetCurrentType() {
 		case engine.EngineTypeWubi:

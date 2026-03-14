@@ -159,6 +159,7 @@ func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
 		ChinesePunctuation: c.chinesePunctuation,
 		ToolbarVisible:     c.toolbarVisible,
 		CapsLock:           c.capsLockOn,
+		IconLabel:          c.getIconLabelNoLock(),
 		KeyDownHotkeys:     keyDownHotkeys,
 		KeyUpHotkeys:       keyUpHotkeys,
 	}
@@ -202,6 +203,7 @@ func (c *Coordinator) HandleIMEActivated() *bridge.StatusUpdateData {
 		ChinesePunctuation: c.chinesePunctuation,
 		ToolbarVisible:     c.toolbarVisible,
 		CapsLock:           c.capsLockOn,
+		IconLabel:          c.getIconLabelNoLock(),
 		KeyDownHotkeys:     keyDownHotkeys,
 		KeyUpHotkeys:       keyUpHotkeys,
 	}

@@ -139,7 +139,7 @@ func (r *ToolbarRenderer) Render(state ToolbarState) *image.RGBA {
 	} else if state.CapsLock {
 		modeText = "A"
 	} else {
-		modeText = "a"
+		modeText = "英"
 	}
 	tw := td.MeasureString(modeText, fontSize)
 	td.DrawString(modeText, modeBtnX+modeBtnW/2-tw/2, modeBtnY+modeBtnH/2+fontSize*0.35, fontSize, colors.ModeTextColor)
