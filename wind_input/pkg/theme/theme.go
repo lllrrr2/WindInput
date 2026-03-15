@@ -20,6 +20,7 @@ type CandidateWindowColors struct {
 	IndexColor      string `yaml:"index_color" json:"index_color"`
 	IndexBgColor    string `yaml:"index_bg_color" json:"index_bg_color"`
 	HoverBgColor    string `yaml:"hover_bg_color" json:"hover_bg_color"`
+	SelectedBgColor string `yaml:"selected_bg_color" json:"selected_bg_color"` // Background for keyboard-selected candidate
 	InputBgColor    string `yaml:"input_bg_color" json:"input_bg_color"`
 	InputTextColor  string `yaml:"input_text_color" json:"input_text_color"`
 	CommentColor    string `yaml:"comment_color" json:"comment_color"`
@@ -95,6 +96,7 @@ type ResolvedCandidateWindowColors struct {
 	IndexColor      color.Color
 	IndexBgColor    color.Color
 	HoverBgColor    color.Color
+	SelectedBgColor color.Color // Background for keyboard-selected candidate
 	InputBgColor    color.Color
 	InputTextColor  color.Color
 	CommentColor    color.Color
@@ -190,6 +192,7 @@ func (t *Theme) Resolve() *ResolvedTheme {
 			IndexColor:      MustParseHexColor(t.CandidateWindow.IndexColor, color.RGBA{255, 255, 255, 255}),
 			IndexBgColor:    MustParseHexColor(t.CandidateWindow.IndexBgColor, color.RGBA{66, 133, 244, 255}),
 			HoverBgColor:    MustParseHexColor(t.CandidateWindow.HoverBgColor, color.RGBA{230, 240, 255, 255}),
+			SelectedBgColor: MustParseHexColor(t.CandidateWindow.SelectedBgColor, color.RGBA{230, 240, 255, 255}),
 			InputBgColor:    MustParseHexColor(t.CandidateWindow.InputBgColor, color.RGBA{240, 240, 240, 255}),
 			InputTextColor:  MustParseHexColor(t.CandidateWindow.InputTextColor, color.RGBA{100, 100, 100, 255}),
 			CommentColor:    MustParseHexColor(t.CandidateWindow.CommentColor, color.RGBA{150, 150, 150, 255}),

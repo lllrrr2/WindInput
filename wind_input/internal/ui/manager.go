@@ -88,6 +88,7 @@ type UICommand struct {
 	TotalPages          int
 	TotalCandidateCount int // 候选总数（所有页）
 	CandidatesPerPage   int // 每页候选数
+	SelectedIndex       int // 当前页内选中的候选索引（0-based）
 	ModeText            string
 	// Toolbar state and position
 	ToolbarState *ToolbarState
@@ -124,6 +125,7 @@ type Manager struct {
 	totalPages          int
 	totalCandidateCount int
 	candidatesPerPage   int
+	selectedIndex       int // 当前页内选中的候选索引
 	caretX              int
 	caretY              int
 	caretHeight         int
@@ -337,7 +339,7 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 			return
 		}
 		m.currentInputSession = cmd.InputSession
-		m.doShowCandidates(cmd.Candidates, cmd.Input, cmd.CursorPos, cmd.X, cmd.Y, cmd.CaretHeight, cmd.Page, cmd.TotalPages, cmd.TotalCandidateCount, cmd.CandidatesPerPage)
+		m.doShowCandidates(cmd.Candidates, cmd.Input, cmd.CursorPos, cmd.X, cmd.Y, cmd.CaretHeight, cmd.Page, cmd.TotalPages, cmd.TotalCandidateCount, cmd.CandidatesPerPage, cmd.SelectedIndex)
 	case "hide":
 		// Update current session to the hide command's session
 		m.currentInputSession = cmd.InputSession

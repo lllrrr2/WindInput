@@ -7,7 +7,7 @@ package ui
 //   - caretHeight: height of the caret/cursor
 //   - totalCandidateCount: total number of candidates across all pages
 //   - candidatesPerPage: number of candidates per page
-func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos, caretX, caretY, caretHeight, page, totalPages, totalCandidateCount, candidatesPerPage int) error {
+func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos, caretX, caretY, caretHeight, page, totalPages, totalCandidateCount, candidatesPerPage, selectedIndex int) error {
 	m.mu.Lock()
 	if !m.ready {
 		m.mu.Unlock()
@@ -20,6 +20,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos
 	m.totalPages = totalPages
 	m.totalCandidateCount = totalCandidateCount
 	m.candidatesPerPage = candidatesPerPage
+	m.selectedIndex = selectedIndex
 	m.caretX = caretX
 	m.caretY = caretY
 	m.caretHeight = caretHeight
@@ -27,7 +28,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos
 	currentSession := m.inputSession
 	m.mu.Unlock()
 
-	m.logger.Debug("Queuing ShowCandidates", "input", input, "cursorPos", cursorPos, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight, "session", currentSession)
+	m.logger.Debug("Queuing ShowCandidates", "input", input, "cursorPos", cursorPos, "count", len(candidates), "caretX", caretX, "caretY", caretY, "caretHeight", caretHeight, "selectedIndex", selectedIndex, "session", currentSession)
 
 	// Send command to UI thread (non-blocking due to buffered channel)
 	select {
@@ -43,6 +44,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos
 		TotalPages:          totalPages,
 		TotalCandidateCount: totalCandidateCount,
 		CandidatesPerPage:   candidatesPerPage,
+		SelectedIndex:       selectedIndex,
 		InputSession:        currentSession,
 	}:
 		// Signal the event to wake up the message loop
@@ -58,7 +60,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos
 
 // doShowCandidates actually shows candidates (called from UI thread)
 // Parameters caretX, caretY, caretHeight are the original caret position info.
-func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorPos, caretX, caretY, caretHeight, page, totalPages, totalCandidateCount, candidatesPerPage int) {
+func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorPos, caretX, caretY, caretHeight, page, totalPages, totalCandidateCount, candidatesPerPage, selectedIndex int) {
 	// Debug: skip rendering if hide_candidate_window is enabled
 	if m.hideCandidateWindow {
 		m.logger.Debug("doShowCandidates skipped (hide_candidate_window enabled)")
@@ -101,8 +103,8 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorP
 	UpdateEffectiveDPIFromPoint(caretX, caretY)
 
 	// Render first to get actual window size (with hover highlight)
-	m.logger.Debug("Rendering candidates...", "hoverIndex", hoverIndex, "hoverPageBtn", hoverPageBtn)
-	img, renderResult := m.renderer.RenderCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn)
+	m.logger.Debug("Rendering candidates...", "hoverIndex", hoverIndex, "hoverPageBtn", hoverPageBtn, "selectedIndex", selectedIndex)
+	img, renderResult := m.renderer.RenderCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn, selectedIndex)
 	windowWidth := img.Bounds().Dx()
 	windowHeight := img.Bounds().Dy()
 	m.logger.Debug("Render complete", "width", windowWidth, "height", windowHeight)
@@ -235,6 +237,7 @@ func (m *Manager) RefreshCandidates() {
 	totalPages := m.totalPages
 	totalCandidateCount := m.totalCandidateCount
 	candidatesPerPage := m.candidatesPerPage
+	selectedIndex := m.selectedIndex
 	caretX := m.caretX
 	caretY := m.caretY
 	caretHeight := m.caretHeight
@@ -255,6 +258,7 @@ func (m *Manager) RefreshCandidates() {
 		TotalPages:          totalPages,
 		TotalCandidateCount: totalCandidateCount,
 		CandidatesPerPage:   candidatesPerPage,
+		SelectedIndex:       selectedIndex,
 		InputSession:        currentSession,
 	}:
 		if m.cmdEvent != 0 {
@@ -309,12 +313,13 @@ func (m *Manager) doDPIChanged() {
 		totalPages := m.totalPages
 		totalCandidateCount := m.totalCandidateCount
 		candidatesPerPage := m.candidatesPerPage
+		selectedIndex := m.selectedIndex
 		caretX := m.caretX
 		caretY := m.caretY
 		caretHeight := m.caretHeight
 		m.mu.Unlock()
 
-		m.doShowCandidates(candidates, input, cursorPos, caretX, caretY, caretHeight, page, totalPages, totalCandidateCount, candidatesPerPage)
+		m.doShowCandidates(candidates, input, cursorPos, caretX, caretY, caretHeight, page, totalPages, totalCandidateCount, candidatesPerPage, selectedIndex)
 	}
 }
 

@@ -28,6 +28,7 @@ type RenderConfig struct {
 	InputTextColor  color.Color
 	BorderColor     color.Color
 	HoverBgColor    color.Color    // Background color for hovered candidate
+	SelectedBgColor color.Color    // Background color for keyboard-selected candidate
 	Layout          string         // "horizontal" or "vertical"
 	HidePreedit     bool           // Hide preedit area when inline_preedit is enabled
 	IndexStyle      string         // "circle" (default) or "text" (plain text index)
@@ -275,6 +276,7 @@ func (r *Renderer) SetTheme(resolved *theme.ResolvedTheme) {
 	r.config.IndexColor = colors.IndexColor
 	r.config.IndexBgColor = colors.IndexBgColor
 	r.config.HoverBgColor = colors.HoverBgColor
+	r.config.SelectedBgColor = colors.SelectedBgColor
 	r.config.InputBgColor = colors.InputBgColor
 	r.config.InputTextColor = colors.InputTextColor
 	// Update style from theme

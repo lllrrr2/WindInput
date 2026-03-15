@@ -93,6 +93,7 @@ type Coordinator struct {
 	currentPage        int
 	totalPages         int
 	candidatesPerPage  int
+	selectedIndex int // 当前页内选中的候选索引（0-based），用于上下箭头键选择
 
 	// 临时英文模式状态
 	tempEnglishMode   bool   // 是否处于临时英文模式
@@ -384,6 +385,7 @@ func (c *Coordinator) clearState() {
 	c.candidates = nil
 	c.currentPage = 1
 	c.totalPages = 1
+	c.selectedIndex = 0
 
 	// 清除命令结果缓存，确保 uuid/date/time 等下次生成新值
 	c.engineMgr.InvalidateCommandCache()

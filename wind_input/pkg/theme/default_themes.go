@@ -15,6 +15,7 @@ func DefaultTheme() *Theme {
 			IndexColor:      "#FFFFFF",
 			IndexBgColor:    "#4285F4", // Blue
 			HoverBgColor:    "#E6F0FF", // Light blue
+			SelectedBgColor: "#E6F0FF", // Same as hover for default theme
 			InputBgColor:    "#F0F0F0",
 			InputTextColor:  "#646464",
 			CommentColor:    "#969696",
@@ -74,6 +75,7 @@ func DarkTheme() *Theme {
 			IndexColor:      "#FFFFFF",
 			IndexBgColor:    "#4285F4",
 			HoverBgColor:    "#3D4A5C",
+			SelectedBgColor: "#3D4A5C", // Same as hover for dark theme
 			InputBgColor:    "#3A3A3A",
 			InputTextColor:  "#B0B0B0",
 			CommentColor:    "#808080",
@@ -133,6 +135,7 @@ func MSIMETheme() *Theme {
 			IndexColor:      "#888888", // Gray index text in "text" mode
 			IndexBgColor:    "#0078D4", // Microsoft blue (used for arrows etc.)
 			HoverBgColor:    "#EBF0FE",
+			SelectedBgColor: "#80808020", // Semi-transparent gray for MSIME selected state
 			InputBgColor:    "#F5F5F5",
 			InputTextColor:  "#666666",
 			CommentColor:    "#999999",

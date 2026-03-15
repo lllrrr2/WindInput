@@ -106,6 +106,8 @@ HotkeyType CHotkeyManager::ClassifyInputKey(WPARAM vk, uint32_t modifiers)
         return HotkeyType::PageKey;
     case VK_LEFT:   // Left arrow
     case VK_RIGHT:  // Right arrow
+    case VK_UP:     // Up arrow
+    case VK_DOWN:   // Down arrow
     case VK_HOME:   // Home
     case VK_END:    // End
         return HotkeyType::CursorKey;

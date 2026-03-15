@@ -240,6 +240,54 @@ func (c *Coordinator) handleCursorEnd() *bridge.KeyEventResult {
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 }
 
+func (c *Coordinator) handleArrowUp() *bridge.KeyEventResult {
+	if len(c.candidates) == 0 {
+		return nil // 无候选时透传
+	}
+	if c.selectedIndex > 0 {
+		c.selectedIndex--
+		c.logger.Debug("Arrow up", "selectedIndex", c.selectedIndex)
+		c.showUI()
+	} else if c.currentPage > 1 {
+		// 当前页第一个，跳转到上一页最后一个
+		c.currentPage--
+		startIdx := (c.currentPage - 1) * c.candidatesPerPage
+		endIdx := startIdx + c.candidatesPerPage
+		if endIdx > len(c.candidates) {
+			endIdx = len(c.candidates)
+		}
+		c.selectedIndex = endIdx - startIdx - 1
+		c.logger.Debug("Arrow up to previous page", "currentPage", c.currentPage, "selectedIndex", c.selectedIndex)
+		c.showUI()
+	}
+	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+}
+
+func (c *Coordinator) handleArrowDown() *bridge.KeyEventResult {
+	if len(c.candidates) == 0 {
+		return nil // 无候选时透传
+	}
+	// 计算当前页候选数量
+	startIdx := (c.currentPage - 1) * c.candidatesPerPage
+	endIdx := startIdx + c.candidatesPerPage
+	if endIdx > len(c.candidates) {
+		endIdx = len(c.candidates)
+	}
+	pageCount := endIdx - startIdx
+	if c.selectedIndex < pageCount-1 {
+		c.selectedIndex++
+		c.logger.Debug("Arrow down", "selectedIndex", c.selectedIndex)
+		c.showUI()
+	} else if c.currentPage < c.totalPages {
+		// 当前页最后一个，跳转到下一页第一个
+		c.currentPage++
+		c.selectedIndex = 0
+		c.logger.Debug("Arrow down to next page", "currentPage", c.currentPage, "selectedIndex", c.selectedIndex)
+		c.showUI()
+	}
+	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+}
+
 func (c *Coordinator) handleEnter() *bridge.KeyEventResult {
 	// Commit raw input as text
 	if len(c.inputBuffer) > 0 {
@@ -287,10 +335,9 @@ func (c *Coordinator) handleEscape() *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleSpace() *bridge.KeyEventResult {
-	// Select first candidate of current page
+	// Select the currently highlighted candidate (controlled by up/down arrows)
 	if len(c.candidates) > 0 {
-		// Calculate index of first candidate on current page
-		index := (c.currentPage - 1) * c.candidatesPerPage
+		index := (c.currentPage-1)*c.candidatesPerPage + c.selectedIndex
 		if index < len(c.candidates) {
 			return c.selectCandidate(index)
 		}
@@ -331,6 +378,7 @@ func (c *Coordinator) handlePageUp() *bridge.KeyEventResult {
 	// Have candidates - always consume the key, even if at first page
 	if c.currentPage > 1 {
 		c.currentPage--
+		c.selectedIndex = 0
 		c.logger.Debug("Page up", "currentPage", c.currentPage, "totalPages", c.totalPages)
 		c.showUI()
 	}
@@ -347,6 +395,7 @@ func (c *Coordinator) handlePageDown() *bridge.KeyEventResult {
 	// Have candidates - always consume the key, even if at last page
 	if c.currentPage < c.totalPages {
 		c.currentPage++
+		c.selectedIndex = 0
 		c.logger.Debug("Page down", "currentPage", c.currentPage, "totalPages", c.totalPages)
 		c.showUI()
 	}

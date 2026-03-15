@@ -143,6 +143,7 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 		c.totalPages = 1
 	}
 	c.currentPage = 1
+	c.selectedIndex = 0
 
 	return result
 }
@@ -225,6 +226,7 @@ func (c *Coordinator) showUI() {
 		c.totalPages,
 		len(c.candidates),
 		c.candidatesPerPage,
+		c.selectedIndex,
 	)
 }
 

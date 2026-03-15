@@ -10,19 +10,19 @@ import (
 // RenderCandidates renders candidates to an image
 // hoverIndex: index of the hovered candidate (-1 for none)
 // Returns the rendered image and candidate bounding rectangles for hit testing
-func (r *Renderer) RenderCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string) (*image.RGBA, *RenderResult) {
+func (r *Renderer) RenderCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string, selectedIndex int) (*image.RGBA, *RenderResult) {
 	// Auto-refresh DPI-dependent config if DPI changed since last render
 	r.refreshDPIIfNeeded()
 	cfg := r.config
 
 	if cfg.Layout == "horizontal" {
-		return r.renderHorizontalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn)
+		return r.renderHorizontalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn, selectedIndex)
 	}
-	return r.renderVerticalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn)
+	return r.renderVerticalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn, selectedIndex)
 }
 
 // renderVerticalCandidates renders candidates in vertical layout (traditional style)
-func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string) (*image.RGBA, *RenderResult) {
+func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string, selectedIndex int) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 	scale := GetDPIScale()
 	td := r.textDrawer
@@ -159,23 +159,28 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		Rects: make([]CandidateRect, len(candidates)),
 	}
 
-	// Hover background
-	if hoverIndex >= 0 && hoverIndex < len(candidates) {
+	// Selected background (keyboard selection via up/down arrows)
+	if selectedIndex >= 0 && selectedIndex < len(candidates) {
+		itemY := candStartY + float64(selectedIndex)*cfg.ItemHeight
+		dc.SetColor(cfg.SelectedBgColor)
+		r.drawRoundedRect(dc, cfg.Padding-2, itemY, width-cfg.Padding*2+2, cfg.ItemHeight, 4*scale)
+		dc.Fill()
+
+		// Accent bar — drawn inside the selected highlight box
+		if cfg.HasAccentBar && cfg.AccentBarColor != nil {
+			barWidth := 3.0 * scale
+			barMarginY := cfg.ItemHeight * 0.2 // 竖条上下各留 20%，条高约 60%
+			dc.SetColor(cfg.AccentBarColor)
+			r.drawRoundedRect(dc, cfg.Padding-1, itemY+barMarginY, barWidth, cfg.ItemHeight-barMarginY*2, barWidth/2)
+			dc.Fill()
+		}
+	}
+
+	// Hover background (mouse hover, takes visual precedence over selected)
+	if hoverIndex >= 0 && hoverIndex < len(candidates) && hoverIndex != selectedIndex {
 		itemY := candStartY + float64(hoverIndex)*cfg.ItemHeight
 		dc.SetColor(cfg.HoverBgColor)
 		r.drawRoundedRect(dc, cfg.Padding-2, itemY, width-cfg.Padding*2+2, cfg.ItemHeight, 4*scale)
-		dc.Fill()
-	}
-
-	// Accent bar
-	if cfg.HasAccentBar && cfg.AccentBarColor != nil {
-		barWidth := 3.0 * scale
-		barMargin := height * 0.3
-		if barMargin < cfg.CornerRadius+1 {
-			barMargin = cfg.CornerRadius + 1
-		}
-		dc.SetColor(cfg.AccentBarColor)
-		r.drawRoundedRect(dc, 1, barMargin, barWidth, height-barMargin*2, barWidth/2)
 		dc.Fill()
 	}
 
@@ -299,7 +304,7 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 }
 
 // renderHorizontalCandidates renders candidates in horizontal layout (modern style)
-func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string) (*image.RGBA, *RenderResult) {
+func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input string, cursorPos int, page, totalPages int, hoverIndex int, hoverPageBtn string, selectedIndex int) (*image.RGBA, *RenderResult) {
 	cfg := r.config
 	scale := GetDPIScale()
 	td := r.textDrawer
@@ -486,18 +491,6 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 
 	y := cfg.Padding
 
-	// Accent bar
-	if cfg.HasAccentBar && cfg.AccentBarColor != nil {
-		barWidth := 3.0 * scale
-		barMargin := height * 0.3
-		if barMargin < cfg.CornerRadius+1 {
-			barMargin = cfg.CornerRadius + 1
-		}
-		dc.SetColor(cfg.AccentBarColor)
-		r.drawRoundedRect(dc, 1, barMargin, barWidth, height-barMargin*2, barWidth/2)
-		dc.Fill()
-	}
-
 	// Input area shapes
 	if !cfg.HidePreedit && input != "" {
 		preeditX := cfg.Padding + accentBarOffset
@@ -522,23 +515,42 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 
 	candY := candStartY + candidateRowHeight/2
 
-	// Draw candidate shapes (hover bg, index circles)
+	// Horizontal layout padding for hover/selected backgrounds
+	bgPadX := 8.0 * scale // 左右各 8px，更好的包裹效果
+
+	// Draw candidate shapes (selected bg, hover bg, accent bar, index circles)
 	for i := range candidates {
 		itemWidth := measures[i].totalWidth
 		px := positions[i].x
 
 		result.Rects[i] = CandidateRect{
 			Index: i,
-			X:     px - 4,
+			X:     px - bgPadX,
 			Y:     candStartY,
-			W:     itemWidth + 8,
+			W:     itemWidth + bgPadX*2,
 			H:     candidateRowHeight,
 		}
 
-		// Hover background
-		if i == hoverIndex {
+		// Selected background (keyboard selection via up/down arrows)
+		if i == selectedIndex {
+			dc.SetColor(cfg.SelectedBgColor)
+			r.drawRoundedRect(dc, px-bgPadX, candStartY, itemWidth+bgPadX*2, candidateRowHeight, 4*scale)
+			dc.Fill()
+
+			// Accent bar — drawn inside the selected highlight box
+			if cfg.HasAccentBar && cfg.AccentBarColor != nil {
+				barWidth := 3.0 * scale
+				barMarginY := candidateRowHeight * 0.2 // 竖条上下各留 20%，条高约 60%
+				dc.SetColor(cfg.AccentBarColor)
+				r.drawRoundedRect(dc, px-bgPadX+1, candStartY+barMarginY, barWidth, candidateRowHeight-barMarginY*2, barWidth/2)
+				dc.Fill()
+			}
+		}
+
+		// Hover background (mouse hover, takes visual precedence)
+		if i == hoverIndex && i != selectedIndex {
 			dc.SetColor(cfg.HoverBgColor)
-			r.drawRoundedRect(dc, px-4, candStartY, itemWidth+8, candidateRowHeight, 4*scale)
+			r.drawRoundedRect(dc, px-bgPadX, candStartY, itemWidth+bgPadX*2, candidateRowHeight, 4*scale)
 			dc.Fill()
 		}
 

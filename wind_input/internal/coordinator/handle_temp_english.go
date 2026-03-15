@@ -193,5 +193,6 @@ func (c *Coordinator) showTempEnglishUI() {
 		1, // totalPages
 		0, // totalCandidateCount
 		0, // candidatesPerPage
+		0, // selectedIndex
 	)
 }
