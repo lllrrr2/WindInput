@@ -287,7 +287,7 @@ onUnmounted(() => {
           <input
             type="range"
             min="3"
-            max="9"
+            max="10"
             step="1"
             v-model.number="formData.ui.candidates_per_page"
           />

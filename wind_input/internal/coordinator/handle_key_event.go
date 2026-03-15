@@ -347,6 +347,10 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
 		return c.handleNumberKey(int(key[0] - '0'))
 
+	case len(key) == 1 && key[0] == '0':
+		// 数字0选择第10个候选
+		return c.handleNumberKey(10)
+
 	case !hasShift && c.isSelectKey2(key, data.KeyCode):
 		// Handle 2nd candidate selection key (e.g., semicolon)
 		// Shift 时不触发选择（Shift+; 应输出 : 而非选候选）

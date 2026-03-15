@@ -369,7 +369,7 @@ func (c *Coordinator) handleSpace() *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleNumberKey(num int) *bridge.KeyEventResult {
-	// num is 1-9, convert to 0-based index within current page
+	// num is 1-9 or 10 (key '0'), convert to 0-based index within current page
 	index := (c.currentPage-1)*c.candidatesPerPage + (num - 1)
 	if index < len(c.candidates) {
 		return c.selectCandidate(index)

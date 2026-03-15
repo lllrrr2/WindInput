@@ -173,13 +173,13 @@ func (c *Coordinator) showUI() {
 		pageCandidates = c.candidates[startIdx:endIdx]
 	}
 
-	// Re-index for display (1-9)
+	// Re-index for display (1-9, 0 for 10th)
 	displayCandidates := make([]ui.Candidate, len(pageCandidates))
 	for i, cand := range pageCandidates {
 		displayCandidates[i] = ui.Candidate{
 			Text:      cand.Text,
 			Code:      cand.Code,
-			Index:     i + 1,
+			Index:     (i + 1) % 10,
 			Comment:   cand.Comment,
 			Weight:    cand.Weight,
 			HasShadow: cand.HasShadow,

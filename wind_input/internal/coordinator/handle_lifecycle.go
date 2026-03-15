@@ -269,6 +269,13 @@ func (c *Coordinator) HandleCommitRequest(data bridge.CommitRequestData) *bridge
 				text = result.Text
 				newComposition = result.NewComposition
 			}
+		} else if data.TriggerKey == 0x30 {
+			// Number key 0 selects 10th candidate
+			result := c.handleNumberKeyInternal(10)
+			if result != nil {
+				text = result.Text
+				newComposition = result.NewComposition
+			}
 		}
 	}
 
@@ -331,7 +338,7 @@ func (c *Coordinator) handleEnterInternal() *bridge.KeyEventResult {
 
 // handleNumberKeyInternal is the internal implementation of handleNumberKey (without lock)
 func (c *Coordinator) handleNumberKeyInternal(num int) *bridge.KeyEventResult {
-	// num is 1-9, convert to 0-based index within current page
+	// num is 1-9 or 10 (key '0'), convert to 0-based index within current page
 	index := (c.currentPage-1)*c.candidatesPerPage + (num - 1)
 	if index < len(c.candidates) {
 		return c.selectCandidateInternal(index)

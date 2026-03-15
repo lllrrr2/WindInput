@@ -130,6 +130,15 @@ func (c *Coordinator) handleTempPinyinKey(key string, data *bridge.KeyEventData)
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
+	case len(key) == 1 && key[0] == '0':
+		// 数字0选择第10个候选
+		pageStart := (c.currentPage - 1) * c.candidatesPerPage
+		globalIdx := pageStart + 9
+		if globalIdx < len(c.candidates) {
+			return c.selectTempPinyinCandidate(globalIdx)
+		}
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+
 	case uint32(data.KeyCode) == ipc.VK_SPACE:
 		// 选择第一个候选
 		if len(c.candidates) > 0 {
@@ -408,12 +417,12 @@ func (c *Coordinator) showTempPinyinUI() {
 		pageCandidates = c.candidates[startIdx:endIdx]
 	}
 
-	// 重新编号显示（1-9）
+	// 重新编号显示（1-9, 0 for 10th）
 	displayCandidates := make([]ui.Candidate, len(pageCandidates))
 	for i, cand := range pageCandidates {
 		displayCandidates[i] = ui.Candidate{
 			Text:    cand.Text,
-			Index:   i + 1,
+			Index:   (i + 1) % 10,
 			Comment: cand.Comment,
 			Weight:  cand.Weight,
 		}
