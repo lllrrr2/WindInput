@@ -13,12 +13,12 @@ import (
 func getTestDictPath(t *testing.T) string {
 	// 尝试多个可能的路径
 	paths := []string{
-		"../../../../build/dict/wubi/wubi86.txt", // 从 wind_input/internal/engine/wubi 到 build
-		"../../../build/dict/wubi/wubi86.txt",
-		"../../build/dict/wubi/wubi86.txt",
-		"../build/dict/wubi/wubi86.txt",
-		"build/dict/wubi/wubi86.txt",
-		"dict/wubi/wubi86.txt",
+		"../../../../build/dict/wubi86/wubi86.txt", // 从 wind_input/internal/engine/wubi 到 build
+		"../../../build/dict/wubi86/wubi86.txt",
+		"../../build/dict/wubi86/wubi86.txt",
+		"../build/dict/wubi86/wubi86.txt",
+		"build/dict/wubi86/wubi86.txt",
+		"dict/wubi86/wubi86.txt",
 	}
 
 	for _, p := range paths {
@@ -38,7 +38,7 @@ func getTestDictPath(t *testing.T) string {
 // initCommonCharsForTest 为测试初始化通用汉字表
 func initCommonCharsForTest(dictPath string) {
 	// 从词库路径推断 common_chars.txt 路径
-	// dictPath: .../build/dict/wubi/wubi86.txt
+	// dictPath: .../build/dict/wubi86/wubi86.txt
 	// commonPath: .../build/dict/common_chars.txt
 	baseDir := filepath.Dir(filepath.Dir(dictPath)) // 获取 .../build/dict
 	commonPath := filepath.Join(baseDir, "common_chars.txt")

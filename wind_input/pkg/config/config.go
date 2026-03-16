@@ -169,7 +169,7 @@ func DefaultConfig() *Config {
 			Available: []string{"wubi86", "pinyin"},
 		},
 		Dictionary: DictionaryConfig{
-			SystemDict:     "dict/wubi/wubi86.txt",
+			SystemDict:     "dict/wubi86/wubi86.txt",
 			PinyinUserDict: PinyinUserDictFile,
 			WubiUserDict:   WubiUserDictFile,
 			PinyinDict:     "dict/pinyin",

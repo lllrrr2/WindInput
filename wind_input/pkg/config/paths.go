@@ -102,7 +102,7 @@ func EnsureConfigDir() error {
 
 // GetWubiDictPath returns the path to the wubi dictionary
 func GetWubiDictPath() string {
-	return "dict/wubi/wubi86.txt"
+	return "dict/wubi86/wubi86.txt"
 }
 
 // GetPinyinDictPath returns the path to the pinyin dictionary directory

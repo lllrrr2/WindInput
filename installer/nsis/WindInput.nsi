@@ -323,8 +323,8 @@ install_cleanup_bak_end:
   File "${BUILD_DIR}\dict\pinyin\8105.dict.yaml"
   File "${BUILD_DIR}\dict\pinyin\base.dict.yaml"
   File "${BUILD_DIR}\dict\pinyin\unigram.txt"
-  SetOutPath "$INSTDIR\dict\wubi"
-  File "${BUILD_DIR}\dict\wubi\wubi86.txt"
+  SetOutPath "$INSTDIR\dict\wubi86"
+  File "${BUILD_DIR}\dict\wubi86\wubi86.txt"
 
   ; --- Step 6b: Schema files (input method configurations) ---
   DetailPrint "正在复制输入方案配置..."

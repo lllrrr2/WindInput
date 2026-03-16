@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	srcPath := flag.String("src", "dict/wubi/wubi86.txt", "五笔码表源文件路径")
-	outDir := flag.String("out", "dict/wubi", "输出目录")
+	srcPath := flag.String("src", "dict/wubi86/wubi86.txt", "五笔码表源文件路径")
+	outDir := flag.String("out", "dict/wubi86", "输出目录")
 	flag.Parse()
 
 	wdbPath := filepath.Join(*outDir, "wubi.wdb")

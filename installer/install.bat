@@ -139,7 +139,7 @@ if exist "%BUILD_DIR%\wind_setting.exe" (
 echo [6/10] 从 build 目录复制词库(源文件, wdb 运行时自动生成)...
 REM 创建词库目录
 if not exist "%INSTALL_DIR%\dict\pinyin" mkdir "%INSTALL_DIR%\dict\pinyin"
-if not exist "%INSTALL_DIR%\dict\wubi" mkdir "%INSTALL_DIR%\dict\wubi"
+if not exist "%INSTALL_DIR%\dict\wubi86" mkdir "%INSTALL_DIR%\dict\wubi86"
 
 REM 拼音词库源文件（Rime YAML 格式）
 if exist "%BUILD_DIR%\dict\pinyin\8105.dict.yaml" (
@@ -164,8 +164,8 @@ if exist "%BUILD_DIR%\dict\pinyin\unigram.txt" (
 )
 
 REM 五笔码表
-if exist "%BUILD_DIR%\dict\wubi\wubi86.txt" (
-    copy /Y "%BUILD_DIR%\dict\wubi\wubi86.txt" "%INSTALL_DIR%\dict\wubi\wubi86.txt" >nul
+if exist "%BUILD_DIR%\dict\wubi86\wubi86.txt" (
+    copy /Y "%BUILD_DIR%\dict\wubi86\wubi86.txt" "%INSTALL_DIR%\dict\wubi86\wubi86.txt" >nul
     echo   - 五笔词库: wubi86.txt
 ) else (
     echo [警告] build 目录中未找到五笔词库,请先运行 build_all.bat
@@ -242,7 +242,7 @@ echo - wind_setting.exe (设置界面)
 echo - dict\pinyin\8105.dict.yaml (拼音单字词库)
 echo - dict\pinyin\base.dict.yaml (拼音基础词库)
 echo - dict\pinyin\unigram.txt (语言模型)
-echo - dict\wubi\wubi86.txt (五笔86词库)
+echo - dict\wubi86\wubi86.txt (五笔86词库)
 echo - dict\common_chars.txt (常用字表)
 echo - schemas\*.schema.yaml (输入方案配置)
 echo.

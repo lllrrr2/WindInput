@@ -98,7 +98,7 @@ echo.
 echo [5/6] 准备词库文件...
 cd "%SCRIPT_DIR%"
 if not exist "%SCRIPT_DIR%build\dict\pinyin" mkdir "%SCRIPT_DIR%build\dict\pinyin"
-if not exist "%SCRIPT_DIR%build\dict\wubi" mkdir "%SCRIPT_DIR%build\dict\wubi"
+if not exist "%SCRIPT_DIR%build\dict\wubi86" mkdir "%SCRIPT_DIR%build\dict\wubi86"
 
 REM 复制拼音词库（Rime 格式）
 if exist "%RIME_DIR%\8105.dict.yaml" (
@@ -140,7 +140,7 @@ if exist "%SCRIPT_DIR%dict\pinyin\unigram.txt" (
 
 REM 复制五笔词库
 if exist "%SCRIPT_DIR%ref\极爽词库6.txt" (
-    copy /Y "%SCRIPT_DIR%ref\极爽词库6.txt" "%SCRIPT_DIR%build\dict\wubi\wubi86.txt" >nul
+    copy /Y "%SCRIPT_DIR%ref\极爽词库6.txt" "%SCRIPT_DIR%build\dict\wubi86\wubi86.txt" >nul
     echo   - 已复制五笔词库
 ) else (
     echo [警告] ref 目录中未找到五笔词库
@@ -156,8 +156,8 @@ if exist "%SCRIPT_DIR%dict\common_chars.txt" (
 
 REM 复制输入方案配置
 if not exist "%SCRIPT_DIR%build\schemas" mkdir "%SCRIPT_DIR%build\schemas"
-if exist "%SCRIPT_DIR%schemas\*.schema.yaml" (
-    copy /Y "%SCRIPT_DIR%schemas\*.schema.yaml" "%SCRIPT_DIR%build\schemas\" >nul
+if exist "%SCRIPT_DIR%data\schemas\*.schema.yaml" (
+    copy /Y "%SCRIPT_DIR%data\schemas\*.schema.yaml" "%SCRIPT_DIR%build\schemas\" >nul
     echo   - 已复制输入方案配置
 ) else (
     echo [警告] 未找到输入方案配置文件
@@ -196,7 +196,7 @@ echo - build\wind_setting.exe(设置界面)
 echo - build\dict\pinyin\8105.dict.yaml(拼音单字词库)
 echo - build\dict\pinyin\base.dict.yaml(拼音基础词库)
 echo - build\dict\pinyin\unigram.txt(Unigram 语言模型)
-echo - build\dict\wubi\wubi86.txt(五笔词库)
+echo - build\dict\wubi86\wubi86.txt(五笔词库)
 echo - build\dict\common_chars.txt(常用字表)
 echo - build\schemas\*.schema.yaml(输入方案配置)
 echo.

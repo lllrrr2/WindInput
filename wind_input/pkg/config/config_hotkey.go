@@ -14,7 +14,7 @@ func UpdateEngineType(engineType string) error {
 
 	switch engineType {
 	case "wubi":
-		cfg.Dictionary.SystemDict = "dict/wubi/wubi86.txt"
+		cfg.Dictionary.SystemDict = "dict/wubi86/wubi86.txt"
 	case "pinyin":
 		cfg.Dictionary.SystemDict = "dict/pinyin"
 	}
