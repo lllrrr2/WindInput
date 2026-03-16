@@ -14,18 +14,18 @@ var byteOrder = binary.LittleEndian
 // DictMagic pinyin.wdb 文件魔数
 var DictMagic = [4]byte{'W', 'D', 'I', 'C'}
 
-const DictVersion uint32 = 1
+const DictVersion uint32 = 2
 
-// DictFileHeader pinyin.wdb 文件头 (32 bytes)
+// DictFileHeader wdb 文件头 (32 bytes)
 type DictFileHeader struct {
 	Magic     [4]byte // "WDIC"
-	Version   uint32  // 1
+	Version   uint32  // 2
 	KeyCount  uint32  // 主索引的 key 数量
 	IndexOff  uint32  // KeyIndex 区偏移
 	DataOff   uint32  // EntryRecords 区偏移
 	StrOff    uint32  // StringPool 区偏移
 	AbbrevOff uint32  // Abbrev Section 偏移 (0 表示无)
-	Reserved1 uint32
+	MetaOff   uint32  // Meta Section 偏移 (0 表示无)
 }
 
 const DictFileHeaderSize = 32
@@ -98,12 +98,15 @@ type UnigramKeyIndex struct {
 
 const UnigramKeyIndexSize = 12
 
-// Validate 验证 DictFileHeader
+// MetaHeaderSize Meta 段头部大小 (4 bytes: DataLen)
+const MetaHeaderSize = 4
+
+// Validate 验证 DictFileHeader（兼容 V1 和 V2）
 func (h *DictFileHeader) Validate() error {
 	if h.Magic != DictMagic {
 		return fmt.Errorf("无效的词库文件魔数: %v", h.Magic)
 	}
-	if h.Version != DictVersion {
+	if h.Version != DictVersion && h.Version != 1 {
 		return fmt.Errorf("不支持的词库版本: %d", h.Version)
 	}
 	return nil

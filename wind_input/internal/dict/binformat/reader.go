@@ -51,6 +51,7 @@ func OpenDict(path string) (*DictReader, error) {
 	r.header.DataOff = byteOrder.Uint32(data[16:20])
 	r.header.StrOff = byteOrder.Uint32(data[20:24])
 	r.header.AbbrevOff = byteOrder.Uint32(data[24:28])
+	r.header.MetaOff = byteOrder.Uint32(data[28:32])
 
 	if err := r.header.Validate(); err != nil {
 		mf.Close()
@@ -86,6 +87,30 @@ func (r *DictReader) Close() error {
 		return r.mmap.Close()
 	}
 	return nil
+}
+
+// ReadMeta 读取嵌入的元数据（JSON 格式）
+// 返回 nil 表示无元数据
+func (r *DictReader) ReadMeta() []byte {
+	if r.header.MetaOff == 0 {
+		return nil
+	}
+	off := r.header.MetaOff
+	if int(off)+MetaHeaderSize > len(r.data) {
+		return nil
+	}
+	dataLen := byteOrder.Uint32(r.data[off : off+4])
+	start := off + MetaHeaderSize
+	end := start + dataLen
+	if int(end) > len(r.data) {
+		return nil
+	}
+	return r.data[start:end]
+}
+
+// HasMeta 是否包含元数据
+func (r *DictReader) HasMeta() bool {
+	return r.header.MetaOff > 0
 }
 
 // KeyCount 返回主索引 key 数量

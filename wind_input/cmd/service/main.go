@@ -248,21 +248,17 @@ func main() {
 		dictManager.Close()
 		logger.Info("DictManager closed, user data saved")
 	}()
-	pinyinUserDictPath := filepath.Join(dataDir, cfg.Dictionary.PinyinUserDict)
-	wubiUserDictPath := filepath.Join(dataDir, cfg.Dictionary.WubiUserDict)
-	if err := dictManager.Initialize(pinyinUserDictPath, wubiUserDictPath); err != nil {
+	if err := dictManager.Initialize(); err != nil {
 		logger.Warn("Failed to initialize dict manager", "error", err)
-	} else {
-		stats := dictManager.GetStats()
-		logger.Info("DictManager initialized",
-			"phrases", stats["phrases"],
-			"commands", stats["commands"],
-			"pinyin_user_words", stats["pinyin_user_words"],
-			"wubi_user_words", stats["wubi_user_words"],
-			"shadow_rules", stats["shadow_rules"])
 	}
-	// 设置初始活跃引擎词库
+	// 根据配置的活跃方案切换用户数据层
 	dictManager.SetActiveEngine(cfg.Engine.Type)
+	stats := dictManager.GetStats()
+	logger.Info("DictManager initialized",
+		"phrases", stats["phrases"],
+		"commands", stats["commands"],
+		"user_words", stats["user_words"],
+		"shadow_rules", stats["shadow_rules"])
 	// 设置候选排序模式
 	if cfg.Engine.Wubi.CandidateSortMode != "" {
 		dictManager.SetSortMode(candidate.CandidateSortMode(cfg.Engine.Wubi.CandidateSortMode))

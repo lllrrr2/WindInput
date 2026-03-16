@@ -58,6 +58,24 @@ func ConvertCodeTableToWdb(srcPath, wdbPath string) error {
 		writer.AddCode(code, binEntries)
 	}
 
+	// 将 CodeTableHeader 编为 JSON 嵌入 wdb
+	meta := CodeTableMeta{
+		Name:          ct.Header.Name,
+		Version:       ct.Header.Version,
+		Author:        ct.Header.Author,
+		CodeScheme:    ct.Header.CodeScheme,
+		CodeLength:    ct.Header.CodeLength,
+		BWCodeLength:  ct.Header.BWCodeLength,
+		SpecialPrefix: ct.Header.SpecialPrefix,
+		PhraseRule:    ct.Header.PhraseRule,
+		EntryCount:    ct.EntryCount(),
+	}
+	metaJSON, err := json.Marshal(&meta)
+	if err != nil {
+		return fmt.Errorf("序列化 meta 失败: %w", err)
+	}
+	writer.SetMeta(metaJSON)
+
 	// 确保输出目录存在
 	os.MkdirAll(filepath.Dir(wdbPath), 0755)
 
@@ -76,27 +94,16 @@ func ConvertCodeTableToWdb(srcPath, wdbPath string) error {
 		return fmt.Errorf("flush 失败: %w", err)
 	}
 
-	// 写入 meta.json sidecar
-	meta := CodeTableMeta{
-		Name:          ct.Header.Name,
-		Version:       ct.Header.Version,
-		Author:        ct.Header.Author,
-		CodeScheme:    ct.Header.CodeScheme,
-		CodeLength:    ct.Header.CodeLength,
-		BWCodeLength:  ct.Header.BWCodeLength,
-		SpecialPrefix: ct.Header.SpecialPrefix,
-		PhraseRule:    ct.Header.PhraseRule,
-		EntryCount:    ct.EntryCount(),
-	}
+	// Deprecated: 写入 meta.json sidecar（Phase 3 移除，manager_init.go 仍在使用）
 	if err := writeMetaJSON(MetaPath(wdbPath), &meta); err != nil {
-		return fmt.Errorf("写入 meta.json 失败: %w", err)
+		log.Printf("[dictcache] 写入 sidecar meta.json 失败（非致命）: %v", err)
 	}
 
 	log.Printf("[dictcache] 码表转换完成: %d 编码", len(entries))
 	return nil
 }
 
-// LoadCodeTableMeta 加载 meta.json
+// LoadCodeTableMeta 加载 meta.json（Deprecated: Phase 3 移除，改用 LoadCodeTableMetaFromWdb）
 func LoadCodeTableMeta(wdbPath string) (*CodeTableMeta, error) {
 	data, err := os.ReadFile(MetaPath(wdbPath))
 	if err != nil {
@@ -105,6 +112,19 @@ func LoadCodeTableMeta(wdbPath string) (*CodeTableMeta, error) {
 	var meta CodeTableMeta
 	if err := json.Unmarshal(data, &meta); err != nil {
 		return nil, err
+	}
+	return &meta, nil
+}
+
+// LoadCodeTableMetaFromWdb 从 wdb 文件嵌入的 meta 段读取元数据
+func LoadCodeTableMetaFromWdb(reader *binformat.DictReader) (*CodeTableMeta, error) {
+	data := reader.ReadMeta()
+	if data == nil {
+		return nil, fmt.Errorf("wdb 文件不包含元数据")
+	}
+	var meta CodeTableMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil, fmt.Errorf("解析 wdb 元数据失败: %w", err)
 	}
 	return &meta, nil
 }

@@ -27,8 +27,9 @@ type AbbrevEntry struct {
 
 // DictWriter 词库二进制格式写入器
 type DictWriter struct {
-	codes   []DictCodeEntry
-	abbrevs []AbbrevEntry
+	codes    []DictCodeEntry
+	abbrevs  []AbbrevEntry
+	metaJSON []byte // 可选的 JSON 元数据
 }
 
 // NewDictWriter 创建词库写入器
@@ -44,6 +45,11 @@ func (w *DictWriter) AddCode(code string, entries []DictEntry) {
 // AddAbbrev 添加一个简拼及其候选词
 func (w *DictWriter) AddAbbrev(abbrev string, entries []DictEntry) {
 	w.abbrevs = append(w.abbrevs, AbbrevEntry{Abbrev: abbrev, Entries: entries})
+}
+
+// SetMeta 设置元数据（JSON 格式）
+func (w *DictWriter) SetMeta(jsonData []byte) {
+	w.metaJSON = jsonData
 }
 
 // Write 将词库写入到 writer
@@ -137,6 +143,16 @@ func (w *DictWriter) Write(out io.Writer) error {
 	}
 	abbrevIdxOff := abbrevOff + AbbrevHeaderSize
 
+	// 计算 MetaOff
+	var metaOff uint32
+	if len(w.metaJSON) > 0 {
+		if abbrevCount > 0 {
+			metaOff = abbrevIdxOff + abbrevCount*AbbrevIndexSize
+		} else {
+			metaOff = strOff + pool.Size()
+		}
+	}
+
 	// 5. 写入 Header
 	header := DictFileHeader{
 		Magic:     DictMagic,
@@ -146,6 +162,7 @@ func (w *DictWriter) Write(out io.Writer) error {
 		DataOff:   dataOff,
 		StrOff:    strOff,
 		AbbrevOff: abbrevOff,
+		MetaOff:   metaOff,
 	}
 	if err := binary.Write(out, byteOrder, header); err != nil {
 		return fmt.Errorf("写入文件头失败: %w", err)
@@ -202,6 +219,20 @@ func (w *DictWriter) Write(out io.Writer) error {
 			if err := writeAbbrevIndex(out, ai); err != nil {
 				return err
 			}
+		}
+	}
+
+	// 10. 写入 Meta Section（如果有）
+	if len(w.metaJSON) > 0 {
+		// 写入数据长度 (4 bytes)
+		var metaLenBuf [MetaHeaderSize]byte
+		byteOrder.PutUint32(metaLenBuf[0:4], uint32(len(w.metaJSON)))
+		if _, err := out.Write(metaLenBuf[:]); err != nil {
+			return fmt.Errorf("写入 Meta 长度失败: %w", err)
+		}
+		// 写入 JSON 数据
+		if _, err := out.Write(w.metaJSON); err != nil {
+			return fmt.Errorf("写入 Meta 数据失败: %w", err)
 		}
 	}
 
