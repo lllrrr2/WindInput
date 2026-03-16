@@ -142,15 +142,15 @@
       <div class="dict-engine-switcher">
         <span class="dict-engine-label">词库类型：</span>
         <button
-          :class="['dict-engine-btn', { active: userDictEngine === 'wubi' }]"
-          @click="handleSwitchUserDictEngine('wubi')"
+          :class="['dict-engine-btn', { active: userDictSchema === 'wubi86' }]"
+          @click="handleSwitchUserDictSchema('wubi86')"
           :disabled="dictLoading"
         >
           五笔
         </button>
         <button
-          :class="['dict-engine-btn', { active: userDictEngine === 'pinyin' }]"
-          @click="handleSwitchUserDictEngine('pinyin')"
+          :class="['dict-engine-btn', { active: userDictSchema === 'pinyin' }]"
+          @click="handleSwitchUserDictSchema('pinyin')"
           :disabled="dictLoading"
         >
           拼音
@@ -368,7 +368,7 @@ const dictMessageType = ref<"success" | "error">("success");
 const showAddPhraseForm = ref(false);
 const newPhrase = ref({ code: "", text: "", weight: 0 });
 
-const userDictEngine = ref<"wubi" | "pinyin">("wubi");
+const userDictSchema = ref<string>("wubi86");
 const showAddWordForm = ref(false);
 const newWord = ref({ code: "", text: "", weight: 0 });
 
@@ -396,7 +396,7 @@ async function loadDictData() {
         wailsApi.getUserDict(),
         wailsApi.getShadowRules(),
         wailsApi.getUserDictStats(),
-        wailsApi.getUserDictEngineType(),
+        wailsApi.getUserDictSchemaID(),
       ]);
     phrases.value = phrasesData || [];
     userDict.value = userDictData || [];
@@ -406,8 +406,8 @@ async function loadDictData() {
       phrase_count: 0,
       shadow_count: 0,
     };
-    if (engineType === "pinyin" || engineType === "wubi") {
-      userDictEngine.value = engineType;
+    if (engineType) {
+      userDictSchema.value = engineType;
     }
   } catch (e) {
     console.error("加载词库数据失败", e);
@@ -417,12 +417,12 @@ async function loadDictData() {
   }
 }
 
-async function handleSwitchUserDictEngine(engineType: "wubi" | "pinyin") {
-  if (engineType === userDictEngine.value) return;
+async function handleSwitchUserDictSchema(schemaID: string) {
+  if (schemaID === userDictSchema.value) return;
   dictLoading.value = true;
   try {
-    await wailsApi.switchUserDictEngine(engineType);
-    userDictEngine.value = engineType;
+    await wailsApi.switchUserDictSchema(schemaID);
+    userDictSchema.value = schemaID;
     const [userDictData, stats] = await Promise.all([
       wailsApi.getUserDict(),
       wailsApi.getUserDictStats(),

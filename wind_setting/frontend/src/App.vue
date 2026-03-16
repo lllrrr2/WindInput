@@ -93,16 +93,16 @@ async function loadDataFromWails() {
 
     engines.value = [
       {
-        type: "wubi",
+        type: "wubi86",
         displayName: "五笔输入",
         description: "86版五笔",
-        isActive: config.value?.engine?.type === "wubi",
+        isActive: config.value?.schema?.active === "wubi86",
       },
       {
         type: "pinyin",
         displayName: "拼音输入",
         description: "全拼输入法",
-        isActive: config.value?.engine?.type === "pinyin",
+        isActive: config.value?.schema?.active === "pinyin",
       },
     ];
 
@@ -144,6 +144,7 @@ function mergeWithDefaults(cfg: any): Config {
   const defaults = getDefaultConfig();
   return {
     startup: { ...defaults.startup, ...cfg.startup },
+    schema: { ...defaults.schema, ...cfg.schema },
     dictionary: { ...defaults.dictionary, ...cfg.dictionary },
     engine: {
       ...defaults.engine,
@@ -292,7 +293,7 @@ async function resetCurrentPageDefaults() {
   switch (activeTab.value) {
     case "general":
       formData.value.startup = { ...defaults.startup };
-      formData.value.engine.type = defaults.engine.type;
+      formData.value.schema.active = defaults.schema.active;
       break;
     case "input":
       formData.value.engine = {

@@ -11,12 +11,25 @@ type ShadowEditor struct {
 	data *dictfile.ShadowConfig
 }
 
-// NewShadowEditor 创建 Shadow 编辑器
+// NewShadowEditor 创建 Shadow 编辑器（根据当前活跃方案加载对应文件）
 func NewShadowEditor() (*ShadowEditor, error) {
-	path, err := config.GetShadowPath()
+	cfg, err := config.Load()
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+	return NewShadowEditorForSchema(cfg.Schema.Active)
+}
+
+// NewShadowEditorForSchema 根据方案 ID 创建 Shadow 编辑器
+func NewShadowEditorForSchema(schemaID string) (*ShadowEditor, error) {
+	configDir, err := config.GetConfigDir()
 	if err != nil {
 		return nil, err
 	}
+
+	// 按方案 ID 确定 shadow 文件名
+	shadowFile := "shadow_" + schemaID + ".yaml"
+	path := configDir + "/" + shadowFile
 
 	return &ShadowEditor{
 		BaseEditor: NewBaseEditor(path),

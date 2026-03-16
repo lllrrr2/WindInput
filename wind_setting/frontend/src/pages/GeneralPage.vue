@@ -68,12 +68,12 @@ const inputModeOptions = computed(() => {
 
 const currentInputMode = computed(() => {
   return inputModeOptions.value.find(
-    (option) => option.value === props.formData.engine.type,
+    (option) => option.value === props.formData.schema.active,
   );
 });
 
 function onInputModeSelect(mode: string) {
-  props.formData.engine.type = mode;
+  props.formData.schema.active = mode;
   // Update engines isActive flags
   props.engines.forEach((engine) => {
     engine.isActive = engine.type === mode;
@@ -132,9 +132,7 @@ onUnmounted(() => {
                   {{ currentInputMode?.label || "选择输入方案" }}
                 </div>
                 <div class="theme-select-sub">
-                  <span>{{
-                    currentInputMode?.description || "暂无描述"
-                  }}</span>
+                  <span>{{ currentInputMode?.description || "暂无描述" }}</span>
                 </div>
               </div>
               <span class="theme-select-arrow">&#9662;</span>
@@ -145,7 +143,7 @@ onUnmounted(() => {
                 :key="option.value"
                 type="button"
                 class="theme-option"
-                :class="{ selected: formData.engine.type === option.value }"
+                :class="{ selected: formData.schema.active === option.value }"
                 :disabled="option.disabled"
                 @click="!option.disabled && onInputModeSelect(option.value)"
               >

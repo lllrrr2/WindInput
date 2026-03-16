@@ -117,9 +117,16 @@ export interface AdvancedConfig {
   log_level: string;
 }
 
+// 输入方案配置
+export interface SchemaConfig {
+  active: string;
+  available: string[];
+}
+
 // 完整配置
 export interface Config {
   startup: StartupConfig;
+  schema: SchemaConfig;
   dictionary: DictionaryConfig;
   engine: EngineConfig;
   hotkeys: HotkeyConfig;
@@ -290,8 +297,12 @@ export function getDefaultConfig(): Config {
       default_full_width: false,
       default_chinese_punct: true,
     },
+    schema: {
+      active: "wubi86",
+      available: ["wubi86", "pinyin"],
+    },
     dictionary: {
-      system_dict: "dict/wubi/wubi86.txt",
+      system_dict: "dict/wubi86/wubi86.txt",
       pinyin_user_dict: "pinyin_user_words.txt",
       wubi_user_dict: "wubi_user_words.txt",
       pinyin_dict: "dict/pinyin",

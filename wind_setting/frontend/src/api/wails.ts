@@ -139,12 +139,12 @@ export async function reloadUserDict(): Promise<void> {
   return App.ReloadUserDict();
 }
 
-export async function getUserDictEngineType(): Promise<string> {
-  return App.GetUserDictEngineType();
+export async function getUserDictSchemaID(): Promise<string> {
+  return App.GetUserDictSchemaID();
 }
 
-export async function switchUserDictEngine(engineType: string): Promise<void> {
-  return App.SwitchUserDictEngine(engineType);
+export async function switchUserDictSchema(schemaID: string): Promise<void> {
+  return App.SwitchUserDictSchema(schemaID);
 }
 
 // 导入导出结果类型
@@ -240,8 +240,12 @@ export function getDefaultConfig(): Config {
       default_full_width: false,
       default_chinese_punct: true,
     },
+    schema: {
+      active: "wubi86",
+      available: ["wubi86", "pinyin"],
+    },
     dictionary: {
-      system_dict: "dict/wubi/wubi86.txt",
+      system_dict: "dict/wubi86/wubi86.txt",
       pinyin_user_dict: "pinyin_user_words.txt",
       wubi_user_dict: "wubi_user_words.txt",
       pinyin_dict: "dict/pinyin",

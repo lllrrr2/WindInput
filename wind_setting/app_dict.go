@@ -263,17 +263,17 @@ func (a *App) ReloadUserDict() error {
 	return a.userDictEditor.Reload()
 }
 
-// GetUserDictEngineType 获取当前用户词库对应的引擎类型
-func (a *App) GetUserDictEngineType() string {
+// GetUserDictSchemaID 获取当前用户词库对应的方案 ID
+func (a *App) GetUserDictSchemaID() string {
 	cfg, err := config.Load()
 	if err != nil {
-		return "wubi"
+		return "wubi86"
 	}
-	return cfg.Engine.Type
+	return cfg.Schema.Active
 }
 
-// SwitchUserDictEngine 切换用户词库到指定引擎
-func (a *App) SwitchUserDictEngine(engineType string) error {
+// SwitchUserDictSchema 切换用户词库到指定方案
+func (a *App) SwitchUserDictSchema(schemaID string) error {
 	// 先保存当前词库
 	if a.userDictEditor != nil {
 		a.userDictEditor.Save()
@@ -281,8 +281,8 @@ func (a *App) SwitchUserDictEngine(engineType string) error {
 		a.fileWatcher.Unwatch(a.userDictEditor.GetFilePath())
 	}
 
-	// 创建新引擎类型的词库编辑器
-	newEditor, err := editor.NewUserDictEditorForEngine(engineType)
+	// 创建新方案的词库编辑器
+	newEditor, err := editor.NewUserDictEditorForSchema(schemaID)
 	if err != nil {
 		return fmt.Errorf("failed to create user dict editor: %w", err)
 	}
