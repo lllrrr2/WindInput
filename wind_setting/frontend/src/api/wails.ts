@@ -12,6 +12,29 @@ export type ShadowRuleItem = main.ShadowRuleItem;
 export type FileChangeStatus = main.FileChangeStatus;
 export type ServiceStatus = control.ServiceStatus;
 export type ThemeInfo = main.ThemeInfo;
+export type SchemaInfo = main.SchemaInfo;
+export type SchemaConfig = main.SchemaConfig;
+
+// ===== Schema API =====
+
+export async function getAvailableSchemas(): Promise<SchemaInfo[]> {
+  return App.GetAvailableSchemas();
+}
+
+export async function getSchemaConfig(schemaID: string): Promise<SchemaConfig> {
+  return App.GetSchemaConfig(schemaID);
+}
+
+export async function saveSchemaConfig(
+  schemaID: string,
+  cfg: SchemaConfig,
+): Promise<void> {
+  return App.SaveSchemaConfig(schemaID, cfg);
+}
+
+export async function switchActiveSchema(schemaID: string): Promise<void> {
+  return App.SwitchActiveSchema(schemaID);
+}
 
 // 词库统计类型
 export interface DictStats {

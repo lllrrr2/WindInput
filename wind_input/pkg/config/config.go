@@ -9,15 +9,15 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Startup    StartupConfig    `yaml:"startup" json:"startup"`
-	Schema     SchemaConfig     `yaml:"schema" json:"schema"`
-	Dictionary DictionaryConfig `yaml:"dictionary" json:"dictionary"` // Deprecated: 迁移到 schema 文件，Phase 3 移除
-	Engine     EngineConfig     `yaml:"engine" json:"engine"`         // Deprecated: 迁移到 schema 文件，Phase 3 移除
-	Hotkeys    HotkeyConfig     `yaml:"hotkeys" json:"hotkeys"`
-	UI         UIConfig         `yaml:"ui" json:"ui"`
-	Toolbar    ToolbarConfig    `yaml:"toolbar" json:"toolbar"`
-	Input      InputConfig      `yaml:"input" json:"input"`
-	Advanced   AdvancedConfig   `yaml:"advanced" json:"advanced"`
+	Startup    StartupConfig     `yaml:"startup" json:"startup"`
+	Schema     SchemaConfig      `yaml:"schema" json:"schema"`
+	Dictionary *DictionaryConfig `yaml:"dictionary,omitempty" json:"dictionary,omitempty"` // Deprecated: 仅兼容旧配置读取，保存时不输出
+	Engine     *EngineConfig     `yaml:"engine,omitempty" json:"engine,omitempty"`         // Deprecated: 仅兼容旧配置读取，保存时不输出
+	Hotkeys    HotkeyConfig      `yaml:"hotkeys" json:"hotkeys"`
+	UI         UIConfig          `yaml:"ui" json:"ui"`
+	Toolbar    ToolbarConfig     `yaml:"toolbar" json:"toolbar"`
+	Input      InputConfig       `yaml:"input" json:"input"`
+	Advanced   AdvancedConfig    `yaml:"advanced" json:"advanced"`
 }
 
 // SchemaConfig 输入方案配置
@@ -168,28 +168,7 @@ func DefaultConfig() *Config {
 			Active:    "wubi86",
 			Available: []string{"wubi86", "pinyin"},
 		},
-		Dictionary: DictionaryConfig{
-			SystemDict:     "dict/wubi86/wubi86.txt",
-			PinyinUserDict: PinyinUserDictFile,
-			WubiUserDict:   WubiUserDictFile,
-			PinyinDict:     "dict/pinyin",
-		},
-		Engine: EngineConfig{
-			Type:       "wubi",
-			FilterMode: "smart",
-			Pinyin: PinyinConfig{
-				ShowWubiHint:    true,
-				UseSmartCompose: true,
-			},
-			Wubi: WubiConfig{
-				AutoCommitAt4:     false,
-				ClearOnEmptyAt4:   false,
-				TopCodeCommit:     false,
-				PunctCommit:       true,
-				ShowCodeHint:      true,
-				CandidateSortMode: "frequency",
-			},
-		},
+		// Dictionary 和 Engine 设为 nil，保存时不输出（Deprecated 字段）
 		Hotkeys: HotkeyConfig{
 			ToggleModeKeys:  []string{"lshift", "rshift"},
 			CommitOnSwitch:  true,
@@ -271,6 +250,20 @@ func LoadFrom(path string) (*Config, error) {
 
 	// 迁移旧配置格式
 	config.migrateOldConfig(data)
+
+	// Schema 兜底：如果 active 为空，从旧 engine.type 推断
+	if config.Schema.Active == "" {
+		switch config.Engine.Type {
+		case "pinyin":
+			config.Schema.Active = "pinyin"
+		default:
+			config.Schema.Active = "wubi86"
+		}
+	}
+	// 如果 available 为空，使用默认值
+	if len(config.Schema.Available) == 0 {
+		config.Schema.Available = []string{"wubi86", "pinyin"}
+	}
 
 	return config, nil
 }

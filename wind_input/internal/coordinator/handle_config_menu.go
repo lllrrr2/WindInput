@@ -201,7 +201,7 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 				c.logger.Error("Failed to load config for reload", "error", err)
 				return
 			}
-			c.UpdateEngineConfig(&newCfg.Engine)
+			c.UpdateEngineConfig(newCfg.Engine)
 			c.UpdateHotkeyConfig(&newCfg.Hotkeys)
 			c.UpdateStartupConfig(&newCfg.Startup)
 			c.UpdateUIConfig(&newCfg.UI)

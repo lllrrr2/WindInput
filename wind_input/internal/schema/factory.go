@@ -71,8 +71,13 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 		log.Printf("[SchemaFactory] 码表加载成功 (%s), 词条数: %d", s.Schema.ID, engine.GetEntryCount())
 	}
 
-	// 设置 DictManager
+	// 注册码表为 CompositeDict 的 system layer + 设置 DictManager
 	if dm != nil {
+		codeTable := engine.GetCodeTable()
+		if codeTable != nil {
+			systemLayer := dict.NewCodeTableLayer("codetable-system", dict.LayerTypeSystem, codeTable)
+			dm.RegisterSystemLayer("codetable-system", systemLayer)
+		}
 		engine.SetDictManager(dm)
 	}
 

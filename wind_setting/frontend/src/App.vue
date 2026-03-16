@@ -91,20 +91,19 @@ async function loadDataFromWails() {
       formData.value = JSON.parse(JSON.stringify(mergedCfg));
     }
 
-    engines.value = [
-      {
-        type: "wubi86",
-        displayName: "五笔输入",
-        description: "86版五笔",
-        isActive: config.value?.schema?.active === "wubi86",
-      },
-      {
-        type: "pinyin",
-        displayName: "拼音输入",
-        description: "全拼输入法",
-        isActive: config.value?.schema?.active === "pinyin",
-      },
-    ];
+    // 从 schema.available 动态构建方案列表
+    const schemaDisplayMap: Record<string, { name: string; desc: string }> = {
+      wubi86: { name: "五笔输入", desc: "86版五笔" },
+      pinyin: { name: "拼音输入", desc: "全拼输入法" },
+    };
+    const available = config.value?.schema?.available || ["wubi86", "pinyin"];
+    const activeSchema = config.value?.schema?.active || "wubi86";
+    engines.value = available.map((id: string) => ({
+      type: id,
+      displayName: schemaDisplayMap[id]?.name || id,
+      description: schemaDisplayMap[id]?.desc || "",
+      isActive: id === activeSchema,
+    }));
 
     await loadThemes();
   } catch (e) {

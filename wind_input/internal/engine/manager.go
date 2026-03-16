@@ -16,6 +16,7 @@ import (
 type Manager struct {
 	mu            sync.RWMutex
 	engines       map[string]Engine // schemaID -> Engine
+	systemLayers  map[string]dict.DictLayer // schemaID -> 该方案注册的系统词库层
 	currentID     string            // 当前活跃方案 ID
 	currentEngine Engine
 
@@ -36,7 +37,8 @@ type Manager struct {
 // NewManager 创建引擎管理器
 func NewManager() *Manager {
 	return &Manager{
-		engines: make(map[string]Engine),
+		engines:      make(map[string]Engine),
+		systemLayers: make(map[string]dict.DictLayer),
 	}
 }
 
@@ -77,15 +79,23 @@ func (m *Manager) SwitchSchema(schemaID string) error {
 		return nil
 	}
 
+	// 卸载旧引擎的系统词库层
+	if m.dictManager != nil {
+		m.dictManager.UnregisterSystemLayer("codetable-system")
+		m.dictManager.UnregisterSystemLayer("pinyin-system")
+	}
+
 	// 检查是否已加载
 	if eng, ok := m.engines[schemaID]; ok {
 		m.currentID = schemaID
 		m.currentEngine = eng
+		// 重新注册缓存引擎的系统词库层
+		m.reRegisterSystemLayer(schemaID)
 		log.Printf("[EngineManager] 切换到已加载方案: %s", schemaID)
 		return nil
 	}
 
-	// 需要创建引擎
+	// 需要创建引擎（factory 内部会注册系统词库层）
 	if err := m.loadSchemaEngineLocked(schemaID); err != nil {
 		return err
 	}
@@ -231,7 +241,30 @@ func (m *Manager) loadSchemaEngineLocked(schemaID string) error {
 		return fmt.Errorf("未知引擎类型: %T", bundle.Engine)
 	}
 
+	// 缓存 factory 注册的系统词库层（用于切换回缓存引擎时重新注册）
+	if m.dictManager != nil {
+		// factory 根据引擎类型注册了 "codetable-system" 或 "pinyin-system"
+		for _, name := range []string{"codetable-system", "pinyin-system"} {
+			if layer := m.dictManager.GetCompositeDict().GetLayerByName(name); layer != nil {
+				m.systemLayers[schemaID] = layer
+				break
+			}
+		}
+	}
+
 	return nil
+}
+
+// reRegisterSystemLayer 为缓存引擎重新注册系统词库层到 CompositeDict
+func (m *Manager) reRegisterSystemLayer(schemaID string) {
+	if m.dictManager == nil {
+		return
+	}
+	// 从缓存的 systemLayers 中取出该方案的系统词库层并重新注册
+	if layer, ok := m.systemLayers[schemaID]; ok && layer != nil {
+		m.dictManager.RegisterSystemLayer(layer.Name(), layer)
+		log.Printf("[EngineManager] 重新注册系统词库层: %s (方案: %s)", layer.Name(), schemaID)
+	}
 }
 
 // --- 查询方法（保持现有 API）---

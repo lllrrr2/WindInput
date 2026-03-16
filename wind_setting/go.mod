@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/huanfeng/wind_input v0.0.0
 	github.com/wailsapp/wails/v2 v2.11.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 replace github.com/huanfeng/wind_input => ../wind_input
@@ -38,7 +39,6 @@ require (
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 // replace github.com/wailsapp/wails/v2 v2.11.0 => C:\Users\Cartech1\go\pkg\mod

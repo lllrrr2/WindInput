@@ -191,7 +191,7 @@ func (c *Coordinator) UpdateEngineConfig(engineConfig *config.EngineConfig) {
 
 	// 更新配置引用
 	if c.config != nil {
-		c.config.Engine = *engineConfig
+		c.config.Engine = engineConfig
 	}
 
 	c.logger.Debug("Engine config updated", "type", engineConfig.Type, "filterMode", engineConfig.FilterMode)

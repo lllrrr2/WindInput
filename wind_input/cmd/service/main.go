@@ -334,9 +334,12 @@ func main() {
 	// 创建控制管道服务端
 	controlServer := control.NewServer(logger, dictManager)
 	controlServer.SetReloadHandler(&reloadHandlerImpl{
-		coord:  coord,
-		cfg:    cfg,
-		logger: logger,
+		coord:     coord,
+		cfg:       cfg,
+		schemaMgr: schemaMgr,
+		engineMgr: engineMgr,
+		dictMgr:   dictManager,
+		logger:    logger,
 	})
 	controlServer.StartAsync()
 	logger.Info("Control pipe server started", "pipe", pkgcontrol.PipeName)
@@ -404,31 +407,46 @@ func main() {
 
 // reloadHandlerImpl 实现 control.ReloadHandler 接口
 type reloadHandlerImpl struct {
-	coord  *coordinator.Coordinator
-	cfg    *config.Config
-	logger *slog.Logger
+	coord     *coordinator.Coordinator
+	cfg       *config.Config
+	schemaMgr *schema.SchemaManager
+	engineMgr *engine.Manager
+	dictMgr   *dict.DictManager
+	logger    *slog.Logger
 }
 
-// ReloadConfig 重载配置
+// ReloadConfig 重载配置（处理 config.yaml 变更和 schema 文件变更）
 func (h *reloadHandlerImpl) ReloadConfig() error {
 	newCfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	// 更新协调器的配置
+	// 检查活跃方案是否切换
+	oldSchemaID := h.cfg.Schema.Active
+	newSchemaID := newCfg.Schema.Active
+	if newSchemaID != "" && newSchemaID != oldSchemaID {
+		h.logger.Info("Schema changed via config reload", "from", oldSchemaID, "to", newSchemaID)
+		if err := h.engineMgr.SwitchSchema(newSchemaID); err != nil {
+			h.logger.Error("Failed to switch schema", "error", err)
+		} else {
+			h.schemaMgr.SetActive(newSchemaID)
+			s := h.schemaMgr.GetSchema(newSchemaID)
+			if s != nil && h.dictMgr != nil {
+				h.dictMgr.SwitchSchema(newSchemaID, s.UserData.ShadowFile, s.UserData.UserDictFile)
+			}
+		}
+	}
+
+	// 重新加载活跃方案的 schema 文件，应用引擎选项热更新
+	h.reloadActiveSchemaConfig()
+
+	// 更新协调器的全局配置
 	if h.coord != nil {
-		// 更新引擎配置（包括引擎类型切换）
-		h.coord.UpdateEngineConfig(&newCfg.Engine)
-		// 更新快捷键配置
 		h.coord.UpdateHotkeyConfig(&newCfg.Hotkeys)
-		// 更新启动配置
 		h.coord.UpdateStartupConfig(&newCfg.Startup)
-		// 更新 UI 配置
 		h.coord.UpdateUIConfig(&newCfg.UI)
-		// 更新工具栏配置
 		h.coord.UpdateToolbarConfig(&newCfg.Toolbar)
-		// 更新输入配置
 		h.coord.UpdateInputConfig(&newCfg.Input)
 	}
 
@@ -436,9 +454,72 @@ func (h *reloadHandlerImpl) ReloadConfig() error {
 	*h.cfg = *newCfg
 
 	h.logger.Info("Config reloaded successfully",
-		"engineType", newCfg.Engine.Type,
+		"schema", newCfg.Schema.Active,
 		"toggleModeKeys", newCfg.Hotkeys.ToggleModeKeys)
 	return nil
+}
+
+// reloadActiveSchemaConfig 从 schema 文件重新加载引擎选项并热更新
+func (h *reloadHandlerImpl) reloadActiveSchemaConfig() {
+	if h.schemaMgr == nil {
+		return
+	}
+
+	// 重新加载 schema 文件
+	if err := h.schemaMgr.LoadSchemas(); err != nil {
+		h.logger.Error("Failed to reload schemas", "error", err)
+		return
+	}
+
+	activeID := h.schemaMgr.GetActiveID()
+	s := h.schemaMgr.GetSchema(activeID)
+	if s == nil {
+		return
+	}
+
+	// 根据引擎类型应用配置
+	switch s.Engine.Type {
+	case schema.EngineTypeCodeTable:
+		if spec := s.Engine.CodeTable; spec != nil {
+			h.engineMgr.UpdateWubiOptions(
+				spec.AutoCommitUnique,
+				spec.ClearOnEmptyMax,
+				spec.TopCodeCommit,
+				spec.PunctCommit,
+				spec.ShowCodeHint,
+				spec.SingleCodeInput,
+				spec.CandidateSortMode,
+			)
+		}
+		h.engineMgr.UpdateFilterMode(s.Engine.FilterMode)
+
+	case schema.EngineTypePinyin:
+		if spec := s.Engine.Pinyin; spec != nil {
+			pinyinCfg := &config.PinyinConfig{
+				ShowWubiHint:    spec.ShowWubiHint,
+				UseSmartCompose: spec.UseSmartCompose,
+				CandidateOrder:  spec.CandidateOrder,
+			}
+			if spec.Fuzzy != nil && spec.Fuzzy.Enabled {
+				pinyinCfg.Fuzzy = config.FuzzyPinyinConfig{
+					Enabled: true,
+					ZhZ:     spec.Fuzzy.ZhZ,
+					ChC:     spec.Fuzzy.ChC,
+					ShS:     spec.Fuzzy.ShS,
+					NL:      spec.Fuzzy.NL,
+					FH:      spec.Fuzzy.FH,
+					RL:      spec.Fuzzy.RL,
+					AnAng:   spec.Fuzzy.AnAng,
+					EnEng:   spec.Fuzzy.EnEng,
+					InIng:   spec.Fuzzy.InIng,
+				}
+			}
+			h.engineMgr.UpdatePinyinOptions(pinyinCfg)
+		}
+		h.engineMgr.UpdateFilterMode(s.Engine.FilterMode)
+	}
+
+	h.logger.Debug("Schema config reloaded", "schema", activeID, "engineType", s.Engine.Type)
 }
 
 // GetStatus 获取服务状态
