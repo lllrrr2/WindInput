@@ -123,7 +123,6 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 	}
 
 	// 加载拼音词库
-	var d dict.Dict
 	pinyinDict := dict.NewPinyinDict()
 
 	dictSpec := s.GetDefaultDictSpec()
@@ -134,16 +133,21 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 		}
 	}
 
+	// 构建 CompositeDict
+	var compositeDict *dict.CompositeDict
 	if dm != nil {
 		systemLayer := dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict)
 		dm.RegisterSystemLayer("pinyin-system", systemLayer)
-		d = dm.GetCompositeDict()
+		compositeDict = dm.GetCompositeDict()
 		log.Printf("[SchemaFactory] 拼音引擎使用 CompositeDict")
 	} else {
-		d = pinyinDict
+		// 无 DictManager 时创建独立 CompositeDict
+		compositeDict = dict.NewCompositeDict()
+		systemLayer := dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict)
+		compositeDict.AddLayer(systemLayer)
 	}
 
-	engine := pinyin.NewEngineWithConfig(d, config)
+	engine := pinyin.NewEngineWithConfig(compositeDict, config)
 
 	// 加载 Unigram 语言模型
 	if s.Learning.UnigramPath != "" {

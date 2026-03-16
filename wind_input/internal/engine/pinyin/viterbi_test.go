@@ -8,7 +8,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/dict"
 )
 
-func createTestDictForViterbi(t *testing.T) *dict.PinyinDict {
+func createTestDictForViterbi(t *testing.T) *dict.CompositeDict {
 	t.Helper()
 	tmpDir := t.TempDir()
 
@@ -48,7 +48,7 @@ sort: by_weight
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
-	return d
+	return wrapInCompositeDict(d)
 }
 
 func createTestUnigram(t *testing.T) *UnigramModel {
@@ -148,7 +148,7 @@ func TestViterbiLongInput(t *testing.T) {
 func TestViterbiEmpty(t *testing.T) {
 	st := NewSyllableTrie()
 	d := dict.NewPinyinDict()
-	lattice := BuildLattice("xyz", st, d, nil)
+	lattice := BuildLattice("xyz", st, wrapInCompositeDict(d), nil)
 
 	result := ViterbiDecode(lattice, nil)
 	if result != nil {

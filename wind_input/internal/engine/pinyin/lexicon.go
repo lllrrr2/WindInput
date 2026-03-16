@@ -36,14 +36,14 @@ type SyllableLexicon interface {
 // 将现有的 CodeTable/Dict 适配为 SyllableLexicon 接口
 // ============================================================
 
-// CodeTableLexiconAdapter 将现有 dict.Dict 适配为 SyllableLexicon
+// CodeTableLexiconAdapter 将 CompositeDict 适配为 SyllableLexicon
 type CodeTableLexiconAdapter struct {
-	dict   dict.Dict
+	dict   *dict.CompositeDict
 	parser *PinyinParser
 }
 
 // NewCodeTableLexiconAdapter 创建 CodeTable 适配器
-func NewCodeTableLexiconAdapter(d dict.Dict) *CodeTableLexiconAdapter {
+func NewCodeTableLexiconAdapter(d *dict.CompositeDict) *CodeTableLexiconAdapter {
 	return &CodeTableLexiconAdapter{
 		dict:   d,
 		parser: NewPinyinParser(),
@@ -80,9 +80,9 @@ func (a *CodeTableLexiconAdapter) LookupBySyllablesPrefix(completedSyllables []s
 		return nil
 	}
 
-	// 使用前缀搜索（如果支持）
-	if ps, ok := a.dict.(dict.PrefixSearchable); ok {
-		candidates := ps.LookupPrefix(prefix, 100)
+	// 前缀搜索
+	{
+		candidates := a.dict.LookupPrefix(prefix, 100)
 
 		// 过滤：只保留音节数匹配的候选
 		// 例如，查找 "ni" + "ha" 时，应该返回 2 音节的词
@@ -106,9 +106,6 @@ func (a *CodeTableLexiconAdapter) LookupBySyllablesPrefix(completedSyllables []s
 		}
 		return filtered
 	}
-
-	// 回退：使用精确查找
-	return a.LookupBySyllables(append(completedSyllables, partialLast))
 }
 
 // LookupSingleChar 根据完整音节查找单字
@@ -134,8 +131,8 @@ func (a *CodeTableLexiconAdapter) LookupSingleChar(syllable string) []LexiconEnt
 
 // LookupSingleCharPrefix 根据音节前缀查找单字
 func (a *CodeTableLexiconAdapter) LookupSingleCharPrefix(prefix string) []LexiconEntry {
-	if ps, ok := a.dict.(dict.PrefixSearchable); ok {
-		candidates := ps.LookupPrefix(prefix, 50)
+	{
+		candidates := a.dict.LookupPrefix(prefix, 50)
 
 		// 过滤只保留单字
 		var entries []LexiconEntry
@@ -153,7 +150,6 @@ func (a *CodeTableLexiconAdapter) LookupSingleCharPrefix(prefix string) []Lexico
 		}
 		return entries
 	}
-	return nil
 }
 
 // candidatesToEntries 将 candidate.Candidate 转换为 LexiconEntry

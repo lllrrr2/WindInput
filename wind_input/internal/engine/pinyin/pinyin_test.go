@@ -8,7 +8,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/dict"
 )
 
-func createTestDict(t *testing.T) dict.Dict {
+func createTestDict(t *testing.T) *dict.CompositeDict {
 	t.Helper()
 	tmpDir := t.TempDir()
 
@@ -46,7 +46,7 @@ sort: by_weight
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
-	return d
+	return wrapInCompositeDict(d)
 }
 
 func TestEngineConvert(t *testing.T) {

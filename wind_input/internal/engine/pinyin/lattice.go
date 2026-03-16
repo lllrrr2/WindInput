@@ -26,15 +26,16 @@ type Lattice struct {
 
 // BuildLattice 构建词网格
 // 对于输入的每个音节切分位置，查找词库中的所有匹配词语
-func BuildLattice(input string, st *SyllableTrie, d dict.Dict, unigram UnigramLookup) *Lattice {
+func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram UnigramLookup) *Lattice {
 	n := len(input)
 	lattice := &Lattice{
 		nodes: make([][]LatticeNode, n+1),
 		input: input,
 	}
 
-	// 获取前缀搜索能力（如果可用）
-	ps, hasPrefixSearch := d.(dict.PrefixSearchable)
+	// CompositeDict 始终支持前缀搜索
+	ps := d
+	hasPrefixSearch := true
 
 	// 构建 DAG
 	dag := BuildDAG(input, st)

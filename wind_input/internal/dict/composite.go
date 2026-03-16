@@ -231,18 +231,17 @@ func (c *CompositeDict) GetLayersByType(layerType LayerType) []DictLayer {
 }
 
 // ============================================================
-// 实现 dict.Dict 接口，使 CompositeDict 可被拼音引擎使用
+// 查询便捷方法
 // ============================================================
 
-// Lookup 实现 dict.Dict 接口
+// Lookup 按编码查询候选词
 func (c *CompositeDict) Lookup(pinyin string) []candidate.Candidate {
 	results := c.Search(pinyin, 0)
 	// log.Printf("[CompositeDict] Lookup: pinyin=%q results=%d", pinyin, len(results))
 	return results
 }
 
-// LookupPhrase 实现 dict.Dict 接口
-// 将音节列表拼接后查询
+// LookupPhrase 将音节列表拼接后查询
 func (c *CompositeDict) LookupPhrase(syllables []string) []candidate.Candidate {
 	if len(syllables) == 0 {
 		return nil

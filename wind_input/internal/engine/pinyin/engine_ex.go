@@ -127,8 +127,8 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	// ── 步骤 0：特殊命令精确匹配（仅查命令，不查普通词条） ──
 	// 通过 CommandSearchable 接口仅查询 PhraseLayer 中的命令（uuid, date 等），
 	// 不会把普通拼音词条提升到命令权重。对所有输入无条件执行。
-	if cs, ok := e.dict.(dict.CommandSearchable); ok {
-		cmdResults := cs.LookupCommand(queryInput)
+	{
+		cmdResults := e.dict.LookupCommand(queryInput)
 		for _, cand := range cmdResults {
 			c := cand
 			f := e.buildFeatures(c.Text, float64(c.Weight), MatchExact, 0, len([]rune(c.Text)), featureOpts{isCommand: true})
@@ -234,12 +234,12 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 
 	// ── 3c. 前缀匹配（输入 "wome" 时找到 "women"→我们） ──
 	if syllableCount > 0 {
-		if ps, ok := e.dict.(dict.PrefixSearchable); ok {
+		{
 			prefixLimit := 50
 			if maxCandidates > 0 {
 				prefixLimit = maxCandidates * 2
 			}
-			prefixResults := ps.LookupPrefix(queryInput, prefixLimit)
+			prefixResults := e.dict.LookupPrefix(queryInput, prefixLimit)
 			for _, cand := range prefixResults {
 				if _, exists := candidatesMap[cand.Text]; exists {
 					continue
@@ -393,8 +393,8 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 
 	// ── 3f. 未完成音节的前缀查找 ──
 	if partial != "" {
-		if ps, ok := e.dict.(dict.PrefixSearchable); ok {
-			prefixResults := ps.LookupPrefix(queryInput, 30)
+		{
+			prefixResults := e.dict.LookupPrefix(queryInput, 30)
 			for _, cand := range prefixResults {
 				if _, exists := candidatesMap[cand.Text]; exists {
 					continue
@@ -453,8 +453,8 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 		}
 		abbrevCode := abbrevBuilder.String()
 
-		if as, ok := e.dict.(dict.AbbrevSearchable); ok {
-			abbrevResults := as.LookupAbbrev(abbrevCode, 30)
+		{
+			abbrevResults := e.dict.LookupAbbrev(abbrevCode, 30)
 			for _, cand := range abbrevResults {
 				c := cand
 				charCount := len([]rune(c.Text))

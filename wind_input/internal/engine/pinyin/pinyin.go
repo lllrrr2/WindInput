@@ -30,7 +30,7 @@ type Config struct {
 
 // Engine 拼音引擎
 type Engine struct {
-	dict         dict.Dict
+	dict         *dict.CompositeDict
 	syllableTrie *SyllableTrie       // 音节 Trie
 	unigram      UnigramLookup       // Unigram 语言模型（接口：支持内存模式和 mmap 模式）
 	bigram       *BigramModel        // Bigram 语言模型（可选）
@@ -42,7 +42,7 @@ type Engine struct {
 }
 
 // NewEngine 创建拼音引擎
-func NewEngine(d dict.Dict) *Engine {
+func NewEngine(d *dict.CompositeDict) *Engine {
 	return &Engine{
 		dict:         d,
 		syllableTrie: NewSyllableTrie(),
@@ -52,7 +52,7 @@ func NewEngine(d dict.Dict) *Engine {
 }
 
 // NewEngineWithConfig 创建带配置的拼音引擎
-func NewEngineWithConfig(d dict.Dict, config *Config) *Engine {
+func NewEngineWithConfig(d *dict.CompositeDict, config *Config) *Engine {
 	if config == nil {
 		config = &Config{ShowWubiHint: false, FilterMode: "smart"}
 	}

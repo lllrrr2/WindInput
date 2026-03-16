@@ -63,7 +63,7 @@ sort: by_weight
 
 func TestCodeTableLexiconAdapterLookupBySyllables(t *testing.T) {
 	d := createTestPinyinDict(t)
-	adapter := NewCodeTableLexiconAdapter(d)
+	adapter := NewCodeTableLexiconAdapter(wrapInCompositeDict(d))
 
 	tests := []struct {
 		syllables    []string
@@ -105,7 +105,7 @@ func TestCodeTableLexiconAdapterLookupBySyllables(t *testing.T) {
 
 func TestCodeTableLexiconAdapterLookupSingleChar(t *testing.T) {
 	d := createTestPinyinDict(t)
-	adapter := NewCodeTableLexiconAdapter(d)
+	adapter := NewCodeTableLexiconAdapter(wrapInCompositeDict(d))
 
 	tests := []struct {
 		syllable    string
@@ -149,7 +149,7 @@ func TestCodeTableLexiconAdapterLookupSingleChar(t *testing.T) {
 
 func TestLexiconQuery(t *testing.T) {
 	d := createTestPinyinDict(t)
-	adapter := NewCodeTableLexiconAdapter(d)
+	adapter := NewCodeTableLexiconAdapter(wrapInCompositeDict(d))
 	query := NewLexiconQuery(adapter)
 	parser := NewPinyinParser()
 
@@ -191,7 +191,7 @@ func TestLexiconQuery(t *testing.T) {
 
 func TestLexiconQueryWithPartial(t *testing.T) {
 	d := createTestPinyinDict(t)
-	adapter := NewCodeTableLexiconAdapter(d)
+	adapter := NewCodeTableLexiconAdapter(wrapInCompositeDict(d))
 	query := NewLexiconQuery(adapter)
 	parser := NewPinyinParser()
 
@@ -217,7 +217,7 @@ func TestLexiconQueryWithPartial(t *testing.T) {
 
 func TestLexiconQueryWithFallback(t *testing.T) {
 	d := createTestPinyinDict(t)
-	adapter := NewCodeTableLexiconAdapter(d)
+	adapter := NewCodeTableLexiconAdapter(wrapInCompositeDict(d))
 	query := NewLexiconQuery(adapter)
 	parser := NewPinyinParser()
 

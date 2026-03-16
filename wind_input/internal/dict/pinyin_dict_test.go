@@ -84,9 +84,9 @@ func TestPinyinDictLoad(t *testing.T) {
 	}
 }
 
-func TestPinyinDictAsDict(t *testing.T) {
-	// 验证 PinyinDict 实现了 Dict 接口
-	var _ Dict = (*PinyinDict)(nil)
+func TestPinyinDictAsLayer(t *testing.T) {
+	// 验证 PinyinDictLayer 实现了 DictLayer 接口
+	var _ DictLayer = (*PinyinDictLayer)(nil)
 }
 
 func TestPinyinDictRealDict(t *testing.T) {

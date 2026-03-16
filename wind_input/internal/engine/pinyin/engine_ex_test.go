@@ -10,7 +10,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/dict"
 )
 
-func createTestDictForEx(t *testing.T) dict.Dict {
+func createTestDictForEx(t *testing.T) *dict.CompositeDict {
 	t.Helper()
 	tmpDir := t.TempDir()
 
@@ -83,7 +83,7 @@ sort: by_weight
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
-	return d
+	return wrapInCompositeDict(d)
 }
 
 func TestEngineConvertEx(t *testing.T) {
@@ -1019,7 +1019,7 @@ func TestEngineConvertExSingleLetterPriority(t *testing.T) {
 
 // createTestDictWithPhraseLayer 创建带 PhraseLayer 的 CompositeDict
 // 用于测试 uuid/date 等命令
-func createTestDictWithPhraseLayer(t *testing.T) dict.Dict {
+func createTestDictWithPhraseLayer(t *testing.T) *dict.CompositeDict {
 	t.Helper()
 	tmpDir := t.TempDir()
 
@@ -1542,7 +1542,7 @@ sort: by_weight
 		b.Fatalf("加载词库失败: %v", err)
 	}
 
-	engine := NewEngine(d)
+	engine := NewEngine(wrapInCompositeDict(d))
 	inputs := []string{"nihao", "zhongguo", "women", "nihaozh"}
 
 	b.ResetTimer()
