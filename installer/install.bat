@@ -179,7 +179,16 @@ if exist "%BUILD_DIR%\dict\common_chars.txt" (
     echo [警告] build 目录中未找到常用字表
 )
 
-echo [7/10] 注册 COM 组件...
+echo [7/11] 复制输入方案配置...
+if not exist "%INSTALL_DIR%\schemas" mkdir "%INSTALL_DIR%\schemas"
+if exist "%BUILD_DIR%\schemas\*.schema.yaml" (
+    copy /Y "%BUILD_DIR%\schemas\*.schema.yaml" "%INSTALL_DIR%\schemas\" >nul
+    echo   - 输入方案配置已复制
+) else (
+    echo [警告] build 目录中未找到输入方案配置
+)
+
+echo [8/11] 注册 COM 组件...
 regsvr32 /s "%INSTALL_DIR%\wind_tsf.dll"
 if %errorLevel% neq 0 (
     echo [错误] COM 注册失败
@@ -187,7 +196,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo [8/10] 配置开机自启动...
+echo [9/11] 配置开机自启动...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WindInput" /t REG_SZ /d "\"%INSTALL_DIR%\wind_input.exe\"" /f >nul 2>&1
 if %errorLevel% equ 0 (
     echo   - 已添加开机自启动注册表项
@@ -195,11 +204,11 @@ if %errorLevel% equ 0 (
     echo [警告] 添加开机自启动失败
 )
 
-echo [9/10] 预启动输入法服务...
+echo [10/11] 预启动输入法服务...
 start "" "%INSTALL_DIR%\wind_input.exe"
 echo   - 服务已在后台启动
 
-echo [10/10] 创建快捷方式...
+echo [11/11] 创建快捷方式...
 REM 创建开始菜单快捷方式
 if exist "%INSTALL_DIR%\wind_setting.exe" (
     powershell -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%ProgramData%\Microsoft\Windows\Start Menu\Programs\清风输入法 设置.lnk'); $s.TargetPath = '%INSTALL_DIR%\wind_setting.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = '清风输入法 设置'; $s.Save()" >nul 2>&1
@@ -235,6 +244,7 @@ echo - dict\pinyin\base.dict.yaml (拼音基础词库)
 echo - dict\pinyin\unigram.txt (语言模型)
 echo - dict\wubi\wubi86.txt (五笔86词库)
 echo - dict\common_chars.txt (常用字表)
+echo - schemas\*.schema.yaml (输入方案配置)
 echo.
 echo 服务已自动启动，并已配置开机自启动。
 echo.

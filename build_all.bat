@@ -153,6 +153,15 @@ if exist "%SCRIPT_DIR%dict\common_chars.txt" (
 ) else (
     echo [警告] 未找到常用字表
 )
+
+REM 复制输入方案配置
+if not exist "%SCRIPT_DIR%build\schemas" mkdir "%SCRIPT_DIR%build\schemas"
+if exist "%SCRIPT_DIR%schemas\*.schema.yaml" (
+    copy /Y "%SCRIPT_DIR%schemas\*.schema.yaml" "%SCRIPT_DIR%build\schemas\" >nul
+    echo   - 已复制输入方案配置
+) else (
+    echo [警告] 未找到输入方案配置文件
+)
 echo.
 
 echo [6/6] 检查输出文件...
@@ -189,6 +198,7 @@ echo - build\dict\pinyin\base.dict.yaml(拼音基础词库)
 echo - build\dict\pinyin\unigram.txt(Unigram 语言模型)
 echo - build\dict\wubi\wubi86.txt(五笔词库)
 echo - build\dict\common_chars.txt(常用字表)
+echo - build\schemas\*.schema.yaml(输入方案配置)
 echo.
 echo 注: .wdb 二进制词库由运行时按需自动生成并缓存
 echo.

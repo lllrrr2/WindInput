@@ -325,6 +325,12 @@ install_cleanup_bak_end:
   File "${BUILD_DIR}\dict\pinyin\unigram.txt"
   SetOutPath "$INSTDIR\dict\wubi"
   File "${BUILD_DIR}\dict\wubi\wubi86.txt"
+
+  ; --- Step 6b: Schema files (input method configurations) ---
+  DetailPrint "正在复制输入方案配置..."
+  SetOutPath "$INSTDIR\schemas"
+  File "${BUILD_DIR}\schemas\wubi86.schema.yaml"
+  File "${BUILD_DIR}\schemas\pinyin.schema.yaml"
   SetOutPath "$INSTDIR"
 
   ; --- Step 7: Register NEW DLL (always at original path, guaranteed new version) ---
@@ -415,6 +421,7 @@ uninst_setting_done:
   ; --- Step 4: Remove remaining files and directories ---
   Delete /REBOOTOK "$INSTDIR\uninstall.exe"
   RMDir /r /REBOOTOK "$INSTDIR\dict"
+  RMDir /r /REBOOTOK "$INSTDIR\schemas"
   ; Cleanup .old_* and .bak files
   FindFirst $0 $1 "$INSTDIR\*.old_*"
 uninst_cleanup_old_loop:

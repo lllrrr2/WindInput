@@ -80,6 +80,10 @@ REM 删除词库目录
 if exist "%INSTALL_DIR%\dict" (
     rmdir /S /Q "%INSTALL_DIR%\dict" >nul 2>&1
 )
+REM 删除输入方案目录
+if exist "%INSTALL_DIR%\schemas" (
+    rmdir /S /Q "%INSTALL_DIR%\schemas" >nul 2>&1
+)
 
 REM 尝试删除安装目录(如有残留文件会失败)
 rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1
