@@ -45,12 +45,15 @@ func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommi
 				cfg.PunctCommit = punctCommit
 				cfg.ShowCodeHint = showCodeHint
 				cfg.SingleCodeInput = singleCodeInput
-				cfg.CandidateSortMode = candidateSortMode
+				// 仅在非空时更新排序模式（该值来自 schema 文件，config.yaml 中可能未设置）
+				if candidateSortMode != "" {
+					cfg.CandidateSortMode = candidateSortMode
+				}
 			}
 		}
 	}
 
-	if m.dictManager != nil {
+	if m.dictManager != nil && candidateSortMode != "" {
 		m.dictManager.SetSortMode(candidate.CandidateSortMode(candidateSortMode))
 	}
 

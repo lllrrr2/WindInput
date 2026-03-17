@@ -3,25 +3,6 @@ package config
 
 import "fmt"
 
-// UpdateEngineType updates the engine type in config and saves
-func UpdateEngineType(engineType string) error {
-	cfg, err := Load()
-	if err != nil {
-		cfg = DefaultConfig()
-	}
-
-	cfg.Engine.Type = engineType
-
-	switch engineType {
-	case "wubi":
-		cfg.Dictionary.SystemDict = "dict/wubi86/wubi86.txt"
-	case "pinyin":
-		cfg.Dictionary.SystemDict = "dict/pinyin"
-	}
-
-	return Save(cfg)
-}
-
 // UpdateSchemaActive 更新活跃方案 ID 到配置文件
 func UpdateSchemaActive(schemaID string) error {
 	cfg, err := Load()

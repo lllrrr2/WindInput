@@ -151,7 +151,6 @@ func main() {
 	ui.SetEffectiveDPI(ui.GetSystemDPI())
 
 	// Parse command line arguments (these override config file settings)
-	dictPath := flag.String("dict", "", "Dictionary file path (overrides config)")
 	logLevel := flag.String("log", "", "Log level: debug, info, warn, error (overrides config)")
 	saveDefaultConfig := flag.Bool("save-config", false, "Save default configuration and exit")
 	isRestart := flag.Bool("restart", false, "Internal flag: wait for previous instance to exit before starting")
@@ -179,10 +178,6 @@ func main() {
 	if *logLevel != "" {
 		cfg.Advanced.LogLevel = *logLevel
 	}
-	if *dictPath != "" {
-		cfg.Dictionary.SystemDict = *dictPath
-	}
-
 	// If restarting, wait for previous instance to fully exit
 	if *isRestart {
 		waitForPreviousExit()
@@ -256,13 +251,7 @@ func main() {
 	// 确定活跃方案 ID
 	activeSchemaID := cfg.Schema.Active
 	if activeSchemaID == "" {
-		// 兼容旧配置：从 engine.type 映射
-		switch cfg.Engine.Type {
-		case "pinyin":
-			activeSchemaID = "pinyin"
-		default:
-			activeSchemaID = "wubi86"
-		}
+		activeSchemaID = "wubi86"
 	}
 
 	// 通过 Schema 驱动引擎创建和词库切换

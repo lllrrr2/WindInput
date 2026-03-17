@@ -43,7 +43,7 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 			TopCodeCommit:     true,
 			PunctCommit:       true,
 			ShowCodeHint:      true,
-			CandidateSortMode: "frequency",
+			CandidateSortMode: "natural",
 		}
 	}
 

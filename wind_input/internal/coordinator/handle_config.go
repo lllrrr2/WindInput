@@ -2,7 +2,6 @@
 package coordinator
 
 import (
-	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/config"
 )
@@ -144,57 +143,6 @@ func (c *Coordinator) UpdateInputConfig(inputConfig *config.InputConfig) {
 
 	c.hotkeysDirty = true // SelectKeyGroups/PageKeys 变化也影响热键
 	c.logger.Debug("Input config updated", "punctFollowMode", c.punctFollowMode)
-}
-
-// UpdateEngineConfig 更新引擎配置
-func (c *Coordinator) UpdateEngineConfig(engineConfig *config.EngineConfig) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if engineConfig == nil || c.engineMgr == nil {
-		return
-	}
-
-	// 检查引擎类型是否改变
-	currentType := c.engineMgr.GetCurrentType()
-	newType := engine.EngineType(engineConfig.Type)
-
-	if currentType != newType {
-		// 清除当前输入状态
-		c.clearState()
-		c.hideUI()
-
-		// 切换引擎
-		if err := c.engineMgr.SwitchEngine(newType); err != nil {
-			c.logger.Error("Failed to switch engine", "error", err, "targetType", newType)
-		} else {
-			c.logger.Info("Engine switched via config reload", "from", currentType, "to", newType)
-			// 同步词库管理器的活跃引擎
-			if dm := c.engineMgr.GetDictManager(); dm != nil {
-				dm.SetActiveEngine(string(newType))
-			}
-		}
-	}
-
-	// 更新引擎选项
-	c.engineMgr.UpdateFilterMode(engineConfig.FilterMode)
-	c.engineMgr.UpdateWubiOptions(
-		engineConfig.Wubi.AutoCommitAt4,
-		engineConfig.Wubi.ClearOnEmptyAt4,
-		engineConfig.Wubi.TopCodeCommit,
-		engineConfig.Wubi.PunctCommit,
-		engineConfig.Wubi.ShowCodeHint,
-		engineConfig.Wubi.SingleCodeInput,
-		engineConfig.Wubi.CandidateSortMode,
-	)
-	c.engineMgr.UpdatePinyinOptions(&engineConfig.Pinyin)
-
-	// 更新配置引用
-	if c.config != nil {
-		c.config.Engine = engineConfig
-	}
-
-	c.logger.Debug("Engine config updated", "type", engineConfig.Type, "filterMode", engineConfig.FilterMode)
 }
 
 // UpdateHotkeyConfig 更新快捷键配置

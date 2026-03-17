@@ -9,15 +9,13 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Startup    StartupConfig     `yaml:"startup" json:"startup"`
-	Schema     SchemaConfig      `yaml:"schema" json:"schema"`
-	Dictionary *DictionaryConfig `yaml:"dictionary,omitempty" json:"dictionary,omitempty"` // Deprecated: 仅兼容旧配置读取，保存时不输出
-	Engine     *EngineConfig     `yaml:"engine,omitempty" json:"engine,omitempty"`         // Deprecated: 仅兼容旧配置读取，保存时不输出
-	Hotkeys    HotkeyConfig      `yaml:"hotkeys" json:"hotkeys"`
-	UI         UIConfig          `yaml:"ui" json:"ui"`
-	Toolbar    ToolbarConfig     `yaml:"toolbar" json:"toolbar"`
-	Input      InputConfig       `yaml:"input" json:"input"`
-	Advanced   AdvancedConfig    `yaml:"advanced" json:"advanced"`
+	Startup  StartupConfig  `yaml:"startup" json:"startup"`
+	Schema   SchemaConfig   `yaml:"schema" json:"schema"`
+	Hotkeys  HotkeyConfig   `yaml:"hotkeys" json:"hotkeys"`
+	UI       UIConfig       `yaml:"ui" json:"ui"`
+	Toolbar  ToolbarConfig  `yaml:"toolbar" json:"toolbar"`
+	Input    InputConfig    `yaml:"input" json:"input"`
+	Advanced AdvancedConfig `yaml:"advanced" json:"advanced"`
 }
 
 // SchemaConfig 输入方案配置
@@ -32,23 +30,6 @@ type StartupConfig struct {
 	DefaultChineseMode  bool `yaml:"default_chinese_mode" json:"default_chinese_mode"`
 	DefaultFullWidth    bool `yaml:"default_full_width" json:"default_full_width"`
 	DefaultChinesePunct bool `yaml:"default_chinese_punct" json:"default_chinese_punct"`
-}
-
-// DictionaryConfig contains dictionary settings
-type DictionaryConfig struct {
-	SystemDict     string `yaml:"system_dict" json:"system_dict"`
-	UserDict       string `yaml:"user_dict,omitempty" json:"user_dict,omitempty"` // Deprecated: kept for backward compatibility
-	PinyinUserDict string `yaml:"pinyin_user_dict" json:"pinyin_user_dict"`
-	WubiUserDict   string `yaml:"wubi_user_dict" json:"wubi_user_dict"`
-	PinyinDict     string `yaml:"pinyin_dict" json:"pinyin_dict"`
-}
-
-// EngineConfig 引擎配置
-type EngineConfig struct {
-	Type       string       `yaml:"type" json:"type"`
-	FilterMode string       `yaml:"filter_mode" json:"filter_mode"`
-	Pinyin     PinyinConfig `yaml:"pinyin" json:"pinyin"`
-	Wubi       WubiConfig   `yaml:"wubi" json:"wubi"`
 }
 
 // PinyinConfig 拼音引擎配置
@@ -73,17 +54,6 @@ type FuzzyPinyinConfig struct {
 	InIng   bool `yaml:"in_ing" json:"in_ing"`     // in ↔ ing
 	IanIang bool `yaml:"ian_iang" json:"ian_iang"` // ian ↔ iang
 	UanUang bool `yaml:"uan_uang" json:"uan_uang"` // uan ↔ uang
-}
-
-// WubiConfig 五笔引擎配置
-type WubiConfig struct {
-	AutoCommitAt4     bool   `yaml:"auto_commit_at_4" json:"auto_commit_at_4"`
-	ClearOnEmptyAt4   bool   `yaml:"clear_on_empty_at_4" json:"clear_on_empty_at_4"`
-	TopCodeCommit     bool   `yaml:"top_code_commit" json:"top_code_commit"`
-	PunctCommit       bool   `yaml:"punct_commit" json:"punct_commit"`
-	ShowCodeHint      bool   `yaml:"show_code_hint" json:"show_code_hint"`
-	SingleCodeInput   bool   `yaml:"single_code_input" json:"single_code_input"`
-	CandidateSortMode string `yaml:"candidate_sort_mode" json:"candidate_sort_mode"` // 候选排序模式：frequency（词频）、natural（自然顺序）
 }
 
 // HotkeyConfig contains hotkey settings
@@ -168,7 +138,6 @@ func DefaultConfig() *Config {
 			Active:    "wubi86",
 			Available: []string{"wubi86", "pinyin"},
 		},
-		// Dictionary 和 Engine 设为 nil，保存时不输出（Deprecated 字段）
 		Hotkeys: HotkeyConfig{
 			ToggleModeKeys:  []string{"lshift", "rshift"},
 			CommitOnSwitch:  true,
@@ -248,17 +217,9 @@ func LoadFrom(path string) (*Config, error) {
 		return DefaultConfig(), fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// 迁移旧配置格式
-	config.migrateOldConfig(data)
-
-	// Schema 兜底：如果 active 为空，从旧 engine.type 推断
+	// Schema 兜底：如果 active 为空，使用默认值
 	if config.Schema.Active == "" {
-		switch config.Engine.Type {
-		case "pinyin":
-			config.Schema.Active = "pinyin"
-		default:
-			config.Schema.Active = "wubi86"
-		}
+		config.Schema.Active = "wubi86"
 	}
 	// 如果 available 为空，使用默认值
 	if len(config.Schema.Available) == 0 {
@@ -266,56 +227,6 @@ func LoadFrom(path string) (*Config, error) {
 	}
 
 	return config, nil
-}
-
-// migrateOldConfig 处理旧配置格式的兼容性
-func (c *Config) migrateOldConfig(data []byte) {
-	var oldConfig struct {
-		General struct {
-			StartInChineseMode bool   `yaml:"start_in_chinese_mode"`
-			LogLevel           string `yaml:"log_level"`
-		} `yaml:"general"`
-		Hotkeys struct {
-			ToggleMode string `yaml:"toggle_mode"`
-		} `yaml:"hotkeys"`
-		Input struct {
-			SelectKey2 string `yaml:"select_key_2"`
-			SelectKey3 string `yaml:"select_key_3"`
-		} `yaml:"input"`
-	}
-
-	if err := yaml.Unmarshal(data, &oldConfig); err == nil {
-		if oldConfig.General.StartInChineseMode {
-			c.Startup.DefaultChineseMode = true
-		}
-		if oldConfig.General.LogLevel != "" {
-			c.Advanced.LogLevel = oldConfig.General.LogLevel
-		}
-		if oldConfig.Hotkeys.ToggleMode != "" && len(c.Hotkeys.ToggleModeKeys) == 0 {
-			switch oldConfig.Hotkeys.ToggleMode {
-			case "shift":
-				c.Hotkeys.ToggleModeKeys = []string{"lshift", "rshift"}
-			}
-		}
-		if oldConfig.Input.SelectKey2 != "" || oldConfig.Input.SelectKey3 != "" {
-			groups := []string{}
-			if oldConfig.Input.SelectKey2 == "semicolon" && oldConfig.Input.SelectKey3 == "quote" {
-				groups = append(groups, "semicolon_quote")
-			}
-			if oldConfig.Input.SelectKey2 == "comma" && oldConfig.Input.SelectKey3 == "period" {
-				groups = append(groups, "comma_period")
-			}
-			if oldConfig.Input.SelectKey2 == "lshift" && oldConfig.Input.SelectKey3 == "rshift" {
-				groups = append(groups, "lrshift")
-			}
-			if oldConfig.Input.SelectKey2 == "lctrl" && oldConfig.Input.SelectKey3 == "rctrl" {
-				groups = append(groups, "lrctrl")
-			}
-			if len(groups) > 0 {
-				c.Input.SelectKeyGroups = groups
-			}
-		}
-	}
 }
 
 // Save saves the configuration to file

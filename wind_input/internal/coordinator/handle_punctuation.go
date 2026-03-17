@@ -4,6 +4,7 @@ package coordinator
 import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/engine"
+	"github.com/huanfeng/wind_input/internal/engine/wubi"
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/internal/transform"
 )
@@ -95,8 +96,14 @@ func (c *Coordinator) handlePunctuation(r rune) *bridge.KeyEventResult {
 	if len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
 		// Check if punct_commit is enabled in wubi config
 		punctCommit := false
-		if c.config != nil && c.config.Engine.Type == "wubi" {
-			punctCommit = c.config.Engine.Wubi.PunctCommit
+		if c.engineMgr != nil {
+			if eng := c.engineMgr.GetCurrentEngine(); eng != nil {
+				if wubiEng, ok := eng.(*wubi.Engine); ok {
+					if cfg := wubiEng.GetConfig(); cfg != nil {
+						punctCommit = cfg.PunctCommit
+					}
+				}
+			}
 		}
 
 		if punctCommit {
