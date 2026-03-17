@@ -191,7 +191,6 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 
 	// English mode: pass through all keys directly to system
 	if !c.chineseMode {
-		// 纯英文模式：所有按键直接透传给系统，不经过 Go 处理
 		return nil
 	}
 
@@ -335,10 +334,24 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.handleSpace()
 
 	case c.isPageUpKey(key, data.KeyCode, uint32(data.Modifiers)):
-		return c.handlePageUp()
+		if result := c.handlePageUp(); result != nil {
+			return result
+		}
+		// No candidates — fall through to punctuation if applicable
+		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
+			return c.handlePunctuation(rune(key[0]))
+		}
+		return nil
 
 	case c.isPageDownKey(key, data.KeyCode, uint32(data.Modifiers)):
-		return c.handlePageDown()
+		if result := c.handlePageDown(); result != nil {
+			return result
+		}
+		// No candidates — fall through to punctuation if applicable
+		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
+			return c.handlePunctuation(rune(key[0]))
+		}
+		return nil
 
 	case len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')):
 		// Chinese mode: convert to lowercase for pinyin
@@ -348,7 +361,6 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.handleNumberKey(int(key[0] - '0'))
 
 	case len(key) == 1 && key[0] == '0':
-		// 数字0选择第10个候选
 		return c.handleNumberKey(10)
 
 	case !hasShift && c.isSelectKey2(key, data.KeyCode):

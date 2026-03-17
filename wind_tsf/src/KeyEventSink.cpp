@@ -103,10 +103,37 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // Use normalized hash for function hotkeys (Ctrl+`, Shift+Space, etc.)
     if (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyDownHotkey(normalizedKeyHash))
     {
-        WIND_LOG_DEBUG_FMT(L"KeyDown hotkey matched: vk=0x%02X, hash=0x%08X\n",
-                     (uint32_t)wParam, normalizedKeyHash);
-        *pfEaten = TRUE;
-        return S_OK;
+        // For keys without Ctrl/Alt modifiers (page keys like -=, select keys like ;'),
+        // only intercept in Chinese mode or when there's an active input session.
+        // Otherwise these keys get swallowed in English mode on some applications (e.g., WindTerm)
+        // where OnTestKeyDown(pfEaten=TRUE) + OnKeyDown(pfEaten=FALSE) doesn't properly pass through.
+        BOOL shouldEatHotkey = TRUE;
+        if (!(modifiers & (KEYMOD_CTRL | KEYMOD_ALT)))
+        {
+            // Page keys (-=) and select keys (;') without modifiers should only be
+            // intercepted when there's an active input session (candidates showing).
+            // Without input session, Go would return PassThrough for page keys,
+            // and some apps (e.g., WindTerm) don't handle OnTestKeyDown(TRUE) +
+            // OnKeyDown(FALSE) correctly, causing the key to be swallowed.
+            // The key will still be caught by ClassifyInputKey below as Punctuation
+            // in Chinese mode, which correctly handles it.
+            BOOL hasComp = _pTextService->HasActiveComposition();
+            BOOL hasSession = hasComp || _hasCandidates;
+            if (!hasSession)
+            {
+                WIND_LOG_DEBUG_FMT(L"OnTestKeyDown hotkey skipped (no input session): vk=0x%02X, hash=0x%08X\n",
+                    (uint32_t)wParam, normalizedKeyHash);
+                shouldEatHotkey = FALSE;
+            }
+        }
+
+        if (shouldEatHotkey)
+        {
+            WIND_LOG_DEBUG_FMT(L"KeyDown hotkey matched: vk=0x%02X, hash=0x%08X\n",
+                         (uint32_t)wParam, normalizedKeyHash);
+            *pfEaten = TRUE;
+            return S_OK;
+        }
     }
 
     // Check for KeyUp triggered keys (toggle mode keys) - we still need to intercept KeyDown
@@ -157,12 +184,34 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
                 return S_OK;
             }
         }
-        else if (keyType != HotkeyType::None)
+        else if (keyType == HotkeyType::Number || keyType == HotkeyType::Tab ||
+                 keyType == HotkeyType::PageKey || keyType == HotkeyType::SelectKey)
         {
+            // Session-only keys: Go returns PassThrough without active input,
+            // and some apps (WindTerm) don't handle the OnTestKeyDown(TRUE) +
+            // OnKeyDown(FALSE) flip correctly, causing the key to be swallowed.
+            if (hasInputSession)
+            {
+                *pfEaten = TRUE;
+                return S_OK;
+            }
+        }
+        else if (keyType == HotkeyType::Letter)
+        {
+            // Letters: always eat in Chinese mode (they start composition)
+            *pfEaten = TRUE;
+            return S_OK;
+        }
+        else if (keyType == HotkeyType::Punctuation)
+        {
+            // Punctuation: always eat in Chinese mode.
+            // Go always handles punctuation (returns InsertText), so the
+            // OnTestKeyDown(TRUE) + OnKeyDown(TRUE) path is safe.
             *pfEaten = TRUE;
             return S_OK;
         }
     }
+    // else: not in Chinese mode and no input session — pass through
 
     return S_OK;
 }
