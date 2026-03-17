@@ -70,6 +70,8 @@ func (c *Coordinator) enterTempPinyinMode() *bridge.KeyEventResult {
 			c.logger.Warn("Failed to load pinyin engine for temp pinyin", "error", err)
 			return nil
 		}
+		// 激活拼音词库层（进入时注册，退出时卸载，避免污染五笔查询）
+		c.engineMgr.ActivateTempPinyin()
 	}
 
 	c.tempPinyinMode = true
@@ -368,6 +370,11 @@ func (c *Coordinator) exitTempPinyinMode(commit bool, text string) *bridge.KeyEv
 	c.currentPage = 1
 	c.totalPages = 1
 	c.hideUI()
+
+	// 卸载拼音词库层，避免污染五笔引擎的查询结果
+	if c.engineMgr != nil {
+		c.engineMgr.DeactivateTempPinyin()
+	}
 
 	c.logger.Debug("Exited temp pinyin mode", "commit", commit, "textLen", len(text))
 

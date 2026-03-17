@@ -15,9 +15,9 @@ import (
 // Manager 引擎管理器
 type Manager struct {
 	mu            sync.RWMutex
-	engines       map[string]Engine // schemaID -> Engine
+	engines       map[string]Engine         // schemaID -> Engine
 	systemLayers  map[string]dict.DictLayer // schemaID -> 该方案注册的系统词库层
-	currentID     string            // 当前活跃方案 ID
+	currentID     string                    // 当前活跃方案 ID
 	currentEngine Engine
 
 	// 临时方案切换
@@ -488,6 +488,44 @@ func (m *Manager) EnsurePinyinLoaded() error {
 
 	log.Printf("[EngineManager] 临时拼音：加载拼音引擎...")
 	return m.loadSchemaEngineLocked(pinyinID)
+}
+
+// ActivateTempPinyin 激活临时拼音模式：将拼音系统词库层注册到 CompositeDict
+// 调用方（coordinator）在进入临时拼音模式时调用
+func (m *Manager) ActivateTempPinyin() {
+	m.mu.RLock()
+	pinyinID := m.findPinyinSchemaID()
+	m.mu.RUnlock()
+
+	if m.dictManager == nil {
+		return
+	}
+	compositeDict := m.dictManager.GetCompositeDict()
+	if compositeDict != nil && compositeDict.GetLayerByName("pinyin-system") != nil {
+		return // 已注册
+	}
+
+	m.mu.RLock()
+	layer, ok := m.systemLayers[pinyinID]
+	m.mu.RUnlock()
+
+	if ok && layer != nil {
+		m.dictManager.RegisterSystemLayer(layer.Name(), layer)
+		log.Printf("[EngineManager] 临时拼音：注册拼音词库层")
+	}
+}
+
+// DeactivateTempPinyin 退出临时拼音模式：从 CompositeDict 卸载拼音系统词库层
+// 避免拼音词库污染五笔引擎的查询结果
+func (m *Manager) DeactivateTempPinyin() {
+	if m.dictManager == nil {
+		return
+	}
+	compositeDict := m.dictManager.GetCompositeDict()
+	if compositeDict != nil && compositeDict.GetLayerByName("pinyin-system") != nil {
+		m.dictManager.UnregisterSystemLayer("pinyin-system")
+		log.Printf("[EngineManager] 临时拼音：卸载拼音词库层")
+	}
 }
 
 // ConvertWithPinyin 使用拼音引擎转换（用于临时拼音模式）
