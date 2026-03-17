@@ -7,6 +7,25 @@ import (
 	"github.com/huanfeng/wind_input/pkg/config"
 )
 
+// inputStateSnapshot 保存重载配置前的输入状态快照
+type inputStateSnapshot struct {
+	inputBuffer           string
+	inputCursorPos        int
+	preeditDisplay        string
+	syllableBoundaries    []int
+	candidates            []ui.Candidate
+	currentPage           int
+	totalPages            int
+	selectedIndex         int
+	tempEnglishMode       bool
+	tempEnglishBuffer     string
+	tempPinyinMode        bool
+	tempPinyinBuffer      string
+	compositionStartX     int
+	compositionStartY     int
+	compositionStartValid bool
+}
+
 // SetIMEActivated sets the IME activation state
 // When activated, show toolbar if enabled; when deactivated, hide toolbar
 func (c *Coordinator) SetIMEActivated(activated bool) {
@@ -195,6 +214,25 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 
 	case "reload_config":
 		c.logger.Info("Reload config requested from menu")
+		// 保存完整输入状态（reload 过程中可能被 CompositionTerminated/FocusLost 事件清空）
+		hadActiveInput := len(c.inputBuffer) > 0 || c.tempPinyinMode || c.tempEnglishMode
+		snapshot := inputStateSnapshot{
+			inputBuffer:           c.inputBuffer,
+			inputCursorPos:        c.inputCursorPos,
+			preeditDisplay:        c.preeditDisplay,
+			syllableBoundaries:    c.syllableBoundaries,
+			candidates:            c.candidates,
+			currentPage:           c.currentPage,
+			totalPages:            c.totalPages,
+			selectedIndex:         c.selectedIndex,
+			tempEnglishMode:       c.tempEnglishMode,
+			tempEnglishBuffer:     c.tempEnglishBuffer,
+			tempPinyinMode:        c.tempPinyinMode,
+			tempPinyinBuffer:      c.tempPinyinBuffer,
+			compositionStartX:     c.compositionStartX,
+			compositionStartY:     c.compositionStartY,
+			compositionStartValid: c.compositionStartValid,
+		}
 		go func() {
 			newCfg, err := config.Load()
 			if err != nil {
@@ -208,6 +246,35 @@ func (c *Coordinator) HandleMenuCommand(command string) *bridge.StatusUpdateData
 			c.UpdateToolbarConfig(&newCfg.Toolbar)
 			c.UpdateInputConfig(&newCfg.Input)
 			c.logger.Info("Config reloaded successfully from menu")
+
+			// 刷新候选窗口
+			if hadActiveInput {
+				c.mu.Lock()
+				stateCleared := len(c.inputBuffer) == 0 && !c.tempPinyinMode && !c.tempEnglishMode
+				if stateCleared {
+					// 输入状态被外部事件清空，恢复快照
+					c.inputBuffer = snapshot.inputBuffer
+					c.inputCursorPos = snapshot.inputCursorPos
+					c.preeditDisplay = snapshot.preeditDisplay
+					c.syllableBoundaries = snapshot.syllableBoundaries
+					c.candidates = snapshot.candidates
+					c.currentPage = snapshot.currentPage
+					c.totalPages = snapshot.totalPages
+					c.selectedIndex = snapshot.selectedIndex
+					c.tempEnglishMode = snapshot.tempEnglishMode
+					c.tempEnglishBuffer = snapshot.tempEnglishBuffer
+					c.tempPinyinMode = snapshot.tempPinyinMode
+					c.tempPinyinBuffer = snapshot.tempPinyinBuffer
+				}
+				// 始终恢复组合起始位置（确保候选窗口位置不偏移）
+				c.compositionStartX = snapshot.compositionStartX
+				c.compositionStartY = snapshot.compositionStartY
+				c.compositionStartValid = snapshot.compositionStartValid
+				if len(c.candidates) > 0 {
+					c.showUI()
+				}
+				c.mu.Unlock()
+			}
 		}()
 
 	case "exit":
