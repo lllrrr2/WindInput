@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/dict/dictcache"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
@@ -79,6 +80,8 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 			dm.RegisterSystemLayer("codetable-system", systemLayer)
 		}
 		engine.SetDictManager(dm)
+		// 同步排序模式到 CompositeDict，避免启动时使用默认的词频排序
+		dm.SetSortMode(candidate.CandidateSortMode(spec.CandidateSortMode))
 	}
 
 	// 后台预生成拼音 wdb
