@@ -1,4 +1,5 @@
 #include "IPCClient.h"
+#include "FileLogger.h"
 #include <sstream>
 #include <cstdarg>
 #include <cstring>
@@ -61,17 +62,15 @@ CIPCClient::~CIPCClient()
 
 // ============================================================================
 // Logging helpers
-// Note: Debug and Info logs are controlled by WIND_DEBUG_LOG macro
-// Error logs are always enabled (critical errors only)
+// All levels are now controlled at runtime via FileLogger config.
+// IPCClient logs are routed through WIND_LOG_* macros for unified output.
 // ============================================================================
 
 void CIPCClient::_Log(IPCLogLevel level, const wchar_t* format, ...)
 {
-#ifndef WIND_DEBUG_LOG
-    if (level != IPCLogLevel::Error)
-        return;
-#endif
-    if (static_cast<int>(level) > static_cast<int>(s_logLevel))
+    // Map IPCLogLevel to WIND_LOG level: Error=1, Info=3, Debug=4
+    int windLevel = (level == IPCLogLevel::Error) ? 1 : (level == IPCLogLevel::Info) ? 3 : 4;
+    if (!CFileLogger::Instance().IsEnabled(static_cast<CFileLogger::LogLevel>(windLevel)))
         return;
 
     wchar_t buffer[1024];
@@ -80,13 +79,12 @@ void CIPCClient::_Log(IPCLogLevel level, const wchar_t* format, ...)
     _vsnwprintf_s(buffer, _countof(buffer), _TRUNCATE, format, args);
     va_end(args);
 
-    OutputDebugStringW(buffer);
+    CFileLogger::Instance().Write(static_cast<CFileLogger::LogLevel>(windLevel), buffer);
 }
 
 void CIPCClient::_LogError(const wchar_t* format, ...)
 {
-    // Error logs are always enabled
-    if (s_logLevel < IPCLogLevel::Error)
+    if (!CFileLogger::Instance().IsEnabled(CFileLogger::LogLevel::Error))
         return;
 
     wchar_t msgBuffer[1024];
@@ -95,17 +93,12 @@ void CIPCClient::_LogError(const wchar_t* format, ...)
     _vsnwprintf_s(msgBuffer, _countof(msgBuffer), _TRUNCATE, format, args);
     va_end(args);
 
-    wchar_t buffer[1100];
-    _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"[WindInput][ERROR] %s\n", msgBuffer);
-    OutputDebugStringW(buffer);
+    CFileLogger::Instance().Write(CFileLogger::LogLevel::Error, msgBuffer);
 }
 
 void CIPCClient::_LogInfo(const wchar_t* format, ...)
 {
-#ifndef WIND_DEBUG_LOG
-    return;  // Info logs disabled when WIND_DEBUG_LOG is not defined
-#endif
-    if (s_logLevel < IPCLogLevel::Info)
+    if (!CFileLogger::Instance().IsEnabled(CFileLogger::LogLevel::Info))
         return;
 
     wchar_t msgBuffer[1024];
@@ -114,17 +107,12 @@ void CIPCClient::_LogInfo(const wchar_t* format, ...)
     _vsnwprintf_s(msgBuffer, _countof(msgBuffer), _TRUNCATE, format, args);
     va_end(args);
 
-    wchar_t buffer[1100];
-    _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"[WindInput] %s\n", msgBuffer);
-    OutputDebugStringW(buffer);
+    CFileLogger::Instance().Write(CFileLogger::LogLevel::Info, msgBuffer);
 }
 
 void CIPCClient::_LogDebug(const wchar_t* format, ...)
 {
-#ifndef WIND_DEBUG_LOG
-    return;  // Debug logs disabled when WIND_DEBUG_LOG is not defined
-#endif
-    if (s_logLevel < IPCLogLevel::Debug)
+    if (!CFileLogger::Instance().IsEnabled(CFileLogger::LogLevel::Debug))
         return;
 
     wchar_t msgBuffer[1024];
@@ -133,9 +121,7 @@ void CIPCClient::_LogDebug(const wchar_t* format, ...)
     _vsnwprintf_s(msgBuffer, _countof(msgBuffer), _TRUNCATE, format, args);
     va_end(args);
 
-    wchar_t buffer[1100];
-    _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"[WindInput][DBG] %s\n", msgBuffer);
-    OutputDebugStringW(buffer);
+    CFileLogger::Instance().Write(CFileLogger::LogLevel::Debug, msgBuffer);
 }
 
 // ============================================================================

@@ -32,6 +32,7 @@ set(SOURCES
     src/CaretEditSession.cpp
     src/DisplayAttributeInfo.cpp
     src/HotkeyManager.cpp
+    src/FileLogger.cpp
 )
 
 # Resource file for icon

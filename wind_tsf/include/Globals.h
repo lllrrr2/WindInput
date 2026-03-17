@@ -9,109 +9,78 @@
 // ============================================================================
 // Logging Configuration
 // ============================================================================
-// Log levels (higher value = more verbose):
-//   0 = OFF    - No logging
-//   1 = ERROR  - Critical errors only
-//   2 = WARN   - Warnings and errors
-//   3 = INFO   - Important information, warnings, and errors
-//   4 = DEBUG  - Debug information (verbose)
-//   5 = TRACE  - Trace-level (very verbose, for development only)
+// All log levels are compiled in. Output is controlled at runtime via config file:
+//   %LOCALAPPDATA%\WindInput\logs\tsf_log_config
 //
-// Set WIND_LOG_LEVEL to control logging verbosity at compile time.
-// Default: INFO (3) in release, DEBUG (4) when WIND_DEBUG_LOG is defined.
+// Config format (one key=value per line):
+//   mode=none          Output mode: none(default) | file | debugstring | all
+//   level=debug        Log level: off | error | warn | info | debug | trace
+//
+// When mode=none (or no config file), logging has near-zero overhead
+// (a single branch on a global variable per log call).
 // ============================================================================
 
-// Log level constants
-#define WIND_LOG_LEVEL_OFF   0
-#define WIND_LOG_LEVEL_ERROR 1
-#define WIND_LOG_LEVEL_WARN  2
-#define WIND_LOG_LEVEL_INFO  3
-#define WIND_LOG_LEVEL_DEBUG 4
-#define WIND_LOG_LEVEL_TRACE 5
+#include "FileLogger.h"
 
-// Uncomment to enable verbose debug logging
-// #define WIND_DEBUG_LOG
-
-// Set default log level based on build configuration
-#ifndef WIND_LOG_LEVEL
-    #ifdef WIND_DEBUG_LOG
-        #define WIND_LOG_LEVEL WIND_LOG_LEVEL_DEBUG
-    #else
-        #define WIND_LOG_LEVEL WIND_LOG_LEVEL_INFO
-    #endif
-#endif
-
-// Internal logging implementation
 namespace WindLog {
-    inline void Output(const wchar_t* level, const wchar_t* msg) {
-        WCHAR buf[600];
-        swprintf(buf, 600, L"[WindInput][%s] %s", level, msg);
-        OutputDebugStringW(buf);
+    // Map level constant to FileLogger::LogLevel
+    inline CFileLogger::LogLevel _ToFileLevel(int level) {
+        return static_cast<CFileLogger::LogLevel>(level);
     }
 
-    inline void OutputFmt(const wchar_t* level, const wchar_t* fmt, ...) {
+    inline void Output(int level, const wchar_t* msg) {
+        auto& logger = CFileLogger::Instance();
+        auto fileLevel = _ToFileLevel(level);
+        if (!logger.IsEnabled(fileLevel))
+            return;
+
+        // Strip trailing \n\r for clean message
+        WCHAR cleanMsg[512];
+        wcsncpy_s(cleanMsg, msg, _TRUNCATE);
+        size_t len = wcslen(cleanMsg);
+        while (len > 0 && (cleanMsg[len - 1] == L'\n' || cleanMsg[len - 1] == L'\r'))
+            cleanMsg[--len] = L'\0';
+
+        logger.Write(fileLevel, cleanMsg);
+    }
+
+    inline void OutputFmt(int level, const wchar_t* fmt, ...) {
+        auto& logger = CFileLogger::Instance();
+        auto fileLevel = _ToFileLevel(level);
+        if (!logger.IsEnabled(fileLevel))
+            return;
+
         WCHAR msgBuf[512];
         va_list args;
         va_start(args, fmt);
         _vsnwprintf_s(msgBuf, _countof(msgBuf), _TRUNCATE, fmt, args);
         va_end(args);
 
-        WCHAR buf[600];
-        swprintf(buf, 600, L"[WindInput][%s] %s", level, msgBuf);
-        OutputDebugStringW(buf);
+        // Strip trailing \n\r
+        size_t len = wcslen(msgBuf);
+        while (len > 0 && (msgBuf[len - 1] == L'\n' || msgBuf[len - 1] == L'\r'))
+            msgBuf[--len] = L'\0';
+
+        logger.Write(fileLevel, msgBuf);
     }
 }
 
 // ============================================================================
-// Log macros - use these throughout the codebase
+// Log macros - all levels always compiled in, filtered at runtime
 // ============================================================================
 
-// ERROR level - Critical errors (always enabled unless OFF)
-#if WIND_LOG_LEVEL >= WIND_LOG_LEVEL_ERROR
-    #define WIND_LOG_ERROR(msg) WindLog::Output(L"ERROR", msg)
-    #define WIND_LOG_ERROR_FMT(fmt, ...) WindLog::OutputFmt(L"ERROR", fmt, __VA_ARGS__)
-#else
-    #define WIND_LOG_ERROR(msg) ((void)0)
-    #define WIND_LOG_ERROR_FMT(fmt, ...) ((void)0)
-#endif
+#define WIND_LOG_ERROR(msg)            WindLog::Output(1, msg)
+#define WIND_LOG_ERROR_FMT(fmt, ...)   WindLog::OutputFmt(1, fmt, __VA_ARGS__)
+#define WIND_LOG_WARN(msg)             WindLog::Output(2, msg)
+#define WIND_LOG_WARN_FMT(fmt, ...)    WindLog::OutputFmt(2, fmt, __VA_ARGS__)
+#define WIND_LOG_INFO(msg)             WindLog::Output(3, msg)
+#define WIND_LOG_INFO_FMT(fmt, ...)    WindLog::OutputFmt(3, fmt, __VA_ARGS__)
+#define WIND_LOG_DEBUG(msg)            WindLog::Output(4, msg)
+#define WIND_LOG_DEBUG_FMT(fmt, ...)   WindLog::OutputFmt(4, fmt, __VA_ARGS__)
+#define WIND_LOG_TRACE(msg)            WindLog::Output(5, msg)
+#define WIND_LOG_TRACE_FMT(fmt, ...)   WindLog::OutputFmt(5, fmt, __VA_ARGS__)
 
-// WARN level - Warnings
-#if WIND_LOG_LEVEL >= WIND_LOG_LEVEL_WARN
-    #define WIND_LOG_WARN(msg) WindLog::Output(L"WARN", msg)
-    #define WIND_LOG_WARN_FMT(fmt, ...) WindLog::OutputFmt(L"WARN", fmt, __VA_ARGS__)
-#else
-    #define WIND_LOG_WARN(msg) ((void)0)
-    #define WIND_LOG_WARN_FMT(fmt, ...) ((void)0)
-#endif
-
-// INFO level - Important information
-#if WIND_LOG_LEVEL >= WIND_LOG_LEVEL_INFO
-    #define WIND_LOG_INFO(msg) WindLog::Output(L"INFO", msg)
-    #define WIND_LOG_INFO_FMT(fmt, ...) WindLog::OutputFmt(L"INFO", fmt, __VA_ARGS__)
-#else
-    #define WIND_LOG_INFO(msg) ((void)0)
-    #define WIND_LOG_INFO_FMT(fmt, ...) ((void)0)
-#endif
-
-// DEBUG level - Debug information
-#if WIND_LOG_LEVEL >= WIND_LOG_LEVEL_DEBUG
-    #define WIND_LOG_DEBUG(msg) WindLog::Output(L"DEBUG", msg)
-    #define WIND_LOG_DEBUG_FMT(fmt, ...) WindLog::OutputFmt(L"DEBUG", fmt, __VA_ARGS__)
-#else
-    #define WIND_LOG_DEBUG(msg) ((void)0)
-    #define WIND_LOG_DEBUG_FMT(fmt, ...) ((void)0)
-#endif
-
-// TRACE level - Very verbose trace information
-#if WIND_LOG_LEVEL >= WIND_LOG_LEVEL_TRACE
-    #define WIND_LOG_TRACE(msg) WindLog::Output(L"TRACE", msg)
-    #define WIND_LOG_TRACE_FMT(fmt, ...) WindLog::OutputFmt(L"TRACE", fmt, __VA_ARGS__)
-#else
-    #define WIND_LOG_TRACE(msg) ((void)0)
-    #define WIND_LOG_TRACE_FMT(fmt, ...) ((void)0)
-#endif
-
-// Legacy compatibility macros (map to DEBUG level)
+// Legacy compatibility
 #define WIND_LOG(msg) WIND_LOG_DEBUG(msg)
 #define WIND_LOG_FMT(fmt, ...) WIND_LOG_DEBUG_FMT(fmt, __VA_ARGS__)
 

@@ -1,6 +1,7 @@
 #include "Globals.h"
 #include "ClassFactory.h"
 #include "Register.h"
+#include "FileLogger.h"
 
 BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID pvReserved)
 {
@@ -9,9 +10,11 @@ BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID pvReserved)
         case DLL_PROCESS_ATTACH:
             g_hInstance = hInstance;
             DisableThreadLibraryCalls(hInstance);
+            CFileLogger::Instance().Init();
             break;
 
         case DLL_PROCESS_DETACH:
+            CFileLogger::Instance().Shutdown();
             break;
     }
 
