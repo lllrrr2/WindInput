@@ -113,11 +113,44 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 		}
 	}
 
-	// Viterbi 智能组句已移除：与分步确认（方案二）的逐词上屏模式不兼容。
-	// 分步确认依赖精确的 ConsumedLength 来驱动状态机，Viterbi 的全局整句结果
-	// 无法与逐词消费机制协调。词组匹配由步骤 1（精确匹配）和步骤 2（子词组）覆盖。
-
 	completedCode := strings.Join(completedSyllables, "")
+
+	// ── 步骤 0b：动态规划造句（Poet） ──
+	// 参照 Rime Poet：对已完成音节构建词网格，动态规划找最优词序列组合。
+	// 触发条件：≥2 完成音节 + 有 unigram 模型。
+	// ConsumedLength = allCompletedEnd（仅消耗已完成音节，与分步确认兼容）。
+	// 造句结果作为普通候选参与排序，不享有绝对优先——Rime 中造句和精确匹配同级。
+	if syllableCount >= 2 && e.unigram != nil && len(completedCode) >= 4 {
+		lattice := BuildLattice(completedCode, e.syllableTrie, e.dict, e.unigram)
+		if !lattice.IsEmpty() {
+			vResults := ViterbiTopK(lattice, e.bigram, 3)
+			for _, vResult := range vResults {
+				if vResult == nil || len(vResult.Words) == 0 {
+					continue
+				}
+				sentence := vResult.String()
+				if _, exists := candidatesMap[sentence]; exists {
+					continue
+				}
+				charCount := len([]rune(sentence))
+				// 造句结果：initialQuality=4.0（与精确匹配同级），coverage 基于已完成音节比例
+				coverage := float64(syllableCount) / float64(totalSyllableCount)
+				// 造句的 dictWeight 用 Viterbi 路径的 LogProb 反映整句质量
+				// LogProb 通常在 [-30, 0] 范围，转换为正向权重
+				sentenceWeight := (vResult.LogProb + 30.0) * 30000.0
+				if sentenceWeight < 0 {
+					sentenceWeight = 0
+				}
+				c := candidate.Candidate{
+					Text:           sentence,
+					Code:           completedCode,
+					Weight:         e.rimeScore(sentence, sentenceWeight, 4.0, coverage, charCount),
+					ConsumedLength: allCompletedEnd, // 仅消耗已完成音节，partial 留在 buffer
+				}
+				candidatesMap[sentence] = &c
+			}
+		}
+	}
 
 	// ── 步骤 1：精确匹配完整音节序列的词组（含模糊变体） ──
 	// 当有 partial 后缀时，仍对已完成音节部分执行精确匹配，
