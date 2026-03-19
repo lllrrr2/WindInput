@@ -408,7 +408,7 @@ onMounted(async () => {
   <div class="app">
     <aside class="sidebar">
       <div class="logo">
-        <span class="logo-icon">🌬</span>
+        <img class="logo-icon" :src="appIconUrl" alt="清风输入法" />
         <div class="logo-title">
           <span class="logo-text">清风输入法</span>
           <span class="logo-version" v-if="status"

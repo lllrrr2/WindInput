@@ -68,19 +68,13 @@ defineEmits<{
   text-align: center;
 }
 .about-icon-wrap {
-  width: 96px;
-  height: 96px;
-  background: #f3f4f6;
-  border-radius: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
 .about-icon-wrap img {
-  width: 72px;
-  height: 72px;
+  width: 96px;
+  height: 96px;
   object-fit: contain;
 }
 .about-title h3 {
