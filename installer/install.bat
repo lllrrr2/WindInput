@@ -20,7 +20,7 @@ REM 获取脚本目录
 set SCRIPT_DIR=%~dp0
 set BUILD_DIR=%SCRIPT_DIR%..\build
 
-echo [1/10] 检查文件...
+echo [1/12] 检查文件...
 if not exist "%BUILD_DIR%\wind_tsf.dll" (
     echo [错误] 未找到 wind_tsf.dll
     echo 请先运行 build_all.bat
@@ -42,12 +42,12 @@ if not exist "%BUILD_DIR%\wind_input.exe" (
     exit /b 1
 )
 
-echo [2/10] 停止旧进程...
+echo [2/12] 停止旧进程...
 taskkill /F /IM wind_input.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-echo [3/10] 创建安装目录...
-echo [4/10] 处理已有文件...
+echo [3/12] 创建安装目录...
+echo [4/12] 处理已有文件...
 set "INSTALL_DIR=%ProgramW6432%\WindInput"
 if "%ProgramW6432%"=="" set "INSTALL_DIR=%ProgramFiles%\WindInput"
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
@@ -102,7 +102,7 @@ if exist "%INSTALL_DIR%\wind_setting.exe" (
     )
 )
 
-echo [5/10] 复制文件...
+echo [5/12] 复制文件...
 copy /Y "%BUILD_DIR%\wind_tsf.dll" "%INSTALL_DIR%\" >nul
 if %errorLevel% neq 0 (
     echo [错误] 复制 wind_tsf.dll 失败
@@ -136,7 +136,7 @@ if exist "%BUILD_DIR%\wind_setting.exe" (
     echo [提示] 未找到 wind_setting.exe,已跳过(可选)
 )
 
-echo [6/10] 从 build 目录复制词库(源文件, wdb 运行时自动生成)...
+echo [6/12] 从 build 目录复制词库(源文件, wdb 运行时自动生成)...
 REM 创建词库目录
 if not exist "%INSTALL_DIR%\dict\pinyin" mkdir "%INSTALL_DIR%\dict\pinyin"
 if not exist "%INSTALL_DIR%\dict\wubi86" mkdir "%INSTALL_DIR%\dict\wubi86"

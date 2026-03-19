@@ -18,11 +18,11 @@ if %errorLevel% neq 0 (
 set "INSTALL_DIR=%ProgramW6432%\WindInput"
 if "%ProgramW6432%"=="" set "INSTALL_DIR=%ProgramFiles%\WindInput"
 
-echo [1/5] 停止服务...
+echo [1/7] 停止服务...
 taskkill /F /IM wind_input.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo [2/5] 注销 COM 组件...
+echo [2/7] 注销 COM 组件...
 if exist "%INSTALL_DIR%\wind_tsf.dll" (
     regsvr32 /u /s "%INSTALL_DIR%\wind_tsf.dll"
 )
@@ -32,7 +32,7 @@ for %%f in ("%INSTALL_DIR%\wind_tsf*.dll") do (
     regsvr32 /u /s "%%f" >nul 2>&1
 )
 
-echo [3/5] 删除文件...
+echo [3/7] 删除文件...
 
 REM 生成随机后缀用于重命名被占用文件
 set "RANDOM_SUFFIX=%RANDOM%%RANDOM%"
@@ -64,7 +64,7 @@ if exist "%INSTALL_DIR%\wind_input.exe" (
     )
 )
 
-echo [4/5] 清理备份文件...
+echo [4/7] 清理备份文件...
 REM 尝试删除所有 .old_* 和 .bak 文件
 for %%f in ("%INSTALL_DIR%\*.old_*") do (
     del /F "%%f" >nul 2>&1
@@ -73,7 +73,15 @@ for %%f in ("%INSTALL_DIR%\*.bak") do (
     del /F "%%f" >nul 2>&1
 )
 
-echo [5/6] 移除目录...
+echo [5/7] 移除开机自启动...
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WindInput" /f >nul 2>&1
+if %errorLevel% equ 0 (
+    echo   - 已移除开机自启动注册表项
+) else (
+    echo   - 未找到开机自启动注册表项(已跳过)
+)
+
+echo [6/7] 移除目录...
 REM 删除开始菜单快捷方式
 del /F "%ProgramData%\Microsoft\Windows\Start Menu\Programs\清风输入法 设置.lnk" >nul 2>&1
 REM 删除词库目录
@@ -88,7 +96,7 @@ if exist "%INSTALL_DIR%\schemas" (
 REM 尝试删除安装目录(如有残留文件会失败)
 rmdir /S /Q "%INSTALL_DIR%" >nul 2>&1
 
-echo [6/6] 清理缓存目录...
+echo [7/7] 清理缓存目录...
 REM 清理词库缓存（wdb 运行时转换缓存）
 set "CACHE_DIR=%LOCALAPPDATA%\WindInput\cache"
 if exist "%CACHE_DIR%" (

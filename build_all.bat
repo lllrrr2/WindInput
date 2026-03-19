@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 
 echo ======================================
 echo WindInput - Build All
@@ -42,6 +42,17 @@ if %errorLevel% neq 0 (
     pause
     exit /b 1
 )
+REM 验证 DLL 是否真正生成到 build 目录
+if not exist "%SCRIPT_DIR%build\wind_tsf.dll" (
+    echo [错误] C++ 构建完成但 wind_tsf.dll 未生成到 build 目录
+    pause
+    exit /b 1
+)
+if not exist "%SCRIPT_DIR%build\wind_dwrite.dll" (
+    echo [错误] C++ 构建完成但 wind_dwrite.dll 未生成到 build 目录
+    pause
+    exit /b 1
+)
 echo C++ DLL 构建成功
 echo.
 
@@ -52,7 +63,7 @@ if /I "%WAILS_MODE%"=="skip" (
     cd "%SCRIPT_DIR%wind_setting"
     REM 检查是否安装 wails
     where wails >nul 2>&1
-    if %errorLevel% neq 0 (
+    if !errorLevel! neq 0 (
         echo [警告] 未找到 Wails CLI,已跳过 wind_setting 构建
         echo        安装命令: go install github.com/wailsapp/wails/v2/cmd/wails@latest
     ) else (
