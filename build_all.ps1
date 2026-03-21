@@ -67,8 +67,10 @@ if ($WailsMode -eq "skip") {
     Push-Location (Join-Path $ScriptDir "wind_setting")
     try {
         if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
-            Write-Host "[警告] 未找到 Wails CLI,已跳过 wind_setting 构建" -ForegroundColor Yellow
-            Write-Host "       安装命令: go install github.com/wailsapp/wails/v2/cmd/wails@latest"
+            Write-Host "[错误] 未找到 Wails CLI,无法构建 wind_setting" -ForegroundColor Red
+            Write-Host "       请先安装: go install github.com/wailsapp/wails/v2/cmd/wails@latest" -ForegroundColor Red
+            Write-Host "       如需跳过此步骤,请使用: .\build_all.ps1 -WailsMode skip" -ForegroundColor Yellow
+            exit 1
         } else {
             if ($WailsMode -eq "debug") {
                 & wails build -debug
