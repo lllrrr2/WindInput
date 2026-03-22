@@ -23,6 +23,8 @@ type Config struct {
 	SingleCodeInput   bool   // 逐字键入模式（关闭前缀匹配）
 	DedupCandidates   bool   // 候选去重（内部开关，未来可能开放给用户）
 	CandidateSortMode string // 候选排序模式：frequency（词频）、natural（自然顺序）
+	EnableUserFreq    bool   // 启用用户词频学习
+	ProtectTopN       int    // 首选保护：前 N 位锁定码表原始顺序
 }
 
 // DefaultConfig 返回默认配置
@@ -371,6 +373,56 @@ func (e *Engine) HandleTopCode(input string) (commitText string, newInput string
 // Reset 重置引擎状态
 func (e *Engine) Reset() {
 	// 五笔引擎无状态，无需重置
+}
+
+// OnCandidateSelected 用户选词回调（词频学习）
+func (e *Engine) OnCandidateSelected(code, text string) {
+	if e.config == nil || !e.config.EnableUserFreq {
+		return
+	}
+	if e.dictManager == nil {
+		return
+	}
+
+	userDict := e.dictManager.GetUserDict()
+	if userDict == nil {
+		return
+	}
+
+	// 单字不自动调频（五笔单字靠码表固定顺序）
+	if len([]rune(text)) <= 1 {
+		return
+	}
+
+	// 首选保护：检查该词在码表中的原始排名
+	if e.config.ProtectTopN > 0 && e.codeTable != nil {
+		originalRank := e.getOriginalRank(code, text)
+		if originalRank >= 0 && originalRank < e.config.ProtectTopN {
+			// 码表前 N 位，不需要调频
+			return
+		}
+	}
+
+	// 使用带防护的选词方法
+	// countThreshold=3: 选中3次后才开始提权
+	// addWeight=50: 新词初始权重较低
+	// boostDelta=10: 每次提权幅度
+	userDict.OnWordSelected(code, text, 50, 10, 3)
+}
+
+// getOriginalRank 获取词在码表中的原始排名（0-based）
+// 返回 -1 表示不在码表中
+func (e *Engine) getOriginalRank(code, text string) int {
+	if e.codeTable == nil {
+		return -1
+	}
+	entries := e.codeTable.Lookup(code)
+	for i, entry := range entries {
+		if entry.Text == text {
+			return i
+		}
+	}
+	return -1
 }
 
 // Type 返回引擎类型

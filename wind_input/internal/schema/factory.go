@@ -60,6 +60,12 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 		DedupCandidates:   true,
 	}
 
+	// 五笔学习配置
+	if s.Learning.Mode == LearningAuto || s.Learning.Mode == LearningFrequency {
+		config.EnableUserFreq = true
+		config.ProtectTopN = s.Learning.ProtectTopN
+	}
+
 	engine := wubi.NewEngine(config)
 
 	// 加载主码表

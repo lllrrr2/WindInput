@@ -31,3 +31,4 @@ user_data:
 
 learning:
   mode: manual
+  protect_top_n: 3

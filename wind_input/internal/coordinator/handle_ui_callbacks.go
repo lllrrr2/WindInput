@@ -124,12 +124,18 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 	}
 
 	candidate := c.candidates[actualIndex]
-	text := candidate.Text
+	originalText := candidate.Text
+	text := originalText
 
 	// Apply full-width conversion if enabled
 	if c.fullWidth {
 		text = transform.ToFullWidth(text)
 	}
+
+	// 收集学习所需信息（在 clearState 前）
+	code := c.inputBuffer
+	isCommand := candidate.IsCommand
+	engineMgr := c.engineMgr
 
 	c.logger.Debug("Candidate selected via mouse click", "index", actualIndex)
 
@@ -140,6 +146,11 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 	// Get bridge server reference (release lock before network I/O)
 	bridgeServer := c.bridgeServer
 	c.mu.Unlock()
+
+	// 触发选词学习回调
+	if engineMgr != nil && !isCommand && originalText != "" {
+		engineMgr.OnCandidateSelected(code, originalText)
+	}
 
 	// Send text to TSF via push pipe (only to active client for security)
 	if bridgeServer != nil && text != "" {

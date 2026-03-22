@@ -257,7 +257,7 @@ func (e *Engine) SetDictManager(dm *dict.DictManager) {
 }
 
 // OnCandidateSelected 用户选词回调
-// 记录用户选择，用于词频学习
+// 记录用户选择，用于词频学习（带误选保护）
 func (e *Engine) OnCandidateSelected(code, text string) {
 	// 用户词频学习开关（默认关闭）
 	if e.config == nil || !e.config.EnableUserFreq {
@@ -272,29 +272,19 @@ func (e *Engine) OnCandidateSelected(code, text string) {
 		return
 	}
 
-	// 查询用户词典中是否已存在该词条
-	existing := userDict.Search(code, 0)
-	found := false
-	for _, c := range existing {
-		if c.Text == text {
-			found = true
-			break
+	// 单字不写入 UserDict（避免膨胀），但更新 Unigram 频率（单字频率对造句重要）
+	runes := []rune(text)
+	if len(runes) < 2 {
+		if e.unigram != nil {
+			e.unigram.BoostUserFreq(text, 1)
 		}
+		return
 	}
 
-	if found {
-		// 已存在：增加权重
-		userDict.IncreaseWeight(code, text, 10)
-		logDebug("[PinyinEngine] 用户词频提升: code=%q text=%q +10", code, text)
-	} else {
-		// 不存在：添加到用户词典
-		// 只对多字词或非系统词添加（避免单字污染）
-		runes := []rune(text)
-		if len(runes) >= 2 {
-			userDict.Add(code, text, 100)
-			logDebug("[PinyinEngine] 用户词典添加: code=%q text=%q weight=100", code, text)
-		}
-	}
+	// 使用带防护的选词方法
+	// countThreshold=2: 拼音用户更依赖调频，阈值比五笔低
+	// addWeight=100, boostDelta=10
+	userDict.OnWordSelected(code, text, 100, 10, 2)
 
 	// 更新 Unigram 用户频率
 	if e.unigram != nil {

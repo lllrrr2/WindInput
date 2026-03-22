@@ -14,6 +14,9 @@ import (
 	"github.com/huanfeng/wind_input/internal/candidate"
 )
 
+// MaxDynamicWeight UserDict 动态权重硬上限，防止 weight 无限膨胀
+const MaxDynamicWeight = 2000
+
 // UserDict 用户词库
 // 实现 MutableLayer 接口，支持用户造词的增删改查和持久化
 type UserDict struct {
@@ -35,6 +38,7 @@ type UserDict struct {
 type UserWord struct {
 	Text      string    // 词语
 	Weight    int       // 权重
+	Count     int       // 选中次数（用于误选保护）
 	CreatedAt time.Time // 创建时间
 }
 
@@ -256,9 +260,17 @@ func (ud *UserDict) Load() error {
 			createdAt = time.Now()
 		}
 
+		count := 0
+		if len(parts) >= 5 {
+			if c, err := strconv.Atoi(strings.TrimSpace(parts[4])); err == nil {
+				count = c
+			}
+		}
+
 		ud.entries[code] = append(ud.entries[code], UserWord{
 			Text:      text,
 			Weight:    weight,
+			Count:     count,
 			CreatedAt: createdAt,
 		})
 	}
@@ -287,7 +299,7 @@ func (ud *UserDict) saveToFile() error {
 
 	// 写入头部注释
 	writer.WriteString("# Wind Input 用户词库\n")
-	writer.WriteString("# 格式: 编码<tab>词语<tab>权重<tab>时间戳\n")
+	writer.WriteString("# 格式: 编码<tab>词语<tab>权重<tab>时间戳<tab>选中次数\n")
 	writer.WriteString("# 请勿手动编辑此文件\n\n")
 
 	// 收集所有 code 并排序（保证输出稳定）
@@ -301,8 +313,8 @@ func (ud *UserDict) saveToFile() error {
 	for _, code := range codes {
 		words := ud.entries[code]
 		for _, w := range words {
-			line := fmt.Sprintf("%s\t%s\t%d\t%d\n",
-				code, w.Text, w.Weight, w.CreatedAt.Unix())
+			line := fmt.Sprintf("%s\t%s\t%d\t%d\t%d\n",
+				code, w.Text, w.Weight, w.CreatedAt.Unix(), w.Count)
 			writer.WriteString(line)
 		}
 	}
@@ -412,6 +424,7 @@ func (ud *UserDict) EntryCount() int {
 }
 
 // IncreaseWeight 增加词条权重（用于用户选词后提升权重）
+// 权重不会超过 MaxDynamicWeight 硬上限
 func (ud *UserDict) IncreaseWeight(code string, text string, delta int) {
 	ud.mu.Lock()
 	defer ud.mu.Unlock()
@@ -424,9 +437,53 @@ func (ud *UserDict) IncreaseWeight(code string, text string, delta int) {
 
 	for i, w := range words {
 		if w.Text == text {
-			ud.entries[code][i].Weight += delta
+			newWeight := w.Weight + delta
+			if newWeight > MaxDynamicWeight {
+				newWeight = MaxDynamicWeight
+			}
+			ud.entries[code][i].Weight = newWeight
+			ud.entries[code][i].Count++
 			ud.markDirty()
 			return
 		}
 	}
+}
+
+// OnWordSelected 带误选保护的选词回调
+// countThreshold: 选中次数达到阈值后才开始提权
+// addWeight: 新词初始权重
+// boostDelta: 每次提权增量
+func (ud *UserDict) OnWordSelected(code, text string, addWeight, boostDelta, countThreshold int) {
+	ud.mu.Lock()
+	defer ud.mu.Unlock()
+
+	code = strings.ToLower(code)
+
+	// 查找已有词条
+	if words, ok := ud.entries[code]; ok {
+		for i, w := range words {
+			if w.Text == text {
+				ud.entries[code][i].Count++
+				// 达到阈值后才提权
+				if ud.entries[code][i].Count >= countThreshold {
+					newWeight := w.Weight + boostDelta
+					if newWeight > MaxDynamicWeight {
+						newWeight = MaxDynamicWeight
+					}
+					ud.entries[code][i].Weight = newWeight
+				}
+				ud.markDirty()
+				return
+			}
+		}
+	}
+
+	// 不存在：添加新词，初始低权重 + count=1
+	ud.entries[code] = append(ud.entries[code], UserWord{
+		Text:      text,
+		Weight:    addWeight,
+		Count:     1,
+		CreatedAt: time.Now(),
+	})
+	ud.markDirty()
 }

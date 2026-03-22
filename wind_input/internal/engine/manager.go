@@ -566,7 +566,7 @@ func (m *Manager) ConvertWithPinyin(input string, maxCandidates int) *ConvertRes
 	return result
 }
 
-// OnCandidateSelected 选词回调
+// OnCandidateSelected 选词回调（拼音 + 五笔统一路由）
 func (m *Manager) OnCandidateSelected(code, text string) {
 	engine := m.GetCurrentEngine()
 	if engine == nil {
@@ -574,6 +574,11 @@ func (m *Manager) OnCandidateSelected(code, text string) {
 	}
 	if pinyinEngine, ok := engine.(*pinyin.Engine); ok {
 		pinyinEngine.OnCandidateSelected(code, text)
+		return
+	}
+	if wubiEngine, ok := engine.(*wubi.Engine); ok {
+		wubiEngine.OnCandidateSelected(code, text)
+		return
 	}
 }
 

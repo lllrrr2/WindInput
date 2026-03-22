@@ -576,8 +576,8 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 		}
 	}
 
-	// 完全消费或非拼音：连同所有确认段一次性上屏
-	if isPinyin && c.engineMgr != nil && !cand.IsCommand {
+	// 完全消费：触发学习回调（拼音和五笔统一）
+	if c.engineMgr != nil && !cand.IsCommand {
 		c.engineMgr.OnCandidateSelected(c.inputBuffer, originalText)
 	}
 

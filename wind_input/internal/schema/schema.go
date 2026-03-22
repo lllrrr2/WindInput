@@ -114,6 +114,7 @@ const (
 type LearningSpec struct {
 	Mode        LearningMode `yaml:"mode"`
 	UnigramPath string       `yaml:"unigram_path,omitempty"`
+	ProtectTopN int          `yaml:"protect_top_n,omitempty"` // 首选保护：前 N 位锁定码表原始顺序
 }
 
 // GetDefaultDictSpec 获取默认词库规格（dictionaries 中 default=true 的项）
