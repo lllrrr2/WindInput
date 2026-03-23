@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # include/ - Header Files
 
@@ -22,6 +22,7 @@ Public and internal header files defining interfaces, structures, and protocols 
 | `CaretEditSession.h` | CCaretEditSession class (TSF edit session for caret position retrieval) |
 | `DisplayAttributeInfo.h` | CDisplayAttributeInfoInput, CDisplayAttributeProvider (composition text styling) |
 | `Register.h` | RegisterServer, UnregisterServer functions (Windows registry integration) |
+| `FileLogger.h` | CFileLogger class (运行时可配置文件日志，单例，支持 none/file/debugstring/all 四种输出模式，5MB 自动轮转，多进程安全) |
 | `WindDWriteShim.h` | (if exists) DirectWrite text rendering bridge and emoji support |
 
 ## Architecture Overview
@@ -52,6 +53,9 @@ LangBarItemButton.h
 HotkeyManager.h
 ├── BinaryProtocol.h
 └── Globals.h
+
+FileLogger.h
+└── (standalone, no internal dependencies)
 ```
 
 ## Key Structures
@@ -129,6 +133,25 @@ When adding or modifying headers:
 4. **Use pack(1)** for network-protocol structs (all IpcHeader, *Payload, *Header structs)
 5. **Define enums as enum class** (type-safe) unless binary compatibility requires plain enums
 6. **Avoid iostream** - Use WIND_LOG_* macros instead
+
+### FileLogger Usage
+
+`FileLogger.h` is a standalone header with no internal dependencies. Use it directly in any .cpp file:
+
+```cpp
+#include "FileLogger.h"
+
+// Fast-path check (inlined, zero overhead when mode=none)
+if (CFileLogger::Instance().IsEnabled(CFileLogger::LogLevel::Debug)) {
+    CFileLogger::Instance().Write(CFileLogger::LogLevel::Debug, L"Key event received");
+}
+```
+
+To enable logging at runtime, create `%LOCALAPPDATA%\WindInput\logs\tsf_log_config`:
+```
+mode=file
+level=debug
+```
 
 ### Logging in Headers
 

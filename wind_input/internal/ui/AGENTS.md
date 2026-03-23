@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # internal/ui
 
 ## Purpose
-Windows 原生 UI 渲染层。使用 Win32 API 实现输入法的所有可见界面元素：候选词窗口、工具栏、状态指示器（Tooltip）、弹出右键菜单。UI 运行在独立 goroutine 的 Windows 消息循环中，通过 channel 接收来自 coordinator 的命令。
+Windows 原生 UI 渲染层。使用 Win32 API 实现输入法的所有可见界面元素：候选词窗口、工具栏、状态指示器（Tooltip）、弹出右键菜单。UI 运行在独立 goroutine 的 Windows 消息循环中，通过 channel 接收来自 coordinator 的命令。新增了分层窗口（`layered_window.go`）、文字渲染后端管理（`text_backend.go`）和类型安全的窗口注册表（`window_registry.go`）。
 
 ## Key Files
 | File | Description |
@@ -16,6 +16,9 @@ Windows 原生 UI 渲染层。使用 Win32 API 实现输入法的所有可见界
 | `manager_toolbar.go` | 工具栏管理：显示/隐藏/更新状态（中英文、全角、标点） |
 | `window.go` | Win32 候选词窗口创建、WndProc、GDI 渲染 |
 | `window_mouse.go` | 候选词窗口鼠标事件处理（点击选词、鼠标悬停） |
+| `window_registry.go` | `WindowRegistry[T]`：泛型 HWND→`*T` 映射，供 WndProc 回调安全查找窗口实例 |
+| `layered_window.go` | `UpdateLayeredWindowFromImage`：将 `image.RGBA` 渲染到分层窗口（`WS_EX_LAYERED`），处理 RGBA→BGRA 转换、CreateDIBSection、UpdateLayeredWindow |
+| `text_backend.go` | `TextBackendManager`：统一管理 GDI/FreeType/DirectWrite 三种文字渲染后端的生命周期；`NewTextBackendManager(label)` 创建实例 |
 | `renderer.go` | `Renderer`：GDI 渲染候选词列表（文字、颜色、高亮） |
 | `renderer_layout.go` | 候选窗口布局计算（水平/垂直排列，DPI 感知） |
 | `toolbar_window.go` | 工具栏 Win32 窗口创建和消息循环 |
@@ -27,6 +30,10 @@ Windows 原生 UI 渲染层。使用 Win32 API 实现输入法的所有可见界
 | `tooltip.go` | Tooltip（编码提示）窗口渲染 |
 | `monitor.go` | 多显示器支持：获取目标显示器工作区，用于窗口位置计算 |
 | `dpi.go` | DPI 缩放工具函数 |
+| `dwrite_text.go` | DirectWrite 文字渲染实现 |
+| `gdi_text.go` | GDI 文字渲染实现 |
+| `font_config.go` | `FontConfig`：字体路径/大小/样式配置 |
+| `text_drawer.go` | `TextDrawer` 接口：统一 GDI/DirectWrite 绘制 API |
 | `protocol.go` | UI 内部消息类型（`UICommand`、`Candidate`、`ToolbarState`、`MenuItem`） |
 
 ## For AI Agents
@@ -36,6 +43,9 @@ Windows 原生 UI 渲染层。使用 Win32 API 实现输入法的所有可见界
 - `Manager.Start()` 创建窗口并进入消息循环（阻塞，必须在独立 goroutine 运行）
 - `Manager.WaitReady()` 阻塞直到 UI 线程初始化完成（main.go 中等待）
 - GDI 渲染：所有绘制在 `WM_PAINT` 中进行，使用双缓冲避免闪烁
+- **分层窗口**（`layered_window.go`）：使用 `WS_EX_LAYERED` + `UpdateLayeredWindow` 实现透明背景，图像数据为预乘 alpha 的 BGRA 格式
+- **窗口注册表**（`window_registry.go`）：泛型 `WindowRegistry[T]`，WndProc 中用 HWND 查找对应 Go 结构体，线程安全
+- **文字后端**（`text_backend.go`）：`TextBackendManager` 嵌入到需要文字渲染的窗口结构体，统一管理后端切换
 - 候选窗口位置根据光标坐标（CaretX/Y）和显示器工作区自动调整，防止超出屏幕
 - 工具栏支持拖拽移动，位置持久化到配置（`cfg.Toolbar.X`/`Y`）
 - 主题颜色通过 `pkg/theme.Theme` 注入到渲染器
@@ -43,6 +53,7 @@ Windows 原生 UI 渲染层。使用 Win32 API 实现输入法的所有可见界
 
 ### Testing Requirements
 - UI 代码高度依赖 Windows GDI/Win32，无法做纯 Go 单元测试
+- `menu_disable_test.go` 是现有测试（菜单禁用状态逻辑）
 - 视觉效果需在 Windows 环境下手动验证
 - 布局计算逻辑（`renderer_layout.go`）可提取纯函数单独测试
 
@@ -50,12 +61,13 @@ Windows 原生 UI 渲染层。使用 Win32 API 实现输入法的所有可见界
 - `UICommand.Type` 字符串值：`"show"`、`"hide"`、`"mode"`、`"toolbar_show"`、`"toolbar_hide"`、`"toolbar_update"`、`"settings"`、`"hide_menu"`、`"show_unified_menu"`
 - 修改渲染逻辑后需检查水平/垂直两种候选布局
 - DPI 变化（`WM_DPICHANGED`）触发字体和尺寸重新计算
+- 新建窗口类型时使用 `WindowRegistry[T]` 管理 HWND 到 Go 实例的映射，避免全局变量
 
 ## Dependencies
 ### Internal
 - `pkg/theme` — 主题颜色定义
 
 ### External
-- `golang.org/x/sys/windows` — Win32 API（窗口、GDI、消息）
+- `golang.org/x/sys/windows` — Win32 API（窗口、GDI、消息、分层窗口）
 
 <!-- MANUAL: -->

@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # themes/default
 
@@ -15,13 +15,16 @@
 
 ### Working In This Directory
 - 主题文件结构（由 `pkg/theme.Theme` 定义）：
-  - `meta` — 主题元信息（名称、描述、作者）
-  - `candidate_window` — 候选窗口颜色组（背景、文字、边框、高亮等）
-  - `toolbar` — 工具栏颜色组
-  - `popup_menu` — 弹出菜单颜色组
+  - `meta` — 主题元信息（名称、版本、作者）
+  - `candidate_window` — 候选窗口颜色组（背景、文字、边框、高亮等，共 11 个字段）
+  - `style` — 候选窗口样式（`index_style`、`accent_bar_color`、间距、圆角等）
+  - `toolbar` — 工具栏颜色组（共 17 个字段）
+  - `popup_menu` — 弹出菜单颜色组（共 7 个字段）
+  - `tooltip` — 编码提示框颜色组
+  - `mode_indicator` — 模式指示器颜色组
 - 颜色格式：6 位或 8 位十六进制（`#RRGGBB` 或 `#RRGGBBAA`）
 - 此主题作为参考示例，包含详细注释说明每个颜色字段的含义
-- 修改颜色时需同步更新对应的 Go 结构体和 `pkg/theme/default_themes.go` 的内置默认数据
+- 未填写的颜色字段由 `pkg/theme.Resolve()` 自动使用硬编码默认值回退，无需全部填写
 
 ### Testing Requirements
 - 颜色格式可通过 `pkg/theme.ParseColor` 验证
@@ -29,9 +32,9 @@
 
 ### Common Patterns
 - 主题目录名作为主题标识符（该目录为 `default`，对应主题名 `"default"`）
-- `pkg/theme/default_themes.go` 中包含此主题的内置默认数据（作为回退）
+- `pkg/theme/default_themes.go` 中的 `emptyTheme()` 提供空主题（所有颜色字段为空），`Resolve()` 时使用硬编码默认值
 - 用户通过 UI 右键菜单选择主题，配置保存到 `cfg.UI.Theme`
-- 启动时由 `pkg/theme.Manager` 加载对应主题，缺失则使用内置默认
+- 启动时由 `pkg/theme.Manager` 加载对应主题，加载失败则使用 `emptyTheme()` 回退
 
 ## Dependencies
 ### Internal

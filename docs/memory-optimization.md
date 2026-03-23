@@ -152,8 +152,8 @@ gen_bindict -type unigram -input dict/unigram.txt -output dict/unigram.wdb
 | `internal/engine/manager.go` | 引擎管理器适配 |
 | `internal/engine/pinyin/lattice.go` | 改用 PrefixSearchable 接口 |
 | `cmd/gen_bindict/main.go` | 预编译工具 |
-| `build_all.bat` | 构建脚本适配 |
-| `installer/install.bat` | 安装脚本适配 |
+| `build_all.ps1` | 构建脚本适配 |
+| `installer/install.ps1` | 安装脚本适配 |
 
 ### 效果
 

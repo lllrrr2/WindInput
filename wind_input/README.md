@@ -269,25 +269,30 @@ zhongguo 中国 150
 
 ## 配置文件
 
-`%APPDATA%\WindInput\config.yaml`：
+`%APPDATA%\WindInput\config.yaml`（全局配置）+ `data/schemas/*.schema.yaml`（方案配置）：
 
 ```yaml
-general:
-  start_in_chinese_mode: true   # 启动默认中文
-  log_level: info               # debug/info/warn/error
+# config.yaml — 全局配置
+startup:
+  default_chinese_mode: true    # 启动默认中文
 
-dictionary:
-  system_dict: dict/pinyin/base.txt
-  user_dict: user_dict.txt
+schema:
+  active: pinyin                # 当前活跃方案 ID
+  available: [pinyin, wubi86]   # 可切换方案列表
 
 hotkeys:
-  toggle_mode: shift            # 中英切换键
+  toggle_mode_keys: [lshift]    # 中英切换键
 
 ui:
   font_size: 18                 # 字体大小
   candidates_per_page: 9        # 每页候选数
   font_path: ""                 # 自定义字体路径
+
+advanced:
+  log_level: info               # debug/info/warn/error
 ```
+
+引擎类型、词库路径等由方案文件（`*.schema.yaml`）自描述定义。
 
 ## 依赖
 

@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # internal/ipc
 
@@ -12,15 +12,16 @@
 | File | Description |
 |------|-------------|
 | `protocol.go` | JSON 协议类型（RequestType、Request、Response、Candidate）— 遗留 |
-| `binary_protocol.go` | 二进制协议命令码常量（`CmdKeyEvent`、`CmdFocusLost` 等）和消息头结构 |
-| `binary_codec.go` | `BinaryCodec`：消息的二进制编解码（`ReadHeader`、`ReadPayload`、`WriteMessage`）、`KeyHash` 函数 |
+| `binary_protocol.go` | 二进制协议命令码常量（`CmdKeyEvent`、`CmdFocusLost` 等）和消息头/载荷结构体（`IpcHeader`、`KeyPayload`、`CaretPayload`、`CompositionPayload` 等） |
+| `binary_codec.go` | `BinaryCodec`：消息的二进制编解码（`ReadHeader`、`ReadPayload`、`WriteMessage`）；`CalcKeyHash(modifiers, keyCode uint32) uint32` 热键哈希函数 |
 | `server.go` | JSON Named Pipe 服务端（`\\.\pipe\tsf_ime_service`）— 遗留，当前未使用 |
 
 ## For AI Agents
 
 ### Working In This Directory
 - **当前实际使用**的是 `binary_codec.go` 和 `binary_protocol.go`，由 `bridge` 包调用
-- `KeyHash(vkCode, modifiers uint32) uint32` 编码热键，与 C++ 侧算法必须一致
+- **注意函数名变更**：热键哈希函数已从 `KeyHash` 重命名为 `CalcKeyHash(modifiers, keyCode uint32) uint32`；`hotkey` 包调用方需使用新名称
+- `ParseKeyHash(hash uint32) (modifiers, keyCode uint32)` 为逆向解码函数
 - `CmdBatchEvents` 是批量事件命令，`bridge` 对其有特殊处理路径
 - `IsAsyncRequest(header)` 判断是否为不需要响应的异步请求
 - 修改命令码时需同步修改 C++ TSF Bridge 侧的枚举定义

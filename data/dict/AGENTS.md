@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # 词库目录 (dict/)
 
@@ -18,6 +18,7 @@
 | 目录 | 用途 |
 |-----|------|
 | `pinyin/` | 拼音词库（见 `pinyin/AGENTS.md`） |
+| `wubi86/` | 五笔86版词库 |
 
 ## 工作指南
 
@@ -46,7 +47,7 @@ N→字
 
 - **词库源文件** 在 `../build/dict/` 目录（编译生成）
 - **编辑源文件** 前提是拼音/五笔数据来源已更新
-- 修改后需要重新运行 `build_all.bat` 让词库生效
+- 修改后需要重新运行 `build_all.ps1` 让词库生效
 
 ### 常见操作
 
@@ -71,7 +72,7 @@ awk -F'→' '{print $1}' dict/common_chars.txt | sort | uniq -d
 
 ### 外部
 
-- 拼音词库数据源：[雾凇拼音 rime-ice](https://github.com/iDvel/rime-ice)
-- 五笔词库数据源：极爽词库6
+- 拼音词库数据源：[雾凇拼音 rime-ice](https://github.com/iDvel/rime-ice)（rime 生态，自描述 .dict.yaml 格式）
+- 五笔词库数据源：rime 生态五笔86词库（.dict.yaml 格式，与 wubi86.schema.yaml 配套）
 
 <!-- MANUAL: -->

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # wind_tsf - Windows TSF Input Method Bridge
 
@@ -20,7 +20,7 @@ The DLL is built with CMake/MSVC and exports standard TSF COM interfaces (DllCan
 
 | File | Description |
 |------|-------------|
-| `CMakeLists.txt` | CMake build configuration (C++17, UTF-8, DirectWrite linking, outputs to ../build/) |
+| `CMakeLists.txt` | CMake build configuration (C++17, UTF-8；构建两个目标：wind_tsf + wind_dwrite，均输出到 ../build/) |
 | `wind_tsf.def` | Module definition file (exports COM entry points) |
 | `README.md` | Project documentation |
 
@@ -42,7 +42,9 @@ cmake .. -G "Visual Studio 17 2022" -A x64
 cmake --build . --config Release
 ```
 
-Output: `../build/wind_tsf.dll`
+Output:
+- `../build/wind_tsf.dll` — 主 TSF 输入法 DLL
+- `../build/wind_dwrite.dll` — DirectWrite 渲染模块（单独库）
 
 ## IPC Communication
 
@@ -101,7 +103,19 @@ Output: `../build/wind_tsf.dll`
 - Classification: toggle mode, letter, number, punctuation, backspace, enter, escape, space, tab, page key, cursor key, select key
 - Key normalization (left/right modifier handling)
 
+### File Logging (FileLogger)
+- `CFileLogger` - 运行时可配置的文件日志单例（`FileLogger.h` / `FileLogger.cpp`）
+- 四种输出模式：`none`（默认，零开销）/ `file` / `debugstring` / `all`
+- 日志文件：`%LOCALAPPDATA%\WindInput\logs\wind_tsf.log`
+- 配置文件：`%LOCALAPPDATA%\WindInput\logs\tsf_log_config`（mode/level 两个键）
+- 多进程安全：Named Mutex + append 模式文件 I/O
+- 自动轮转：超过 5MB 时重命名为 `wind_tsf.old.log`
+- 在 `dllmain.cpp` 的 DLL_PROCESS_ATTACH / DLL_PROCESS_DETACH 中 Init/Shutdown
+
 ### DirectWrite Rendering (WindDWriteShim)
+
+> **wind_dwrite.dll** — 单独构建目标，不链接进 wind_tsf.dll。
+
 - `GdiTextRenderer` - Bridge from IDWriteTextLayout to GDI rendering
 - Color emoji support via `IDWriteFactory2::TranslateColorGlyphRun`
 - Per-layer alpha blending for emoji rendering
@@ -180,7 +194,8 @@ When implementing features or fixes in wind_tsf:
 
 **Build Verification:**
 - `cmake --build . --config Release` must succeed with no C++ compiler errors
-- DLL must export 4 functions: DllCanUnloadNow, DllGetClassObject, DllRegisterServer, DllUnregisterServer
+- Produces two DLLs: `wind_tsf.dll` (main TSF) and `wind_dwrite.dll` (DirectWrite shim)
+- wind_tsf.dll must export 4 functions: DllCanUnloadNow, DllGetClassObject, DllRegisterServer, DllUnregisterServer
 
 **Registration:**
 - Must call `DllRegisterServer()` to register with Windows TSF
@@ -215,10 +230,11 @@ When implementing features or fixes in wind_tsf:
 6. Test binary protocol compatibility
 
 ### Debugging IPC Issues
-1. Enable debug logging: set WIND_LOG_LEVEL to WIND_LOG_LEVEL_TRACE
-2. Run `OutputDebugString` viewer (DebugView.exe)
-3. Monitor Named Pipes with NamedPipeMon.exe
-4. Check Go service logs for parsing errors
-5. Verify protocol version match (BinaryProtocol.h PROTOCOL_VERSION)
+1. Enable file logging: create `%LOCALAPPDATA%\WindInput\logs\tsf_log_config` with `mode=file` and `level=debug`
+2. View log at `%LOCALAPPDATA%\WindInput\logs\wind_tsf.log`
+3. For real-time output: set `mode=debugstring` and use DebugView.exe
+4. Monitor Named Pipes with NamedPipeMon.exe
+5. Check Go service logs for parsing errors
+6. Verify protocol version match (BinaryProtocol.h PROTOCOL_VERSION)
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

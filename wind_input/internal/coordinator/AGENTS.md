@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # internal/coordinator
 
@@ -19,9 +19,10 @@
 | `handle_lifecycle.go` | 焦点获得/失去、IME 激活/停用、客户端断连 |
 | `handle_mode.go` | 中英文模式切换、CapsLock 状态处理 |
 | `handle_punctuation.go` | 中英文标点转换处理 |
-| `handle_temp_english.go` | 临时英文模式（五笔下按 Z 键等触发） |
-| `handle_temp_pinyin.go` | 临时拼音模式（五笔下临时切换拼音输入） |
+| `handle_temp_english.go` | 临时英文模式：五笔输入态下按特定键（如 Z）触发，输入英文后恢复；维护临时英文缓冲区和上屏逻辑 |
+| `handle_temp_pinyin.go` | 临时拼音模式：五笔方案下临时切换到拼音输入；通过 `engine.Manager.ActivateTempPinyin`/`DeactivateTempPinyin` 管理拼音词库层的注入与退出 |
 | `handle_ui_callbacks.go` | UI 回调（工具栏按钮点击、候选窗口鼠标事件） |
+| `confirmed_segments_test.go` | 已确认分段逻辑测试 |
 
 ## For AI Agents
 
@@ -32,6 +33,8 @@
 - 退出/重启通过包级 channel 信号（`ExitRequested()`/`RestartRequested()`），`main.go` 监听
 - 热键编译结果缓存（`cachedKeyDownHotkeys`），配置变更时置 `hotkeysDirty=true` 触发重新编译
 - 运行时状态（中英文、全角、中文标点）在 `startup.remember_last_state=true` 时从 `config.RuntimeState` 恢复
+- 临时拼音模式（`handle_temp_pinyin.go`）通过 `engine.Manager.ActivateTempPinyin` 向 `CompositeDict` 注入拼音词库层，退出时 `DeactivateTempPinyin` 卸载，防止拼音词库污染五笔查询
+- 临时英文模式（`handle_temp_english.go`）独立维护一个缓冲区，不影响五笔输入缓冲区
 
 ### Testing Requirements
 - 协调器依赖 Windows UI 和 Named Pipe，集成测试需 Windows 环境
@@ -45,8 +48,9 @@
 ## Dependencies
 ### Internal
 - `internal/bridge` — BridgeServer 接口、StatusUpdateData、KeyEventData 等类型
-- `internal/engine` — 引擎管理器
+- `internal/engine` — 引擎管理器（含 Schema 驱动的方案切换）
 - `internal/hotkey` — 热键编译器
+- `internal/schema` — 方案信息查询（引擎类型判断）
 - `internal/transform` — 标点转换
 - `internal/ui` — UI 管理器
 - `pkg/config` — 配置类型、RuntimeState

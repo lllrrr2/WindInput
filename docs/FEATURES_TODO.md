@@ -183,6 +183,10 @@ PhraseRule=短语规则
 
 ## 配置结构（当前实现）
 
+配置分为两层：**全局配置** (`config.yaml`) 和 **方案配置** (`data/schemas/*.schema.yaml`)。
+
+### 全局配置 (`config.yaml`)
+
 ```yaml
 startup:
   remember_last_state: false          # 记忆前次状态
@@ -190,23 +194,9 @@ startup:
   default_full_width: false           # 默认半角
   default_chinese_punct: true         # 默认中文标点
 
-dictionary:
-  system_dict: dict/pinyin/pinyin.txt
-  user_dict: user_dict.txt
-  pinyin_dict: dict/pinyin/pinyin.txt  # 用于反查
-
-engine:
-  type: pinyin                        # pinyin / wubi
-  filter_mode: smart                  # smart / general / gb18030
-
-  pinyin:
-    show_wubi_hint: true              # 显示五笔编码提示
-
-  wubi:
-    auto_commit_at_4: false           # 四码唯一自动上屏
-    clear_on_empty_at_4: false        # 四码为空时清空
-    top_code_commit: true             # 五码顶字上屏
-    punct_commit: true                # 标点顶字上屏
+schema:
+  active: pinyin                      # 当前活跃方案 ID
+  available: [pinyin, wubi86]         # 可切换方案列表
 
 hotkeys:
   toggle_mode_keys: [lshift, rshift]  # 中英切换键（多选）
@@ -239,6 +229,10 @@ ui:
 advanced:
   log_level: info                     # debug/info/warn/error
 ```
+
+### 方案配置 (`data/schemas/*.schema.yaml`)
+
+引擎类型、词库路径、学习策略等由方案文件自描述定义，不再在全局配置中指定。
 
 ---
 

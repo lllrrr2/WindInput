@@ -27,45 +27,45 @@
 
 ### 构建项目
 
-使用一键构建脚本：
-```batch
-build_all.bat
+使用一键构建脚本（PowerShell）：
+```powershell
+.\build_all.ps1
 ```
 
 或手动分步构建：
 
-```batch
+```powershell
 # 构建 C++ TSF DLL
 cd wind_tsf
-mkdir build && cd build
+mkdir build; cd build
 cmake ..
 cmake --build . --config Release
 
 # 构建 Go 服务
 cd wind_input
-go build -o ../build/wind_input.exe ./cmd/service
+go build -ldflags "-H windowsgui" -o ../build/wind_input.exe ./cmd/service
 ```
 
 ### 安装
 
 以**管理员权限**运行：
-```batch
-installer\install.bat
+```powershell
+installer\install.ps1
 ```
 
 ### 卸载
 
 以**管理员权限**运行：
-```batch
-installer\uninstall.bat
+```powershell
+installer\uninstall.ps1
 ```
 
 ### 生成正式安装包 (NSIS)
 
 面向最终用户发布时，使用 NSIS 生成单文件安装包：
 
-```batch
-installer\build_nsis.bat 0.1.0
+```powershell
+installer\build_nsis.ps1 -Version 0.1.0
 ```
 
 输出文件：
@@ -76,8 +76,8 @@ build\installer\清风输入法-0.1.0-Setup.exe
 
 可选参数（跳过构建，仅打包现有 `build\` 产物）：
 
-```batch
-installer\build_nsis.bat 0.1.0 --skip-build
+```powershell
+installer\build_nsis.ps1 -Version 0.1.0 -SkipBuild
 ```
 
 静默安装/卸载（用于脚本化部署）：

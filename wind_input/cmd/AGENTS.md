@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # cmd
 
@@ -17,7 +17,7 @@
 | `service/` | 主服务进程（输入法后端） |
 | `gen_bindict/` | 从 Rime 词库生成 `pinyin.wdb` 和 `unigram.wdb` |
 | `gen_unigram/` | 从 Rime `.dict.yaml` 提取词频，输出 `unigram.txt` |
-| `gen_wubi_wdb/` | 将五笔文本码表转换为 `wubi.wdb` 二进制格式 |
+| `gen_wubi_wdb/` | 将五笔 Rime `.dict.yaml` 码表转换为 `wubi.wdb` 二进制格式 |
 | `test_codetable/` | 码表调试工具，测试五笔码表查询和顶码行为 |
 
 ## For AI Agents

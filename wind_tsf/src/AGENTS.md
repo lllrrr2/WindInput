@@ -1,11 +1,11 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # src/ - Implementation Files
 
 ## Purpose
 
-C++ implementation files for the TSF DLL. All compiled to object files and linked into wind_tsf.dll. Files are organized by component (text service, IPC, hotkey management, UI) and entry point (dllmain).
+C++ implementation files for the TSF DLL. 主体文件编译链接进 `wind_tsf.dll`；`WindDWriteShim.cpp` 单独构建为 `wind_dwrite.dll`（DirectWrite 渲染模块）。文件按组件（text service, IPC, hotkey, UI, logging）和入口点（dllmain）组织。
 
 ## Key Files
 
@@ -22,7 +22,8 @@ C++ implementation files for the TSF DLL. All compiled to object files and linke
 | `CaretEditSession.cpp` | CCaretEditSession implementation (TSF edit session for caret position) |
 | `DisplayAttributeInfo.cpp` | Display attribute classes (styling for composition text) |
 | `Register.cpp` | Registry integration (DllRegisterServer, DllUnregisterServer, profile/category registration) |
-| `WindDWriteShim.cpp` | DirectWrite text rendering bridge (GdiTextRenderer, color emoji, text format caching) |
+| `FileLogger.cpp` | CFileLogger implementation (Init/Shutdown, config file reading, file write with Named Mutex, auto-rotation at 5MB) |
+| `WindDWriteShim.cpp` | **单独构建为 wind_dwrite.dll**；DirectWrite text rendering bridge (GdiTextRenderer, color emoji, text format caching) |
 
 ## Component Responsibilities
 
@@ -133,7 +134,29 @@ C++ implementation files for the TSF DLL. All compiled to object files and linke
 - `RegisterCategories()` - Register text service categories (TIP, INPUTPROCESSOR, etc.)
 - `UnregisterCategories()` - Unregister categories
 
+### FileLogger.cpp
+- `CFileLogger::Instance()` - 获取单例
+- `CFileLogger::Init()` - 读取配置文件，构建日志路径，初始化 Named Mutex
+- `CFileLogger::Shutdown()` - 关闭 Mutex 句柄，清理资源
+- `CFileLogger::Write()` - 线程安全写入（持有 Named Mutex，append 模式）
+- `CFileLogger::IsEnabled()` - 内联快速路径检查（mode=none 时零开销）
+- `_ReadConfig()` - 解析 `%LOCALAPPDATA%\WindInput\logs\tsf_log_config`（mode/level 两个键）
+- `_BuildPaths()` - 构建 logDir/logPath/configPath
+- `_RotateIfNeeded()` - 超过 5MB 时将 wind_tsf.log 重命名为 wind_tsf.old.log
+- `_WriteToFile()` - UTF-8 写入文件
+- `_WriteToDebugString()` - 调用 `OutputDebugStringW`
+- `_FormatTimestamp()` - 生成 `[HH:MM:SS.mmm]` 格式时间戳
+
+**Config file** (`%LOCALAPPDATA%\WindInput\logs\tsf_log_config`):
+```
+mode=none    # none | file | debugstring | all
+level=debug  # off | error | warn | info | debug | trace
+```
+
 ### WindDWriteShim.cpp
+
+> **注意：此文件单独构建为 `wind_dwrite.dll`，不链接进 `wind_tsf.dll`。**
+
 - `GdiTextRenderer` - IDWriteTextRenderer implementation
   - `DrawGlyphRun()` - Render glyphs to bitmap render target
   - Color emoji support via `IDWriteFactory2::TranslateColorGlyphRun()`
@@ -205,9 +228,9 @@ if (_circuitState == CircuitState::Open) {
 ### Testing Requirements
 
 **Build Verification:**
-- All .cpp files must compile with /utf-8 /W3 flags
-- No linking errors
-- DLL must export 4 functions via wind_tsf.def
+- All .cpp files (except WindDWriteShim.cpp) must compile with /utf-8 /W3 flags into wind_tsf.dll
+- `WindDWriteShim.cpp` compiles separately into wind_dwrite.dll (links dwrite.lib)
+- wind_tsf.dll must export 4 functions via wind_tsf.def
 - No C5260 warnings about pragma pack mismatch
 
 **Key Event Testing:**
@@ -241,5 +264,6 @@ if (_circuitState == CircuitState::Open) {
 - Windows SDK: kernel32, ole32, user32 (linked via pragma comment in source)
 - MSVC Runtime: libc, libcmt (C runtime)
 - TSF Libraries: msctf.lib, ctfutb.lib
+- DirectWrite: dwrite.lib (wind_dwrite.dll only)
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

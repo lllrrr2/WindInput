@@ -1,11 +1,11 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-13 | Updated: 2026-03-13 -->
+<!-- Generated: 2026-03-13 | Updated: 2026-03-23 -->
 
 # NSIS 安装脚本目录 (installer/nsis/)
 
 ## 用途
 
-NSIS (Nullsoft Scriptable Install System) 配置文件，定义 Windows 图形化安装程序的界面、步骤和文件复制逻辑。通过 `build_nsis.bat` 调用 `makensis.exe` 编译此脚本生成 `.exe` 安装程序。
+NSIS (Nullsoft Scriptable Install System) 配置文件，定义 Windows 图形化安装程序的界面、步骤和文件复制逻辑。通过 `build_nsis.ps1` 调用 `makensis.exe` 编译此脚本生成 `.exe` 安装程序。
 
 ## 主要文件
 
@@ -61,7 +61,7 @@ UNINST_KEY         # 卸载注册表键：Software\Microsoft\Windows\CurrentVers
 ```nsi
 !if /FileExists "${BUILD_DIR}\wind_tsf.dll"
 !else
-!error "Missing file: ${BUILD_DIR}\wind_tsf.dll. Run build_all.bat first."
+!error "Missing file: ${BUILD_DIR}\wind_tsf.dll. Run build_all.ps1 first."
 !endif
 ```
 
@@ -82,8 +82,14 @@ UNINST_KEY         # 卸载注册表键：Software\Microsoft\Windows\CurrentVers
 ```nsi
 SetOutPath "$INSTDIR"
 File /a "${BUILD_DIR}\wind_tsf.dll"
+File /a "${BUILD_DIR}\wind_dwrite.dll"
 File /a "${BUILD_DIR}\wind_input.exe"
 File /a "${BUILD_DIR}\wind_setting.exe"
+
+; Schema 配置文件
+SetOutPath "$INSTDIR\schemas"
+File /a "${BUILD_DIR}\schemas\pinyin.schema.yaml"
+File /a "${BUILD_DIR}\schemas\wubi86.schema.yaml"
 ```
 
 #### 4. COM 注册
@@ -127,19 +133,19 @@ WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" \
 
 ### 版本号传入机制
 
-`build_nsis.bat` 通过 `/D` 参数动态传入版本号：
+`build_nsis.ps1` 通过 `/D` 参数动态传入版本号：
 
-```bat
-makensis /DAPP_VERSION=%APP_VERSION% /DAPP_VERSION_NUM=%APP_VERSION_NUM% WindInput.nsi
+```powershell
+& makensis /DAPP_VERSION=$Version /DAPP_VERSION_NUM=$VersionNum WindInput.nsi
 ```
 
 这样避免了手工修改脚本中的硬编码版本号。
 
 ### 测试安装程序
 
-```bash
+```powershell
 # 1. 构建安装程序
-installer\build_nsis.bat 0.1.0
+installer\build_nsis.ps1 -Version 0.1.0
 
 # 2. 运行生成的安装程序
 build\installer\清风输入法-0.1.0-Setup.exe
@@ -159,9 +165,10 @@ build\installer\清风输入法-0.1.0-Setup.exe
 
 ### 内部
 
-- `../build_nsis.bat` - 调用脚本
-- `../../build/` - 编译产物目录（wind_tsf.dll、wind_input.exe、wind_setting.exe）
+- `../build_nsis.ps1` - 调用脚本
+- `../../build/` - 编译产物目录（wind_tsf.dll、wind_dwrite.dll、wind_input.exe、wind_setting.exe）
 - `../../build/dict/` - 词库文件
+- `../../build/schemas/` - schema 配置文件（pinyin.schema.yaml、wubi86.schema.yaml）
 
 ### 外部
 
@@ -193,7 +200,7 @@ where makensis
 
 2. 检查文件路径是否正确（特别是 `${BUILD_DIR}` 变量）
 
-3. 重新运行 `build_all.bat` 确保所有编译产物已生成
+3. 重新运行 `build_all.ps1` 确保所有编译产物已生成
 
 ### 安装后提示"缺少文件"
 
