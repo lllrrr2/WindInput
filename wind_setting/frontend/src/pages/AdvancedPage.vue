@@ -1,13 +1,13 @@
 <template>
-  <section class="section section-full">
+  <section class="section">
     <div class="section-header">
       <h2>高级设置</h2>
       <p class="section-desc">故障排查、调试与测试工具</p>
     </div>
 
-    <div class="advanced-tabs">
-      <button class="advanced-tab" :class="{ active: advancedSubTab === 'advanced' }" @click="advancedSubTab = 'advanced'">高级</button>
-      <button class="advanced-tab" :class="{ active: advancedSubTab === 'test' }" @click="advancedSubTab = 'test'">测试</button>
+    <div class="sub-tabs">
+      <button class="sub-tab" :class="{ active: advancedSubTab === 'advanced' }" @click="advancedSubTab = 'advanced'">高级</button>
+      <button class="sub-tab" :class="{ active: advancedSubTab === 'test' }" @click="advancedSubTab = 'test'">测试</button>
     </div>
 
     <template v-if="advancedSubTab === 'advanced'">
@@ -16,7 +16,7 @@
         <div class="setting-item">
           <div class="setting-info">
             <label>日志级别</label>
-            <p class="setting-hint">更改日志级别需要重启服务才能生效</p>
+            <p class="setting-hint">重启输入法服务后生效</p>
           </div>
           <div class="setting-control">
             <select v-model="formData.advanced.log_level" class="select">
@@ -135,30 +135,6 @@ watch([testEngine, testFilterMode], () => {
 </script>
 
 <style scoped>
-.advanced-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
-}
-.advanced-tab {
-  padding: 10px 18px;
-  border: none;
-  background: none;
-  color: #6b7280;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s;
-  font-size: 14px;
-}
-.advanced-tab:hover {
-  color: #374151;
-}
-.advanced-tab.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-  font-weight: 600;
-}
 .test-options {
   display: flex;
   gap: 16px;

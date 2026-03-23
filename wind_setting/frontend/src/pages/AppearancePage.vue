@@ -294,22 +294,8 @@ onUnmounted(() => {
       </div>
       <div class="setting-item">
         <div class="setting-info">
-          <label>自定义字体</label>
-          <p class="setting-hint">留空使用系统默认字体</p>
-        </div>
-        <div class="setting-control">
-          <input
-            type="text"
-            v-model="formData.ui.font_path"
-            class="input"
-            placeholder="字体文件路径"
-          />
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
           <label>隐藏候选窗口</label>
-          <p class="setting-hint">隐藏候选窗口渲染</p>
+          <p class="setting-hint">不显示候选窗口</p>
         </div>
         <div class="setting-control">
           <label class="switch">
@@ -321,10 +307,6 @@ onUnmounted(() => {
           </label>
         </div>
       </div>
-    </div>
-
-    <div class="settings-card">
-      <div class="card-title">编码显示</div>
       <div class="setting-item">
         <div class="setting-info">
           <label>嵌入式编码行</label>

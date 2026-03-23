@@ -152,12 +152,6 @@ body {
   max-width: none;
   width: 100%;
 }
-.section-full {
-  max-width: none;
-}
-.section-wide {
-  max-width: none;
-}
 .section-header {
   margin-bottom: 20px;
 }
@@ -758,96 +752,7 @@ input:checked + .slider:before {
   border-top: 1px solid #e5e7eb;
 }
 
-/* ========== Shared: Fuzzy Dialog ========== */
-.fuzzy-dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.fuzzy-dialog {
-  background: var(--bg-card, #fff);
-  color: var(--text-primary, #1f2937);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  width: 380px;
-  max-width: 90vw;
-}
-.fuzzy-dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border-color, #e5e7eb);
-}
-.fuzzy-dialog-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-.fuzzy-dialog-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  color: var(--text-secondary, #6b7280);
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-.fuzzy-dialog-close:hover {
-  color: var(--text-primary, #111827);
-}
-.fuzzy-dialog-body {
-  padding: 16px 20px;
-}
-.fuzzy-pairs-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 16px;
-}
-.fuzzy-pair-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  transition: background-color 0.15s;
-}
-.fuzzy-pair-item:hover {
-  background-color: var(--bg-hover, #f3f4f6);
-}
-.fuzzy-pair-item input {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: var(--accent-color, #2563eb);
-  flex-shrink: 0;
-}
-.fuzzy-pair-label {
-  font-weight: 500;
-  min-width: 70px;
-}
-.fuzzy-pair-example {
-  color: var(--text-secondary, #9ca3af);
-  font-size: 12px;
-}
-.fuzzy-dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--border-color, #e5e7eb);
-}
-
-/* ========== Shared: Generic Dialog ========== */
+/* ========== Shared: Dialog ========== */
 .dialog-overlay {
   position: fixed;
   top: 0;
@@ -881,6 +786,107 @@ input:checked + .slider:before {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+/* Sectioned dialog (header/body/footer) */
+.dialog-box.dialog-sectioned {
+  padding: 0;
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+.dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.dialog-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.dialog-close:hover {
+  color: var(--text-primary, #111827);
+}
+.dialog-body {
+  padding: 16px 20px;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+/* Fuzzy pairs content */
+.fuzzy-pairs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+}
+.fuzzy-pair-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background-color 0.15s;
+}
+.fuzzy-pair-item:hover {
+  background-color: var(--bg-hover, #f3f4f6);
+}
+.fuzzy-pair-item input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-color, #2563eb);
+  flex-shrink: 0;
+}
+.fuzzy-pair-label {
+  font-weight: 500;
+  min-width: 70px;
+}
+.fuzzy-pair-example {
+  color: var(--text-secondary, #9ca3af);
+  font-size: 12px;
+}
+
+/* ========== Shared: Sub Tabs ========== */
+.sub-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.sub-tab {
+  padding: 10px 18px;
+  border: none;
+  background: none;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.15s;
+  font-size: 14px;
+}
+.sub-tab:hover {
+  color: #374151;
+}
+.sub-tab.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: 500;
 }
 
 /* ========== Shared: Select Dropdown ========== */

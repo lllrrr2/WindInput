@@ -67,8 +67,8 @@
       <div class="card-title">功能快捷键</div>
       <div class="setting-item">
         <div class="setting-info">
-          <label>切换拼音/五笔</label>
-          <p class="setting-hint">在拼音和五笔引擎间切换</p>
+          <label>切换输入方案</label>
+          <p class="setting-hint">在已启用的输入方案间循环切换</p>
         </div>
         <div class="setting-control">
           <select v-model="formData.hotkeys.switch_engine" class="select">
@@ -106,13 +106,13 @@
       </div>
     </div>
 
-    <!-- 候选选择键 -->
+    <!-- 候选操作 -->
     <div class="settings-card">
-      <div class="card-title">候选选择键</div>
+      <div class="card-title">候选操作</div>
       <div class="setting-item">
         <div class="setting-info">
-          <label>2/3候选快捷键组</label>
-          <p class="setting-hint">可多选，同时启用多组快捷键</p>
+          <label>次选/三选快捷键</label>
+          <p class="setting-hint">选中第2、3位候选词的快捷键，可多选</p>
         </div>
         <div class="setting-control">
           <div class="checkbox-group two-columns">
@@ -143,32 +143,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- 拼音分隔符 -->
-    <div class="settings-card">
-      <div class="card-title">拼音分隔符</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>分隔符按键</label>
-          <p class="setting-hint">
-            拼音模式下用于消歧的分隔符，如输入 xi'an 得到「西安」
-          </p>
-        </div>
-        <div class="setting-control">
-          <select v-model="formData.input.pinyin_separator" class="select">
-            <option value="auto">自动（' 被选择键占用时改用 `）</option>
-            <option value="quote">' 单引号</option>
-            <option value="backtick">` 反引号</option>
-            <option value="none">不使用</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <!-- 移动高亮候选项 -->
-    <div class="settings-card">
-      <div class="card-title">移动高亮候选项</div>
       <div class="setting-item">
         <div class="setting-info">
           <label>高亮移动按键</label>
@@ -196,11 +170,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- 翻页键 -->
-    <div class="settings-card">
-      <div class="card-title">翻页键</div>
       <div class="setting-item">
         <div class="setting-info">
           <label>翻页快捷键</label>
@@ -230,12 +199,28 @@
       </div>
     </div>
 
-    <!-- 临时拼音 -->
+    <!-- 拼音辅助 -->
     <div class="settings-card">
-      <div class="card-title">临时拼音</div>
+      <div class="card-title">拼音辅助</div>
       <div class="setting-item">
         <div class="setting-info">
-          <label>触发键</label>
+          <label>拼音分隔符</label>
+          <p class="setting-hint">
+            拼音模式下用于消歧的分隔符，如输入 xi'an 得到「西安」
+          </p>
+        </div>
+        <div class="setting-control">
+          <select v-model="formData.input.pinyin_separator" class="select">
+            <option value="auto">自动（' 被选择键占用时改用 `）</option>
+            <option value="quote">' 单引号</option>
+            <option value="backtick">` 反引号</option>
+            <option value="none">不使用</option>
+          </select>
+        </div>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>临时拼音触发键</label>
           <p class="setting-hint">五笔模式下按触发键临时切换拼音输入</p>
         </div>
         <div class="setting-control">

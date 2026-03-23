@@ -11,7 +11,7 @@
       <div class="setting-item">
         <div class="setting-info">
           <label>候选字符范围</label>
-          <p class="setting-hint">控制候选词中显示的字符范围</p>
+          <p class="setting-hint">过滤候选词中的生僻字</p>
         </div>
         <div class="setting-control">
           <select v-model="formData.engine.filter_mode" class="select">
@@ -45,7 +45,7 @@
         <div class="setting-info">
           <label>记忆前次状态</label>
           <p class="setting-hint">
-            启用后将使用上次退出时的状态，忽略以下默认设置
+            启用后恢复上次的中英文、全半角和标点状态
           </p>
         </div>
         <div class="setting-control">

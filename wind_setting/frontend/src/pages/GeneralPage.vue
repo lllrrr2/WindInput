@@ -204,7 +204,7 @@ onUnmounted(() => {
   <section class="section">
     <div class="section-header">
       <h2>常用设置</h2>
-      <p class="section-desc">输入方案选择与配置</p>
+      <p class="section-desc">管理输入方案和方案专属设置</p>
     </div>
 
     <!-- 方案管理 -->
@@ -215,7 +215,7 @@ onUnmounted(() => {
       <div class="setting-item">
         <div class="setting-info">
           <label>当前方案</label>
-          <p class="setting-hint">按快捷键可循环切换</p>
+          <p class="setting-hint">可通过快捷键循环切换（按键设置中配置）</p>
         </div>
         <div class="setting-control">
           <div class="segmented-control">
@@ -275,7 +275,7 @@ onUnmounted(() => {
                   <span class="schema-check-name">{{ schema.name }}</span>
                   <span
                     v-if="schema.id === activeSchemaID"
-                    class="theme-badge builtin"
+                    class="theme-badge active"
                     >当前</span
                   >
                 </div>
@@ -293,7 +293,7 @@ onUnmounted(() => {
           <span>{{ schemaConfigs[schemaID].schema?.name || schemaID }}</span>
           <span
             v-if="schemaID === activeSchemaID"
-            class="theme-badge builtin"
+            class="theme-badge active"
             style="margin-left: 8px"
             >当前</span
           >
@@ -484,18 +484,18 @@ onUnmounted(() => {
 
     <!-- 模糊音配置对话框 -->
     <div
-      class="fuzzy-dialog-overlay"
+      class="dialog-overlay"
       v-if="showFuzzyDialog"
       @click.self="showFuzzyDialog = false"
     >
-      <div class="fuzzy-dialog">
-        <div class="fuzzy-dialog-header">
+      <div class="dialog-box dialog-sectioned">
+        <div class="dialog-header">
           <h3>模糊音配置</h3>
-          <button class="fuzzy-dialog-close" @click="showFuzzyDialog = false">
+          <button class="dialog-close" @click="showFuzzyDialog = false">
             ×
           </button>
         </div>
-        <div class="fuzzy-dialog-body">
+        <div class="dialog-body">
           <div class="fuzzy-pairs-grid">
             <label
               class="fuzzy-pair-item"
@@ -514,7 +514,7 @@ onUnmounted(() => {
             </label>
           </div>
         </div>
-        <div class="fuzzy-dialog-footer">
+        <div class="dialog-footer">
           <button class="btn btn-sm" @click="setAllFuzzyPairs(true)">
             全选
           </button>

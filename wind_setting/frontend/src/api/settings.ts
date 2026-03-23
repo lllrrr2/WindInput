@@ -237,15 +237,6 @@ export async function getEngineList(): Promise<
   return request("GET", "/api/engine/list");
 }
 
-// 切换引擎
-export async function switchEngine(
-  type: string,
-): Promise<
-  APIResponse<{ previous: string; current: string; displayName: string }>
-> {
-  return request("POST", "/api/engine/switch", { type });
-}
-
 // 重载配置
 export async function reloadConfig(): Promise<
   APIResponse<{ reloaded: string[]; errors: string[] }>
@@ -262,30 +253,6 @@ export async function testConvert(
   APIResponse<{ candidates: any[]; engine: string; filterMode: string }>
 > {
   return request("POST", "/api/test/convert", { input, engine, filterMode });
-}
-
-// 日志条目
-export interface LogEntry {
-  time: string;
-  level: string;
-  message: string;
-}
-
-// 获取日志
-export async function getLogs(
-  level: string = "all",
-  filter: string = "",
-): Promise<APIResponse<{ logs: LogEntry[]; total: number }>> {
-  const params = new URLSearchParams();
-  if (level && level !== "all") params.append("level", level);
-  if (filter) params.append("filter", filter);
-  const query = params.toString();
-  return request("GET", `/api/logs${query ? "?" + query : ""}`);
-}
-
-// 清空日志
-export async function clearLogs(): Promise<APIResponse> {
-  return request("DELETE", "/api/logs");
 }
 
 // 默认配置值（用于前端初始化）

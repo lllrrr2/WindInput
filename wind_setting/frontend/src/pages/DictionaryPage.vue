@@ -1,5 +1,5 @@
 <template>
-  <section class="section section-wide">
+  <section class="section">
     <div class="section-header">
       <h2>词库管理</h2>
       <p class="section-desc">管理您的词库数据</p>
@@ -34,21 +34,21 @@
     </div>
 
     <!-- 子标签页 -->
-    <div class="dict-tabs">
+    <div class="sub-tabs">
       <button
-        :class="['dict-tab', { active: dictSubTab === 'phrases' }]"
+        :class="['sub-tab', { active: dictSubTab === 'phrases' }]"
         @click="dictSubTab = 'phrases'"
       >
         用户短语 ({{ dictStats.phrase_count }})
       </button>
       <button
-        :class="['dict-tab', { active: dictSubTab === 'userdict' }]"
+        :class="['sub-tab', { active: dictSubTab === 'userdict' }]"
         @click="dictSubTab = 'userdict'"
       >
         用户词库 ({{ dictStats.word_count }})
       </button>
       <button
-        :class="['dict-tab', { active: dictSubTab === 'shadow' }]"
+        :class="['sub-tab', { active: dictSubTab === 'shadow' }]"
         @click="dictSubTab = 'shadow'"
       >
         候选调整 ({{ dictStats.shadow_count }})
@@ -614,32 +614,6 @@ onMounted(() => {
 .dict-message.error {
   background: #fee2e2;
   color: #991b1b;
-}
-.dict-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 0;
-}
-.dict-tab {
-  padding: 10px 20px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: #6b7280;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: all 0.15s;
-}
-.dict-tab:hover {
-  color: #374151;
-}
-.dict-tab.active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-  font-weight: 500;
 }
 .dict-content {
   min-height: 300px;
