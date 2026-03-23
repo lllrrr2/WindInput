@@ -326,10 +326,19 @@ func (ct *CodeTable) parseEntryLine(line string) bool {
 	return true
 }
 
+// patchIsCommon 为二进制模式返回的候选补充 IsCommon 标记
+// 二进制格式不存储 IsCommon，需要在 CodeTable 层补充
+func patchIsCommon(candidates []candidate.Candidate) []candidate.Candidate {
+	for i := range candidates {
+		candidates[i].IsCommon = IsStringCommon(candidates[i].Text)
+	}
+	return candidates
+}
+
 // Lookup 查找编码对应的候选词
 func (ct *CodeTable) Lookup(code string) []candidate.Candidate {
 	if ct.binReader != nil {
-		return ct.binReader.Lookup(code)
+		return patchIsCommon(ct.binReader.Lookup(code))
 	}
 	code = strings.ToLower(code)
 	return ct.entries[code]
@@ -338,7 +347,7 @@ func (ct *CodeTable) Lookup(code string) []candidate.Candidate {
 // LookupPrefix 前缀匹配查找
 func (ct *CodeTable) LookupPrefix(prefix string) []candidate.Candidate {
 	if ct.binReader != nil {
-		return ct.binReader.LookupPrefix(prefix, 0)
+		return patchIsCommon(ct.binReader.LookupPrefix(prefix, 0))
 	}
 	prefix = strings.ToLower(prefix)
 	var results []candidate.Candidate
@@ -355,7 +364,7 @@ func (ct *CodeTable) LookupPrefix(prefix string) []candidate.Candidate {
 // LookupPrefixExcludeExact 前缀匹配查找（排除精确匹配）
 func (ct *CodeTable) LookupPrefixExcludeExact(prefix string, limit int) []candidate.Candidate {
 	if ct.binReader != nil {
-		return ct.binReader.LookupPrefixExcludeExact(prefix, limit)
+		return patchIsCommon(ct.binReader.LookupPrefixExcludeExact(prefix, limit))
 	}
 	prefix = strings.ToLower(prefix)
 	var results []candidate.Candidate
