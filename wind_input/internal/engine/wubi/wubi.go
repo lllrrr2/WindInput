@@ -25,6 +25,7 @@ type Config struct {
 	CandidateSortMode string // 候选排序模式：frequency（词频）、natural（自然顺序）
 	EnableUserFreq    bool   // 启用用户词频学习
 	ProtectTopN       int    // 首选保护：前 N 位锁定码表原始顺序
+	SkipShadow        bool   // 跳过 Shadow 规则应用（混输模式下由外层统一应用）
 }
 
 // DefaultConfig 返回默认配置
@@ -275,7 +276,8 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 
 	// ========== Phase 6: Shadow 拦截器（pin + delete） ==========
 	// 在引擎最终排序后统一应用，不修改 weight，只做呈现层位置覆盖和过滤。
-	if e.dictManager != nil {
+	// 混输模式下由外层 MixedEngine 统一应用，此处跳过避免干扰。
+	if !e.config.SkipShadow && e.dictManager != nil {
 		if shadowLayer := e.dictManager.GetShadowLayer(); shadowLayer != nil {
 			rules := shadowLayer.GetShadowRules(input)
 			allCandidates = dict.ApplyShadowPins(allCandidates, rules)

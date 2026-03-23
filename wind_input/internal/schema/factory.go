@@ -517,6 +517,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 		FilterMode:        s.Engine.FilterMode,
 		CandidateSortMode: codeTableSpec.CandidateSortMode,
 		DedupCandidates:   true,
+		SkipShadow:        true, // 混输模式：Shadow 由 MixedEngine 合并后统一应用
 	}
 
 	// 五笔学习配置
@@ -567,6 +568,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	pinyinConfig := &pinyin.Config{
 		ShowWubiHint: pinyinSpec.ShowWubiHint,
 		FilterMode:   s.Engine.FilterMode,
+		SkipShadow:   true, // 混输模式：Shadow 由 MixedEngine 合并后统一应用
 	}
 
 	// 模糊音配置
@@ -661,6 +663,11 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	}
 
 	mixedEngine := mixed.NewEngine(wubiEngine, pinyinEngine, mixedConfig)
+
+	// 设置 DictManager（用于合并后统一应用 Shadow 规则）
+	if dm != nil {
+		mixedEngine.SetDictManager(dm)
+	}
 
 	log.Printf("[SchemaFactory] 混输引擎创建成功 (%s): 五笔=%d词条, 拼音=%d编码",
 		s.Schema.ID, wubiEngine.GetEntryCount(), pinyinDict.EntryCount())

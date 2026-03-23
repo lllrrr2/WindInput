@@ -458,7 +458,10 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 
 	// 5.5 应用 Shadow 规则（置顶/删除/调权）
 	// 必须在拼音引擎的权重分配之后执行，因为拼音引擎会覆盖 CompositeDict 设置的 Shadow 权重
-	result.Candidates = e.applyShadowRules(input, result.Candidates)
+	// 混输模式下由外层 MixedEngine 统一应用，此处跳过避免干扰。
+	if e.config == nil || !e.config.SkipShadow {
+		result.Candidates = e.applyShadowRules(input, result.Candidates)
+	}
 
 	// 6. 应用过滤
 	if !skipFilter {

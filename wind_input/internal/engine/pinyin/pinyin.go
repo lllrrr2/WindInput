@@ -27,6 +27,7 @@ type Config struct {
 	CandidateOrder  string       // 候选排序模式：char_first(单字优先)/phrase_first(词组优先)/smart(智能混排)
 	Fuzzy           *FuzzyConfig // 模糊拼音配置（nil 表示不启用）
 	EnableUserFreq  bool         // 启用用户词频学习（默认 false，关闭词频文件生成）
+	SkipShadow      bool         // 跳过 Shadow 规则应用（混输模式下由外层统一应用）
 }
 
 // Engine 拼音引擎

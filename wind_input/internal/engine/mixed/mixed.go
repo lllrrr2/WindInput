@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
+	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
 	"github.com/huanfeng/wind_input/internal/engine/wubi"
 )
@@ -52,7 +53,8 @@ type Engine struct {
 	wubiEngine   *wubi.Engine
 	pinyinEngine *pinyin.Engine
 	config       *Config
-	maxCodeLen   int // 五笔最大码长（通常为4）
+	maxCodeLen   int               // 五笔最大码长（通常为4）
+	dictManager  *dict.DictManager // 词库管理器（用于 Shadow 规则访问）
 }
 
 // NewEngine 创建混输引擎
@@ -296,6 +298,16 @@ func (e *Engine) convertMixed(input string, maxCandidates int) *ConvertResult {
 	// 按文本去重（保留先出现的，即权重高的）
 	merged = dedupByText(merged)
 
+	// 统一应用 Shadow 规则（置顶/删除）
+	// 子引擎内部各自应用了 Shadow，但合并+重排序后位置被打乱，需要在最终列表上重新应用。
+	// ApplyShadowPins 是幂等的：先移除 deleted 词，再按 pin position 分配槽位。
+	if e.dictManager != nil {
+		if shadowLayer := e.dictManager.GetShadowLayer(); shadowLayer != nil {
+			rules := shadowLayer.GetShadowRules(input)
+			merged = dict.ApplyShadowPins(merged, rules)
+		}
+	}
+
 	// 截断
 	if maxCandidates > 0 && len(merged) > maxCandidates {
 		merged = merged[:maxCandidates]
@@ -398,6 +410,13 @@ func (e *Engine) OnCandidateSelected(code, text string, source candidate.Candida
 			e.wubiEngine.OnCandidateSelected(code, text)
 		}
 	}
+}
+
+// --- DictManager ---
+
+// SetDictManager 设置词库管理器（用于 Shadow 规则访问）
+func (e *Engine) SetDictManager(dm *dict.DictManager) {
+	e.dictManager = dm
 }
 
 // --- Getter ---
