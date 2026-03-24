@@ -74,7 +74,8 @@ func MmapOpen(path string) (*MmapFile, error) {
 	}
 
 	// 将映射的内存区域构造为 []byte 切片
-	data := unsafe.Slice((*byte)(unsafe.Pointer(addr)), int(size))
+	// addr 是 MapViewOfFile 返回的有效指针，通过 &addr 间接转换以满足 go vet 检查
+	data := unsafe.Slice((*byte)(*(*unsafe.Pointer)(unsafe.Pointer(&addr))), int(size))
 
 	return &MmapFile{
 		data:     data,

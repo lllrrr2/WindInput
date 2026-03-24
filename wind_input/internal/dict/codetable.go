@@ -464,8 +464,8 @@ func (ct *CodeTable) BuildReverseIndex() map[string][]string {
 	return reverseIndex
 }
 
-// WriteTo 将码表写入 writer（用于导出）
-func (ct *CodeTable) WriteTo(w io.Writer) error {
+// ExportTo 将码表写入 writer（用于导出）
+func (ct *CodeTable) ExportTo(w io.Writer) error {
 	buf := &bytes.Buffer{}
 
 	// 写入头部
