@@ -15,6 +15,8 @@ CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     , _pendingKeyUpKey(0)
     , _pendingKeyUpModifiers(0)
     , _pendingKeyDownTime(0)
+    , _lastToggleExecuteTime(0)
+    , _anyKeyAfterToggle(TRUE)
     , _modsState(0)
     , _eventSeq(0)
     , _nextBarrierSeq(1)
@@ -337,6 +339,9 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     _pendingKeyUpKey = 0;
     _pendingKeyUpModifiers = 0;
 
+    // Mark that a non-modifier key was pressed (for toggle guard)
+    _anyKeyAfterToggle = TRUE;
+
     // Check if context is read-only
     if (_IsContextReadOnly(pContext))
     {
@@ -501,6 +506,19 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
                 return S_OK;
             }
 
+            // Guard against accidental re-toggle when modifier is used as key combination
+            // If no non-modifier key was pressed since the last toggle AND we're within
+            // the guard window, this is likely an accidental re-toggle
+            // (e.g., Shift tap to English, then immediately Shift+A for uppercase)
+            if (!_anyKeyAfterToggle && _lastToggleExecuteTime != 0 &&
+                (GetTickCount() - _lastToggleExecuteTime) < TOGGLE_GUARD_MS)
+            {
+                WIND_LOG_DEBUG_FMT(L"OnKeyUp: Toggle guard active (no key typed since last toggle, %lu ms ago)\n",
+                    GetTickCount() - _lastToggleExecuteTime);
+                *pfEaten = TRUE;
+                return S_OK;
+            }
+
             // For Shift/Ctrl toggle: Send KeyUp event to Go service
             // Go side will check config (e.g., only LShift vs both L/R Shift)
             // and return ModeChanged response if the key is configured as toggle key
@@ -545,6 +563,10 @@ STDAPI CKeyEventSink::OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam
                     // IPC failed - don't toggle locally to keep state consistent with Go
                     WIND_LOG_ERROR(L"IPC failed for toggle key, not toggling locally");
                 }
+
+                // Update toggle guard state: ignore subsequent toggles until a key is typed
+                _lastToggleExecuteTime = GetTickCount();
+                _anyKeyAfterToggle = FALSE;
             }
 
             *pfEaten = TRUE;
