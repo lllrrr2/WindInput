@@ -5,18 +5,27 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"gopkg.in/yaml.v3"
 )
+
+// BuiltinThemeIDs lists theme IDs that are considered built-in (not third-party).
+// Third-party themes get their sort order +100 to keep built-in themes first.
+var BuiltinThemeIDs = map[string]bool{
+	"default": true,
+	"msime":   true,
+}
 
 // Manager manages theme loading and switching
 type Manager struct {
 	logger         *slog.Logger
 	mu             sync.RWMutex
 	currentTheme   *Theme
-	currentThemeID string // Theme ID used for loading (e.g., "default", "dark")
+	currentThemeID string // Theme ID used for loading (e.g., "default", "msime")
 	resolved       *ResolvedTheme
+	isDarkMode     bool     // Current dark mode state
 	themeDirs      []string // Directories to search for themes
 }
 
@@ -36,7 +45,7 @@ func NewManager(logger *slog.Logger) *Manager {
 		}
 		m.currentTheme = emptyTheme()
 		m.currentThemeID = "default"
-		m.resolved = m.currentTheme.Resolve()
+		m.resolved = m.currentTheme.Resolve(m.isDarkMode)
 	}
 
 	return m
@@ -72,13 +81,13 @@ func (m *Manager) loadAndApply(name string) error {
 	}
 	m.currentTheme = theme
 	m.currentThemeID = name
-	m.resolved = m.currentTheme.Resolve()
+	m.resolved = m.currentTheme.Resolve(m.isDarkMode)
 	return nil
 }
 
 // LoadTheme loads a theme by name from theme directories.
 // Name can be:
-// - A theme directory name to search in theme directories (e.g., "default", "dark", "msime")
+// - A theme directory name to search in theme directories (e.g., "default", "msime")
 // - An absolute path to a theme.yaml file
 func (m *Manager) LoadTheme(name string) error {
 	m.mu.Lock()
@@ -100,11 +109,38 @@ func (m *Manager) LoadTheme(name string) error {
 
 	m.currentTheme = theme
 	m.currentThemeID = name
-	m.resolved = m.currentTheme.Resolve()
+	m.resolved = m.currentTheme.Resolve(m.isDarkMode)
 	if m.logger != nil {
-		m.logger.Info("Loaded theme", "name", theme.Meta.Name, "id", name)
+		m.logger.Info("Loaded theme", "name", theme.Meta.Name, "id", name, "isDark", m.isDarkMode)
 	}
 	return nil
+}
+
+// SetDarkMode updates the dark mode state and re-resolves the current theme.
+// Returns true if the mode actually changed.
+func (m *Manager) SetDarkMode(isDark bool) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.isDarkMode == isDark {
+		return false
+	}
+
+	m.isDarkMode = isDark
+	if m.currentTheme != nil {
+		m.resolved = m.currentTheme.Resolve(isDark)
+	}
+	if m.logger != nil {
+		m.logger.Info("Dark mode changed, theme re-resolved", "isDark", isDark, "theme", m.currentThemeID)
+	}
+	return true
+}
+
+// GetDarkMode returns the current dark mode state
+func (m *Manager) GetDarkMode() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.isDarkMode
 }
 
 // loadThemeFile attempts to load a theme from various locations
@@ -204,26 +240,43 @@ func (m *Manager) ListAvailableThemes() []string {
 
 // ThemeDisplayInfo contains theme ID and display name
 type ThemeDisplayInfo struct {
-	ID          string // Theme ID used for loading (e.g., "default", "dark")
-	DisplayName string // Human-readable name (e.g., "默认主题 1.0")
+	ID          string // Theme ID used for loading (e.g., "default", "msime")
+	DisplayName string // Human-readable name (e.g., "默认主题")
+	Order       int    // Effective sort order (third-party themes get +100)
 }
 
-// ListAvailableThemeInfos returns theme display info (ID + display name) for all available themes
+// ListAvailableThemeInfos returns theme display info sorted by order for all available themes.
+// Third-party themes (not in BuiltinThemeIDs) get their order +100.
 func (m *Manager) ListAvailableThemeInfos() []ThemeDisplayInfo {
 	ids := m.ListAvailableThemes()
 	infos := make([]ThemeDisplayInfo, 0, len(ids))
 
 	for _, id := range ids {
 		displayName := id
-		// Try to read display name from theme file
-		if t, err := m.loadThemeFile(id); err == nil && t.Meta.Name != "" {
-			displayName = t.Meta.Name
-			if t.Meta.Version != "" {
-				displayName += " " + t.Meta.Version
+		order := 50 // default order for themes without explicit order
+		// Try to read display name and order from theme file
+		if t, err := m.loadThemeFile(id); err == nil {
+			if t.Meta.Name != "" {
+				displayName = t.Meta.Name
 			}
+			order = t.Meta.Order
 		}
-		infos = append(infos, ThemeDisplayInfo{ID: id, DisplayName: displayName})
+
+		// Third-party themes get +100 to their order
+		if !BuiltinThemeIDs[id] {
+			order += 100
+		}
+
+		infos = append(infos, ThemeDisplayInfo{ID: id, DisplayName: displayName, Order: order})
 	}
+
+	// Sort by order ascending, then by ID for stable ordering
+	sort.Slice(infos, func(i, j int) bool {
+		if infos[i].Order != infos[j].Order {
+			return infos[i].Order < infos[j].Order
+		}
+		return infos[i].ID < infos[j].ID
+	})
 
 	return infos
 }

@@ -45,6 +45,24 @@ func (c *Coordinator) saveThemeConfig(themeName string) {
 	}()
 }
 
+// saveThemeStyleConfig saves the theme style to config
+func (c *Coordinator) saveThemeStyleConfig(themeStyle string) {
+	go func() {
+		cfg, err := config.Load()
+		if err != nil {
+			cfg = config.DefaultConfig()
+		}
+
+		cfg.UI.ThemeStyle = themeStyle
+
+		if err := config.Save(cfg); err != nil {
+			c.logger.Error("Failed to save theme style config", "error", err)
+		} else {
+			c.logger.Debug("Theme style config saved", "themeStyle", themeStyle)
+		}
+	}()
+}
+
 // GetFullWidth returns the current full-width mode state
 func (c *Coordinator) GetFullWidth() bool {
 	c.mu.Lock()

@@ -548,14 +548,20 @@ func (c *Coordinator) handleShowUnifiedMenu(screenX, screenY, flipRefY int) {
 		themeMenuItems[i] = ui.ThemeMenuItem{ID: info.ID, DisplayName: info.DisplayName}
 	}
 
+	// Get current theme style from config
+	currentThemeStyle := "system"
 	c.mu.Lock()
+	if c.config != nil && c.config.UI.ThemeStyle != "" {
+		currentThemeStyle = c.config.UI.ThemeStyle
+	}
 	state := ui.UnifiedMenuState{
-		ChineseMode:    c.chineseMode,
-		FullWidth:      c.fullWidth,
-		ChinesePunct:   c.chinesePunctuation,
-		ToolbarVisible: c.toolbarVisible,
-		Themes:         themeMenuItems,
-		CurrentThemeID: c.uiManager.GetCurrentThemeID(),
+		ChineseMode:       c.chineseMode,
+		FullWidth:         c.fullWidth,
+		ChinesePunct:      c.chinesePunctuation,
+		ToolbarVisible:    c.toolbarVisible,
+		Themes:            themeMenuItems,
+		CurrentThemeID:    c.uiManager.GetCurrentThemeID(),
+		CurrentThemeStyle: currentThemeStyle,
 	}
 	c.mu.Unlock()
 
@@ -590,6 +596,24 @@ func (c *Coordinator) handleUnifiedMenuAction(id int) {
 	case id == ui.UnifiedMenuAbout:
 		if c.uiManager != nil {
 			c.uiManager.OpenSettingsWithPage("about")
+		}
+	case id >= ui.UnifiedMenuThemeStyleBase && id < ui.UnifiedMenuThemeStyleBase+10:
+		// Theme style selection (system/light/dark)
+		styleIndex := id - ui.UnifiedMenuThemeStyleBase
+		styles := []string{"system", "light", "dark"}
+		if styleIndex >= 0 && styleIndex < len(styles) {
+			newStyle := styles[styleIndex]
+			c.logger.Info("Theme style selected from unified menu", "style", newStyle)
+			c.mu.Lock()
+			if c.config != nil {
+				c.config.UI.ThemeStyle = newStyle
+			}
+			// Apply the style change
+			if c.uiManager != nil && c.config != nil {
+				c.updateThemeStyle(&c.config.UI)
+			}
+			c.mu.Unlock()
+			c.saveThemeStyleConfig(newStyle)
 		}
 	case id >= ui.UnifiedMenuThemeBase && id < ui.UnifiedMenuThemeBase+100:
 		// Theme selection

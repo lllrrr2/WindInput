@@ -208,10 +208,32 @@ func (m *Manager) applyTheme(resolved *theme.ResolvedTheme) {
 	}
 }
 
+// SetDarkMode sets the dark mode state on the theme manager
+func (m *Manager) SetDarkMode(isDark bool) {
+	if m.themeManager != nil {
+		m.themeManager.SetDarkMode(isDark)
+	}
+}
+
+// ReapplyTheme re-resolves and applies the current theme (e.g., after dark mode change)
+func (m *Manager) ReapplyTheme() {
+	if m.themeManager == nil {
+		return
+	}
+
+	resolved := m.themeManager.GetResolvedTheme()
+	m.applyTheme(resolved)
+
+	// Refresh candidate window if it's currently visible
+	if m.window != nil && m.window.IsVisible() {
+		m.RefreshCandidates()
+	}
+}
+
 // GetAvailableThemes returns a list of available theme names
 func (m *Manager) GetAvailableThemes() []string {
 	if m.themeManager == nil {
-		return []string{"default", "dark"}
+		return []string{"default"}
 	}
 	return m.themeManager.ListAvailableThemes()
 }
@@ -228,7 +250,7 @@ func (m *Manager) GetCurrentThemeName() string {
 	return "default"
 }
 
-// GetCurrentThemeID returns the ID of the currently loaded theme (e.g., "default", "dark")
+// GetCurrentThemeID returns the ID of the currently loaded theme (e.g., "default", "msime")
 func (m *Manager) GetCurrentThemeID() string {
 	if m.themeManager == nil {
 		return "default"
@@ -241,7 +263,6 @@ func (m *Manager) GetAvailableThemeInfos() []theme.ThemeDisplayInfo {
 	if m.themeManager == nil {
 		return []theme.ThemeDisplayInfo{
 			{ID: "default", DisplayName: "默认主题"},
-			{ID: "dark", DisplayName: "暗色主题"},
 		}
 	}
 	return m.themeManager.ListAvailableThemeInfos()

@@ -16,6 +16,7 @@ const (
 	UnifiedMenuTogglePunct    = 102
 	UnifiedMenuToggleToolbar  = 103
 	UnifiedMenuThemeBase      = 200 // 主题ID: 200+i
+	UnifiedMenuThemeStyleBase = 250 // 主题风格ID: 250+i (0=system, 1=light, 2=dark)
 	UnifiedMenuReloadConfig   = 299
 	UnifiedMenuRestartService = 303
 	UnifiedMenuDictionary     = 300
@@ -31,12 +32,13 @@ type ThemeMenuItem struct {
 
 // UnifiedMenuState holds the current state for building the unified menu
 type UnifiedMenuState struct {
-	ChineseMode    bool
-	FullWidth      bool
-	ChinesePunct   bool
-	ToolbarVisible bool
-	Themes         []ThemeMenuItem
-	CurrentThemeID string // Current theme ID for checked state
+	ChineseMode       bool
+	FullWidth         bool
+	ChinesePunct      bool
+	ToolbarVisible    bool
+	Themes            []ThemeMenuItem
+	CurrentThemeID    string // Current theme ID for checked state
+	CurrentThemeStyle string // Current theme style: "system", "light", "dark"
 }
 
 // BuildUnifiedMenuItems constructs the unified menu item list
@@ -59,6 +61,17 @@ func BuildUnifiedMenuItems(state UnifiedMenuState) []MenuItem {
 				Checked: t.ID == state.CurrentThemeID,
 			})
 		}
+		// Add separator and theme style options
+		themeStyle := state.CurrentThemeStyle
+		if themeStyle == "" {
+			themeStyle = "system"
+		}
+		themeChildren = append(themeChildren, MenuItem{Separator: true})
+		themeChildren = append(themeChildren,
+			MenuItem{ID: UnifiedMenuThemeStyleBase, Text: "跟随系统", Checked: themeStyle == "system"},
+			MenuItem{ID: UnifiedMenuThemeStyleBase + 1, Text: "亮色", Checked: themeStyle == "light"},
+			MenuItem{ID: UnifiedMenuThemeStyleBase + 2, Text: "暗色", Checked: themeStyle == "dark"},
+		)
 		items = append(items, MenuItem{Text: "主题", Children: themeChildren})
 	}
 

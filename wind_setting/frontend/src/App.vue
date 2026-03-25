@@ -370,7 +370,8 @@ async function loadThemes() {
 async function loadThemePreview(themeName: string) {
   if (!isWailsEnv.value) return;
   try {
-    const preview = await wailsApi.getThemePreview(themeName);
+    const themeStyle = formData.value.ui.theme_style || "system";
+    const preview = await wailsApi.getThemePreview(themeName, themeStyle);
     themePreview.value = preview;
   } catch (e) {
     console.error("加载主题预览失败", e);
@@ -380,6 +381,13 @@ async function loadThemePreview(themeName: string) {
 
 async function onThemeSelect(themeName: string) {
   await loadThemePreview(themeName);
+}
+
+async function onThemeStyleChange(_themeStyle: string) {
+  // Reload preview to show the correct light/dark variant
+  if (formData.value.ui.theme) {
+    await loadThemePreview(formData.value.ui.theme);
+  }
 }
 
 // 外部链接和工具
@@ -458,9 +466,7 @@ onMounted(async () => {
           <button class="btn" @click="resetCurrentPageDefaults">
             恢复本页默认
           </button>
-          <button class="btn" @click="handleReloadConfig">
-            重新加载
-          </button>
+          <button class="btn" @click="handleReloadConfig">重新加载</button>
           <button
             class="btn btn-primary"
             @click="saveConfig"
@@ -507,6 +513,7 @@ onMounted(async () => {
           :availableThemes="availableThemes"
           :themePreview="themePreview"
           @themeSelect="onThemeSelect"
+          @themeStyleChange="onThemeStyleChange"
         />
 
         <DictionaryPage

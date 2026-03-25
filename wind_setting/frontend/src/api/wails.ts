@@ -57,18 +57,36 @@ export interface ThemePreview {
     index_color: string;
     index_bg_color: string;
     hover_bg_color: string;
+    selected_bg_color: string;
+    input_bg_color: string;
+    input_text_color: string;
+    comment_color: string;
+    shadow_color: string;
   };
   toolbar: {
     background_color: string;
     border_color: string;
+    grip_color: string;
     mode_chinese_bg_color: string;
     mode_english_bg_color: string;
+    mode_text_color: string;
     full_width_on_bg_color: string;
+    full_width_off_bg_color: string;
+    full_width_on_color: string;
+    full_width_off_color: string;
     punct_chinese_bg_color: string;
+    punct_english_bg_color: string;
+    punct_chinese_color: string;
+    punct_english_color: string;
+    settings_bg_color: string;
+    settings_icon_color: string;
   };
   style?: {
     index_style: string;
     accent_bar_color: string;
+  };
+  is_dark?: {
+    active: boolean;
   };
 }
 
@@ -250,8 +268,9 @@ export async function getAvailableThemes(): Promise<ThemeInfo[]> {
 
 export async function getThemePreview(
   themeName: string,
+  themeStyle: string = "system",
 ): Promise<ThemePreview> {
-  const preview = await App.GetThemePreview(themeName);
+  const preview = await App.GetThemePreview(themeName, themeStyle);
   return preview as unknown as ThemePreview;
 }
 

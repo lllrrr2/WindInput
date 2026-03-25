@@ -12,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   themeSelect: [themeName: string];
+  themeStyleChange: [themeStyle: string];
 }>();
 
 const themeSelectOpen = ref(false);
@@ -124,131 +125,198 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>主题风格</label>
+          <p class="setting-hint">选择亮色、暗色或跟随系统设置</p>
+        </div>
+        <div class="setting-control">
+          <select
+            v-model="formData.ui.theme_style"
+            class="select"
+            @change="emit('themeStyleChange', formData.ui.theme_style)"
+          >
+            <option value="system">跟随系统</option>
+            <option value="light">亮色</option>
+            <option value="dark">暗色</option>
+          </select>
+        </div>
+      </div>
+
       <div class="setting-item align-start" v-if="themePreview">
         <div class="setting-info">
-          <label>主题预览</label>
+          <label
+            >主题预览
+            <span class="preview-hint-icon" title="预览效果可能和实际有所差异"
+              >?</span
+            >
+          </label>
           <p class="setting-hint">候选窗口与工具栏预览</p>
         </div>
         <div class="setting-control">
-          <div class="theme-preview preview-rows">
-            <div class="preview-row">
-              <div class="preview-row-label">候选窗口</div>
-              <div
-                class="preview-candidate-window"
-                :style="{
-                  backgroundColor:
-                    themePreview.candidate_window?.background_color,
-                  borderColor: themePreview.candidate_window?.border_color,
-                }"
-              >
+          <div
+            class="theme-preview"
+            :style="{
+              background: themePreview.is_dark?.active ? '#1a1a1a' : '#f0f0f0',
+            }"
+          >
+            <div class="preview-layout">
+              <!-- 候选窗口 -->
+              <div class="preview-block">
+                <div class="preview-section-label">候选窗口</div>
                 <div
-                  v-if="themePreview.style?.accent_bar_color"
-                  class="preview-accent-bar"
-                  :style="{
-                    backgroundColor: themePreview.style.accent_bar_color,
-                  }"
-                ></div>
-                <div class="preview-candidate-item">
-                  <span
-                    class="preview-index"
-                    :class="{
-                      'preview-index-text':
-                        themePreview.style?.index_style === 'text',
-                    }"
-                    :style="
-                      themePreview.style?.index_style === 'text'
-                        ? {
-                            color:
-                              themePreview.candidate_window?.index_color,
-                          }
-                        : {
-                            backgroundColor:
-                              themePreview.candidate_window?.index_bg_color,
-                            color:
-                              themePreview.candidate_window?.index_color,
-                          }
-                    "
-                    >1</span
-                  >
-                  <span
-                    class="preview-text"
-                    :style="{
-                      color: themePreview.candidate_window?.text_color,
-                    }"
-                    >中文</span
-                  >
-                </div>
-                <div
-                  class="preview-candidate-item preview-hover"
+                  class="preview-candidate-window"
                   :style="{
                     backgroundColor:
-                      themePreview.candidate_window?.hover_bg_color,
+                      themePreview.candidate_window?.background_color,
+                    borderColor: themePreview.candidate_window?.border_color,
+                    boxShadow: themePreview.candidate_window?.shadow_color
+                      ? '0 3px 8px ' +
+                        themePreview.candidate_window.shadow_color
+                      : '0 3px 8px rgba(0,0,0,0.06)',
                   }"
                 >
-                  <span
-                    class="preview-index"
-                    :class="{
-                      'preview-index-text':
-                        themePreview.style?.index_style === 'text',
-                    }"
-                    :style="
-                      themePreview.style?.index_style === 'text'
-                        ? {
-                            color:
-                              themePreview.candidate_window?.index_color,
-                          }
-                        : {
-                            backgroundColor:
-                              themePreview.candidate_window?.index_bg_color,
-                            color:
-                              themePreview.candidate_window?.index_color,
-                          }
-                    "
-                    >2</span
-                  >
-                  <span
-                    class="preview-text"
+                  <!-- 输入行（嵌入编码模式下隐藏） -->
+                  <div
+                    v-if="!formData.ui.inline_preedit"
+                    class="preview-input-bar"
                     :style="{
-                      color: themePreview.candidate_window?.text_color,
+                      backgroundColor:
+                        themePreview.candidate_window?.input_bg_color,
                     }"
-                    >输入</span
                   >
+                    <span
+                      :style="{
+                        color: themePreview.candidate_window?.input_text_color,
+                      }"
+                      >zhong'wen</span
+                    >
+                  </div>
+                  <!-- 候选项 -->
+                  <div class="preview-candidates">
+                    <div
+                      v-for="(item, idx) in [
+                        { n: '1', text: '中文', hover: true },
+                        { n: '2', text: '中纹', comment: 'ggtt' },
+                        { n: '3', text: '忠文' },
+                      ]"
+                      :key="idx"
+                      class="preview-candidate-item"
+                      :style="{
+                        backgroundColor: item.hover
+                          ? themePreview.candidate_window?.hover_bg_color
+                          : undefined,
+                      }"
+                    >
+                      <!-- accent bar（微软风格：仅高亮项显示） -->
+                      <div
+                        v-if="
+                          themePreview.style?.accent_bar_color && item.hover
+                        "
+                        class="preview-item-accent"
+                        :style="{
+                          backgroundColor: themePreview.style.accent_bar_color,
+                        }"
+                      ></div>
+                      <span
+                        class="preview-index"
+                        :class="{
+                          'preview-index-circle':
+                            themePreview.style?.index_style !== 'text',
+                          'preview-index-text':
+                            themePreview.style?.index_style === 'text',
+                        }"
+                        :style="
+                          themePreview.style?.index_style === 'text'
+                            ? {
+                                color:
+                                  themePreview.candidate_window?.index_color,
+                              }
+                            : {
+                                backgroundColor:
+                                  themePreview.candidate_window?.index_bg_color,
+                                color:
+                                  themePreview.candidate_window?.index_color,
+                              }
+                        "
+                        >{{ item.n }}</span
+                      >
+                      <span
+                        class="preview-text"
+                        :style="{
+                          color: themePreview.candidate_window?.text_color,
+                        }"
+                        >{{ item.text }}</span
+                      >
+                      <span
+                        v-if="item.comment"
+                        class="preview-comment"
+                        :style="{
+                          color: themePreview.candidate_window?.comment_color,
+                        }"
+                        >{{ item.comment }}</span
+                      >
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="preview-row">
-              <div class="preview-row-label">工具栏</div>
-              <div
-                class="preview-toolbar"
-                :style="{
-                  backgroundColor: themePreview.toolbar?.background_color,
-                  borderColor: themePreview.toolbar?.border_color,
-                }"
-              >
-                <span
-                  class="preview-toolbar-item"
+
+              <!-- 工具栏 -->
+              <div class="preview-block">
+                <div class="preview-section-label">工具栏</div>
+                <div
+                  class="preview-toolbar"
                   :style="{
-                    backgroundColor:
-                      themePreview.toolbar?.mode_chinese_bg_color,
+                    backgroundColor: themePreview.toolbar?.background_color,
+                    borderColor: themePreview.toolbar?.border_color,
                   }"
-                  >中</span
                 >
-                <span
-                  class="preview-toolbar-item"
-                  :style="{
-                    backgroundColor:
-                      themePreview.toolbar?.full_width_on_bg_color,
-                  }"
-                  >全</span
-                >
-                <span
-                  class="preview-toolbar-item"
-                  :style="{
-                    backgroundColor:
-                      themePreview.toolbar?.punct_chinese_bg_color,
-                  }"
-                  >。</span
-                >
+                  <span
+                    class="preview-toolbar-grip"
+                    :style="{
+                      color: themePreview.toolbar?.grip_color || '#c0c0c0',
+                    }"
+                    >⠿</span
+                  >
+                  <span
+                    class="preview-toolbar-item"
+                    :style="{
+                      backgroundColor:
+                        themePreview.toolbar?.mode_chinese_bg_color,
+                      color: themePreview.toolbar?.mode_text_color || '#fff',
+                    }"
+                    >中</span
+                  >
+                  <span
+                    class="preview-toolbar-item"
+                    :style="{
+                      backgroundColor:
+                        themePreview.toolbar?.full_width_off_bg_color,
+                      color:
+                        themePreview.toolbar?.full_width_off_color || '#666',
+                    }"
+                    >半</span
+                  >
+                  <span
+                    class="preview-toolbar-item"
+                    :style="{
+                      backgroundColor:
+                        themePreview.toolbar?.punct_chinese_bg_color,
+                      color:
+                        themePreview.toolbar?.punct_chinese_color || '#fff',
+                    }"
+                    >。</span
+                  >
+                  <span
+                    class="preview-toolbar-item"
+                    :style="{
+                      backgroundColor: themePreview.toolbar?.settings_bg_color,
+                      color:
+                        themePreview.toolbar?.settings_icon_color || '#666',
+                    }"
+                    >⚙</span
+                  >
+                </div>
               </div>
             </div>
           </div>
@@ -310,9 +378,7 @@ onUnmounted(() => {
       <div class="setting-item">
         <div class="setting-info">
           <label>嵌入式编码行</label>
-          <p class="setting-hint">
-            输入码直接显示在光标处，而非候选窗上方
-          </p>
+          <p class="setting-hint">输入码直接显示在光标处，而非候选窗上方</p>
         </div>
         <div class="setting-control">
           <label class="switch">
@@ -376,9 +442,7 @@ onUnmounted(() => {
       <div class="setting-item">
         <div class="setting-info">
           <label>垂直偏移</label>
-          <p class="setting-hint">
-            状态提示相对光标的垂直偏移（负值=向上）
-          </p>
+          <p class="setting-hint">状态提示相对光标的垂直偏移（负值=向上）</p>
         </div>
         <div class="setting-control range-control">
           <input
@@ -414,96 +478,138 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.theme-preview {
-  background: #f9fafb;
-  border-radius: 8px;
-  padding: 16px;
-}
-.theme-preview.preview-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.preview-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.preview-row-label {
-  font-size: 12px;
-  color: #6b7280;
-  width: 80px;
-  flex-shrink: 0;
-  text-align: left;
-}
-.preview-candidate-window {
+/* 问号提示图标 */
+.preview-hint-icon {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 50%;
+  background: #d1d5db;
+  color: #fff;
+  margin-left: 4px;
+  cursor: help;
+  vertical-align: middle;
+}
+/* 预览容器 */
+.theme-preview {
+  border-radius: 10px;
+  padding: 16px;
+  transition: background 0.2s;
+}
+.preview-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+.preview-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.preview-section-label {
+  font-size: 11px;
+  color: #888;
+  letter-spacing: 0.5px;
+}
+/* 候选窗口 */
+.preview-candidate-window {
+  display: flex;
+  flex-direction: column;
   border: 1px solid #ccc;
-  border-radius: 6px;
-  background: #fff;
-  position: relative;
+  border-radius: 8px;
   overflow: hidden;
 }
-.preview-accent-bar {
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
+.preview-input-bar {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: monospace;
+}
+.preview-candidates {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 6px;
 }
 .preview-candidate-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 2px 5px;
   border-radius: 4px;
+  position: relative;
 }
-.preview-hover {
-  background: #e6f0ff;
+/* accent bar（微软风格：绑定在每个候选项左侧） */
+.preview-item-accent {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 0 1px 1px 0;
 }
+/* 圆形序号（默认主题） */
 .preview-index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 500;
-  border-radius: 3px;
+  flex-shrink: 0;
 }
+.preview-index.preview-index-circle {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+}
+/* 文字序号（微软风格） */
 .preview-index.preview-index-text {
   background: transparent !important;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
+  width: auto;
+  padding: 0 1px;
 }
 .preview-text {
-  font-size: 14px;
+  font-size: 12px;
+  white-space: nowrap;
 }
+.preview-comment {
+  font-size: 10px;
+  margin-left: 2px;
+  white-space: nowrap;
+}
+/* 工具栏 */
 .preview-toolbar {
   display: inline-flex;
-  gap: 6px;
-  padding: 6px 10px;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
   border: 1px solid #ccc;
   border-radius: 6px;
-  background: #fff;
+}
+.preview-toolbar-grip {
+  font-size: 9px;
+  margin-right: 1px;
+  opacity: 0.7;
+  user-select: none;
 }
 .preview-toolbar-item {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
   border-radius: 4px;
-  color: #fff;
 }
 @media (max-width: 768px) {
-  .theme-preview {
-    min-width: auto;
+  .preview-layout {
+    flex-direction: column;
+    gap: 12px;
   }
 }
 </style>

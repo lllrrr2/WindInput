@@ -88,6 +88,7 @@ export interface UIConfig {
   status_indicator_offset_x: number;
   status_indicator_offset_y: number;
   theme: string;
+  theme_style: string; // "system" | "light" | "dark"
 }
 
 // 工具栏配置
@@ -322,6 +323,7 @@ export function getDefaultConfig(): Config {
       status_indicator_offset_x: 0,
       status_indicator_offset_y: 0,
       theme: "default",
+      theme_style: "system",
     },
     toolbar: {
       visible: true,

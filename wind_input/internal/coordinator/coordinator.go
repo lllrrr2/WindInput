@@ -11,6 +11,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/config"
+	"github.com/huanfeng/wind_input/pkg/theme"
 )
 
 // Restart request channel - main should listen to this
@@ -140,6 +141,9 @@ type Coordinator struct {
 	cachedKeyDownHotkeys []uint32
 	cachedKeyUpHotkeys   []uint32
 	hotkeysDirty         bool // 配置变化时置 true
+
+	// Dark mode watcher for system theme changes
+	darkModeWatcher *theme.DarkModeWatcher
 }
 
 // BridgeServer interface for broadcasting state to TSF clients
@@ -356,13 +360,74 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		if cfg.UI.MenuFontSize > 0 {
 			c.uiManager.SetMenuFontSize(cfg.UI.MenuFontSize)
 		}
-		// 加载主题
-		if cfg.UI.Theme != "" {
-			c.uiManager.LoadTheme(cfg.UI.Theme)
-		}
+		// 初始化主题暗色模式并加载主题
+		c.initThemeMode(cfg)
 	}
 
 	return c
+}
+
+// initThemeMode initializes the dark mode state and starts the system theme watcher if needed
+func (c *Coordinator) initThemeMode(cfg *config.Config) {
+	if c.uiManager == nil {
+		return
+	}
+
+	themeStyle := cfg.UI.ThemeStyle
+	if themeStyle == "" {
+		themeStyle = theme.ThemeStyleSystem
+	}
+
+	// Determine initial dark mode state
+	isDark := false
+	switch themeStyle {
+	case theme.ThemeStyleDark:
+		isDark = true
+	case theme.ThemeStyleLight:
+		isDark = false
+	default: // system
+		isDark = theme.IsSystemDarkMode()
+	}
+
+	// Set dark mode on the theme manager before loading the theme
+	c.uiManager.SetDarkMode(isDark)
+
+	// Load the theme
+	themeName := cfg.UI.Theme
+	if themeName == "" {
+		themeName = "default"
+	}
+	c.uiManager.LoadTheme(themeName)
+
+	// Start system theme watcher if following system mode
+	if themeStyle == theme.ThemeStyleSystem {
+		c.startDarkModeWatcher()
+	}
+}
+
+// startDarkModeWatcher starts watching for system dark mode changes
+func (c *Coordinator) startDarkModeWatcher() {
+	// Stop existing watcher if any
+	if c.darkModeWatcher != nil {
+		c.darkModeWatcher.Stop()
+	}
+
+	c.darkModeWatcher = theme.NewDarkModeWatcher(c.logger, func(isDark bool) {
+		// Called on system theme change — re-resolve and apply the theme
+		if c.uiManager != nil {
+			c.uiManager.SetDarkMode(isDark)
+			c.uiManager.ReapplyTheme()
+		}
+	})
+	c.darkModeWatcher.Start()
+}
+
+// stopDarkModeWatcher stops the system dark mode watcher
+func (c *Coordinator) stopDarkModeWatcher() {
+	if c.darkModeWatcher != nil {
+		c.darkModeWatcher.Stop()
+		c.darkModeWatcher = nil
+	}
 }
 
 // hasPendingInput 检查是否有任何类型的待处理输入

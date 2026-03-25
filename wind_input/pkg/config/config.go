@@ -76,7 +76,8 @@ type UIConfig struct {
 	StatusIndicatorDuration int     `yaml:"status_indicator_duration" json:"status_indicator_duration"` // 状态提示显示时长（毫秒）
 	StatusIndicatorOffsetX  int     `yaml:"status_indicator_offset_x" json:"status_indicator_offset_x"` // 状态提示 X 偏移量
 	StatusIndicatorOffsetY  int     `yaml:"status_indicator_offset_y" json:"status_indicator_offset_y"` // 状态提示 Y 偏移量
-	Theme                   string  `yaml:"theme" json:"theme"`                                         // 主题名称：default, dark 或自定义主题名
+	Theme                   string  `yaml:"theme" json:"theme"`                                         // 主题名称：default, msime 或自定义主题名
+	ThemeStyle              string  `yaml:"theme_style" json:"theme_style"`                             // 主题风格：system(跟随系统), light(亮色), dark(暗色)
 	TooltipDelay            int     `yaml:"tooltip_delay" json:"tooltip_delay"`                         // 编码提示延迟显示时间（毫秒），0 表示立即显示
 
 	// 文本渲染设置
@@ -156,6 +157,7 @@ func DefaultConfig() *Config {
 			StatusIndicatorOffsetY:  0,
 			TooltipDelay:            200,
 			Theme:                   "default",
+			ThemeStyle:              "system",
 			TextRenderMode:          "directwrite",
 			GDIFontWeight:           500,
 			GDIFontScale:            1.0,
@@ -224,6 +226,17 @@ func LoadFrom(path string) (*Config, error) {
 	// 如果 available 为空，使用默认值
 	if len(config.Schema.Available) == 0 {
 		config.Schema.Available = []string{"wubi86", "pinyin"}
+	}
+
+	// 迁移旧的 theme:"dark" 配置到新格式
+	if config.UI.Theme == "dark" {
+		config.UI.Theme = "default"
+		config.UI.ThemeStyle = "dark"
+	}
+
+	// ThemeStyle 兜底
+	if config.UI.ThemeStyle == "" {
+		config.UI.ThemeStyle = "system"
 	}
 
 	return config, nil

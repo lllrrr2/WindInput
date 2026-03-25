@@ -5,11 +5,19 @@ import (
 	"image/color"
 )
 
+// ThemeStyle constants for theme appearance mode
+const (
+	ThemeStyleSystem = "system" // Follow system dark/light mode
+	ThemeStyleLight  = "light"  // Always light
+	ThemeStyleDark   = "dark"   // Always dark
+)
+
 // ThemeMeta contains theme metadata
 type ThemeMeta struct {
 	Name    string `yaml:"name" json:"name"`
 	Version string `yaml:"version" json:"version"`
 	Author  string `yaml:"author" json:"author"`
+	Order   int    `yaml:"order" json:"order"` // Sort order, lower = first. Third-party themes get +100
 }
 
 // CandidateWindowColors defines colors for the candidate window
@@ -86,15 +94,69 @@ type CandidateWindowStyle struct {
 	ShowPageNumber   *bool   `yaml:"show_page_number" json:"show_page_number"`     // Show page number text (e.g. "1/3"), nil = true (default show)
 }
 
-// Theme represents a complete theme configuration
-type Theme struct {
-	Meta            ThemeMeta             `yaml:"meta" json:"meta"`
+// ThemeVariant contains all color sections for one appearance mode (light or dark)
+type ThemeVariant struct {
 	CandidateWindow CandidateWindowColors `yaml:"candidate_window" json:"candidate_window"`
-	Style           CandidateWindowStyle  `yaml:"style" json:"style"`
 	Toolbar         ToolbarColors         `yaml:"toolbar" json:"toolbar"`
 	PopupMenu       PopupMenuColors       `yaml:"popup_menu" json:"popup_menu"`
 	Tooltip         TooltipColors         `yaml:"tooltip" json:"tooltip"`
 	ModeIndicator   ModeIndicatorColors   `yaml:"mode_indicator" json:"mode_indicator"`
+}
+
+// Theme represents a complete theme configuration.
+// Supports two formats:
+//   - New format: light/dark variants under "light:" and "dark:" keys
+//   - Legacy format: colors at top level (treated as single variant for both modes)
+type Theme struct {
+	Meta  ThemeMeta            `yaml:"meta" json:"meta"`
+	Style CandidateWindowStyle `yaml:"style" json:"style"`
+
+	// New format: light/dark variants
+	Light *ThemeVariant `yaml:"light,omitempty" json:"light,omitempty"`
+	Dark  *ThemeVariant `yaml:"dark,omitempty" json:"dark,omitempty"`
+
+	// Legacy format: top-level colors (backward compatible with old theme files)
+	CandidateWindow CandidateWindowColors `yaml:"candidate_window" json:"candidate_window"`
+	Toolbar         ToolbarColors         `yaml:"toolbar" json:"toolbar"`
+	PopupMenu       PopupMenuColors       `yaml:"popup_menu" json:"popup_menu"`
+	Tooltip         TooltipColors         `yaml:"tooltip" json:"tooltip"`
+	ModeIndicator   ModeIndicatorColors   `yaml:"mode_indicator" json:"mode_indicator"`
+}
+
+// HasVariants returns true if the theme uses the new light/dark variant format
+func (t *Theme) HasVariants() bool {
+	return t.Light != nil || t.Dark != nil
+}
+
+// GetVariant returns the effective color variant for the given mode.
+// For new format: returns the matching variant, falling back to the other if one is missing.
+// For legacy format: returns a variant built from top-level colors.
+func (t *Theme) GetVariant(isDark bool) *ThemeVariant {
+	if t.HasVariants() {
+		if isDark {
+			if t.Dark != nil {
+				return t.Dark
+			}
+			if t.Light != nil {
+				return t.Light
+			}
+		} else {
+			if t.Light != nil {
+				return t.Light
+			}
+			if t.Dark != nil {
+				return t.Dark
+			}
+		}
+	}
+	// Legacy format: use top-level colors
+	return &ThemeVariant{
+		CandidateWindow: t.CandidateWindow,
+		Toolbar:         t.Toolbar,
+		PopupMenu:       t.PopupMenu,
+		Tooltip:         t.Tooltip,
+		ModeIndicator:   t.ModeIndicator,
+	}
 }
 
 // ResolvedCandidateWindowColors contains parsed colors for the candidate window
@@ -212,59 +274,136 @@ func (t *Theme) resolveStyle() ResolvedCandidateWindowStyle {
 	return style
 }
 
-// Resolve parses all color strings into color.Color values
-func (t *Theme) Resolve() *ResolvedTheme {
+// Resolve parses all color strings into color.Color values.
+// isDark selects the dark variant when the theme supports light/dark modes.
+func (t *Theme) Resolve(isDark bool) *ResolvedTheme {
+	v := t.GetVariant(isDark)
+
+	// Choose default fallback colors based on mode
+	defaults := lightDefaults
+	if isDark {
+		defaults = darkDefaults
+	}
+
 	return &ResolvedTheme{
 		Meta:  t.Meta,
 		Style: t.resolveStyle(),
 		CandidateWindow: ResolvedCandidateWindowColors{
-			BackgroundColor: MustParseHexColor(t.CandidateWindow.BackgroundColor, color.RGBA{255, 255, 255, 255}),
-			BorderColor:     MustParseHexColor(t.CandidateWindow.BorderColor, color.RGBA{200, 200, 200, 255}),
-			TextColor:       MustParseHexColor(t.CandidateWindow.TextColor, color.RGBA{30, 30, 30, 255}),
-			IndexColor:      MustParseHexColor(t.CandidateWindow.IndexColor, color.RGBA{255, 255, 255, 255}),
-			IndexBgColor:    MustParseHexColor(t.CandidateWindow.IndexBgColor, color.RGBA{66, 133, 244, 255}),
-			HoverBgColor:    MustParseHexColor(t.CandidateWindow.HoverBgColor, color.RGBA{230, 240, 255, 255}),
-			SelectedBgColor: MustParseHexColor(t.CandidateWindow.SelectedBgColor, color.RGBA{230, 240, 255, 255}),
-			InputBgColor:    MustParseHexColor(t.CandidateWindow.InputBgColor, color.RGBA{240, 240, 240, 255}),
-			InputTextColor:  MustParseHexColor(t.CandidateWindow.InputTextColor, color.RGBA{100, 100, 100, 255}),
-			CommentColor:    MustParseHexColor(t.CandidateWindow.CommentColor, color.RGBA{150, 150, 150, 255}),
-			ShadowColor:     MustParseHexColor(t.CandidateWindow.ShadowColor, color.RGBA{0, 0, 0, 15}),
+			BackgroundColor: MustParseHexColor(v.CandidateWindow.BackgroundColor, defaults.candidateBg),
+			BorderColor:     MustParseHexColor(v.CandidateWindow.BorderColor, defaults.candidateBorder),
+			TextColor:       MustParseHexColor(v.CandidateWindow.TextColor, defaults.candidateText),
+			IndexColor:      MustParseHexColor(v.CandidateWindow.IndexColor, defaults.indexColor),
+			IndexBgColor:    MustParseHexColor(v.CandidateWindow.IndexBgColor, defaults.indexBg),
+			HoverBgColor:    MustParseHexColor(v.CandidateWindow.HoverBgColor, defaults.hoverBg),
+			SelectedBgColor: MustParseHexColor(v.CandidateWindow.SelectedBgColor, defaults.selectedBg),
+			InputBgColor:    MustParseHexColor(v.CandidateWindow.InputBgColor, defaults.inputBg),
+			InputTextColor:  MustParseHexColor(v.CandidateWindow.InputTextColor, defaults.inputText),
+			CommentColor:    MustParseHexColor(v.CandidateWindow.CommentColor, defaults.commentColor),
+			ShadowColor:     MustParseHexColor(v.CandidateWindow.ShadowColor, defaults.shadowColor),
 		},
 		Toolbar: ResolvedToolbarColors{
-			BackgroundColor:     MustParseHexColor(t.Toolbar.BackgroundColor, color.RGBA{255, 255, 255, 255}),
-			BorderColor:         MustParseHexColor(t.Toolbar.BorderColor, color.RGBA{199, 209, 224, 255}),
-			GripColor:           MustParseHexColor(t.Toolbar.GripColor, color.RGBA{153, 173, 199, 179}),
-			ModeChineseBgColor:  MustParseHexColor(t.Toolbar.ModeChineseBgColor, color.RGBA{51, 154, 245, 255}),
-			ModeEnglishBgColor:  MustParseHexColor(t.Toolbar.ModeEnglishBgColor, color.RGBA{115, 127, 148, 255}),
-			ModeTextColor:       MustParseHexColor(t.Toolbar.ModeTextColor, color.RGBA{255, 255, 255, 255}),
-			FullWidthOnBgColor:  MustParseHexColor(t.Toolbar.FullWidthOnBgColor, color.RGBA{46, 184, 153, 255}),
-			FullWidthOffBgColor: MustParseHexColor(t.Toolbar.FullWidthOffBgColor, color.RGBA{230, 234, 239, 255}),
-			FullWidthOnColor:    MustParseHexColor(t.Toolbar.FullWidthOnColor, color.RGBA{255, 255, 255, 255}),
-			FullWidthOffColor:   MustParseHexColor(t.Toolbar.FullWidthOffColor, color.RGBA{89, 102, 122, 255}),
-			PunctChineseBgColor: MustParseHexColor(t.Toolbar.PunctChineseBgColor, color.RGBA{245, 133, 67, 255}),
-			PunctEnglishBgColor: MustParseHexColor(t.Toolbar.PunctEnglishBgColor, color.RGBA{230, 234, 239, 255}),
-			PunctChineseColor:   MustParseHexColor(t.Toolbar.PunctChineseColor, color.RGBA{255, 255, 255, 255}),
-			PunctEnglishColor:   MustParseHexColor(t.Toolbar.PunctEnglishColor, color.RGBA{89, 102, 122, 255}),
-			SettingsBgColor:     MustParseHexColor(t.Toolbar.SettingsBgColor, color.RGBA{230, 234, 239, 255}),
-			SettingsIconColor:   MustParseHexColor(t.Toolbar.SettingsIconColor, color.RGBA{122, 102, 184, 255}),
-			SettingsHoleColor:   MustParseHexColor(t.Toolbar.SettingsHoleColor, color.RGBA{230, 234, 239, 255}),
+			BackgroundColor:     MustParseHexColor(v.Toolbar.BackgroundColor, defaults.toolbarBg),
+			BorderColor:         MustParseHexColor(v.Toolbar.BorderColor, defaults.toolbarBorder),
+			GripColor:           MustParseHexColor(v.Toolbar.GripColor, defaults.toolbarGrip),
+			ModeChineseBgColor:  MustParseHexColor(v.Toolbar.ModeChineseBgColor, defaults.modeChineseBg),
+			ModeEnglishBgColor:  MustParseHexColor(v.Toolbar.ModeEnglishBgColor, defaults.modeEnglishBg),
+			ModeTextColor:       MustParseHexColor(v.Toolbar.ModeTextColor, defaults.modeText),
+			FullWidthOnBgColor:  MustParseHexColor(v.Toolbar.FullWidthOnBgColor, defaults.fullWidthOnBg),
+			FullWidthOffBgColor: MustParseHexColor(v.Toolbar.FullWidthOffBgColor, defaults.fullWidthOffBg),
+			FullWidthOnColor:    MustParseHexColor(v.Toolbar.FullWidthOnColor, defaults.fullWidthOnColor),
+			FullWidthOffColor:   MustParseHexColor(v.Toolbar.FullWidthOffColor, defaults.fullWidthOffColor),
+			PunctChineseBgColor: MustParseHexColor(v.Toolbar.PunctChineseBgColor, defaults.punctChineseBg),
+			PunctEnglishBgColor: MustParseHexColor(v.Toolbar.PunctEnglishBgColor, defaults.punctEnglishBg),
+			PunctChineseColor:   MustParseHexColor(v.Toolbar.PunctChineseColor, defaults.punctChineseColor),
+			PunctEnglishColor:   MustParseHexColor(v.Toolbar.PunctEnglishColor, defaults.punctEnglishColor),
+			SettingsBgColor:     MustParseHexColor(v.Toolbar.SettingsBgColor, defaults.settingsBg),
+			SettingsIconColor:   MustParseHexColor(v.Toolbar.SettingsIconColor, defaults.settingsIcon),
+			SettingsHoleColor:   MustParseHexColor(v.Toolbar.SettingsHoleColor, defaults.settingsHole),
 		},
 		PopupMenu: ResolvedPopupMenuColors{
-			BackgroundColor: MustParseHexColor(t.PopupMenu.BackgroundColor, color.RGBA{255, 255, 255, 255}),
-			BorderColor:     MustParseHexColor(t.PopupMenu.BorderColor, color.RGBA{199, 199, 199, 255}),
-			TextColor:       MustParseHexColor(t.PopupMenu.TextColor, color.RGBA{0, 0, 0, 255}),
-			DisabledColor:   MustParseHexColor(t.PopupMenu.DisabledColor, color.RGBA{161, 161, 161, 255}),
-			HoverBgColor:    MustParseHexColor(t.PopupMenu.HoverBgColor, color.RGBA{0, 120, 212, 255}),
-			HoverTextColor:  MustParseHexColor(t.PopupMenu.HoverTextColor, color.RGBA{255, 255, 255, 255}),
-			SeparatorColor:  MustParseHexColor(t.PopupMenu.SeparatorColor, color.RGBA{219, 219, 219, 255}),
+			BackgroundColor: MustParseHexColor(v.PopupMenu.BackgroundColor, defaults.menuBg),
+			BorderColor:     MustParseHexColor(v.PopupMenu.BorderColor, defaults.menuBorder),
+			TextColor:       MustParseHexColor(v.PopupMenu.TextColor, defaults.menuText),
+			DisabledColor:   MustParseHexColor(v.PopupMenu.DisabledColor, defaults.menuDisabled),
+			HoverBgColor:    MustParseHexColor(v.PopupMenu.HoverBgColor, defaults.menuHoverBg),
+			HoverTextColor:  MustParseHexColor(v.PopupMenu.HoverTextColor, defaults.menuHoverText),
+			SeparatorColor:  MustParseHexColor(v.PopupMenu.SeparatorColor, defaults.menuSeparator),
 		},
 		Tooltip: ResolvedTooltipColors{
-			BackgroundColor: MustParseHexColor(t.Tooltip.BackgroundColor, color.RGBA{60, 60, 60, 240}),
-			TextColor:       MustParseHexColor(t.Tooltip.TextColor, color.RGBA{255, 255, 255, 255}),
+			BackgroundColor: MustParseHexColor(v.Tooltip.BackgroundColor, defaults.tooltipBg),
+			TextColor:       MustParseHexColor(v.Tooltip.TextColor, defaults.tooltipText),
 		},
 		ModeIndicator: ResolvedModeIndicatorColors{
-			BackgroundColor: MustParseHexColor(t.ModeIndicator.BackgroundColor, color.RGBA{50, 50, 50, 230}),
-			TextColor:       MustParseHexColor(t.ModeIndicator.TextColor, color.RGBA{255, 255, 255, 255}),
+			BackgroundColor: MustParseHexColor(v.ModeIndicator.BackgroundColor, defaults.indicatorBg),
+			TextColor:       MustParseHexColor(v.ModeIndicator.TextColor, defaults.indicatorText),
 		},
 	}
+}
+
+// defaultColors holds fallback colors for a mode
+type defaultColors struct {
+	candidateBg, candidateBorder, candidateText       color.Color
+	indexColor, indexBg, hoverBg, selectedBg          color.Color
+	inputBg, inputText, commentColor, shadowColor     color.Color
+	toolbarBg, toolbarBorder, toolbarGrip             color.Color
+	modeChineseBg, modeEnglishBg, modeText            color.Color
+	fullWidthOnBg, fullWidthOffBg, fullWidthOnColor   color.Color
+	fullWidthOffColor                                 color.Color
+	punctChineseBg, punctEnglishBg, punctChineseColor color.Color
+	punctEnglishColor                                 color.Color
+	settingsBg, settingsIcon, settingsHole            color.Color
+	menuBg, menuBorder, menuText, menuDisabled        color.Color
+	menuHoverBg, menuHoverText, menuSeparator         color.Color
+	tooltipBg, tooltipText                            color.Color
+	indicatorBg, indicatorText                        color.Color
+}
+
+var lightDefaults = defaultColors{
+	candidateBg: color.RGBA{255, 255, 255, 255}, candidateBorder: color.RGBA{200, 200, 200, 255},
+	candidateText: color.RGBA{30, 30, 30, 255},
+	indexColor:    color.RGBA{255, 255, 255, 255}, indexBg: color.RGBA{66, 133, 244, 255},
+	hoverBg: color.RGBA{230, 240, 255, 255}, selectedBg: color.RGBA{230, 240, 255, 255},
+	inputBg: color.RGBA{240, 240, 240, 255}, inputText: color.RGBA{100, 100, 100, 255},
+	commentColor: color.RGBA{150, 150, 150, 255}, shadowColor: color.RGBA{0, 0, 0, 15},
+	toolbarBg: color.RGBA{255, 255, 255, 255}, toolbarBorder: color.RGBA{199, 209, 224, 255},
+	toolbarGrip:   color.RGBA{153, 173, 199, 179},
+	modeChineseBg: color.RGBA{51, 154, 245, 255}, modeEnglishBg: color.RGBA{115, 127, 148, 255},
+	modeText:      color.RGBA{255, 255, 255, 255},
+	fullWidthOnBg: color.RGBA{46, 184, 153, 255}, fullWidthOffBg: color.RGBA{230, 234, 239, 255},
+	fullWidthOnColor: color.RGBA{255, 255, 255, 255}, fullWidthOffColor: color.RGBA{89, 102, 122, 255},
+	punctChineseBg: color.RGBA{245, 133, 67, 255}, punctEnglishBg: color.RGBA{230, 234, 239, 255},
+	punctChineseColor: color.RGBA{255, 255, 255, 255}, punctEnglishColor: color.RGBA{89, 102, 122, 255},
+	settingsBg: color.RGBA{230, 234, 239, 255}, settingsIcon: color.RGBA{122, 102, 184, 255},
+	settingsHole: color.RGBA{230, 234, 239, 255},
+	menuBg:       color.RGBA{255, 255, 255, 255}, menuBorder: color.RGBA{199, 199, 199, 255},
+	menuText: color.RGBA{0, 0, 0, 255}, menuDisabled: color.RGBA{161, 161, 161, 255},
+	menuHoverBg: color.RGBA{0, 120, 212, 255}, menuHoverText: color.RGBA{255, 255, 255, 255},
+	menuSeparator: color.RGBA{219, 219, 219, 255},
+	tooltipBg:     color.RGBA{60, 60, 60, 240}, tooltipText: color.RGBA{255, 255, 255, 255},
+	indicatorBg: color.RGBA{50, 50, 50, 230}, indicatorText: color.RGBA{255, 255, 255, 255},
+}
+
+var darkDefaults = defaultColors{
+	candidateBg: color.RGBA{45, 45, 45, 255}, candidateBorder: color.RGBA{64, 64, 64, 255},
+	candidateText: color.RGBA{224, 224, 224, 255},
+	indexColor:    color.RGBA{255, 255, 255, 255}, indexBg: color.RGBA{66, 133, 244, 255},
+	hoverBg: color.RGBA{61, 74, 92, 255}, selectedBg: color.RGBA{61, 74, 92, 255},
+	inputBg: color.RGBA{58, 58, 58, 255}, inputText: color.RGBA{176, 176, 176, 255},
+	commentColor: color.RGBA{128, 128, 128, 255}, shadowColor: color.RGBA{0, 0, 0, 26},
+	toolbarBg: color.RGBA{45, 45, 45, 255}, toolbarBorder: color.RGBA{64, 64, 64, 255},
+	toolbarGrip:   color.RGBA{90, 90, 90, 179},
+	modeChineseBg: color.RGBA{51, 154, 245, 255}, modeEnglishBg: color.RGBA{90, 90, 90, 255},
+	modeText:      color.RGBA{255, 255, 255, 255},
+	fullWidthOnBg: color.RGBA{46, 184, 153, 255}, fullWidthOffBg: color.RGBA{64, 64, 64, 255},
+	fullWidthOnColor: color.RGBA{255, 255, 255, 255}, fullWidthOffColor: color.RGBA{176, 176, 176, 255},
+	punctChineseBg: color.RGBA{245, 133, 67, 255}, punctEnglishBg: color.RGBA{64, 64, 64, 255},
+	punctChineseColor: color.RGBA{255, 255, 255, 255}, punctEnglishColor: color.RGBA{176, 176, 176, 255},
+	settingsBg: color.RGBA{64, 64, 64, 255}, settingsIcon: color.RGBA{155, 140, 206, 255},
+	settingsHole: color.RGBA{64, 64, 64, 255},
+	menuBg:       color.RGBA{45, 45, 45, 255}, menuBorder: color.RGBA{64, 64, 64, 255},
+	menuText: color.RGBA{224, 224, 224, 255}, menuDisabled: color.RGBA{112, 112, 112, 255},
+	menuHoverBg: color.RGBA{0, 120, 212, 255}, menuHoverText: color.RGBA{255, 255, 255, 255},
+	menuSeparator: color.RGBA{64, 64, 64, 255},
+	tooltipBg:     color.RGBA{30, 30, 30, 240}, tooltipText: color.RGBA{224, 224, 224, 255},
+	indicatorBg: color.RGBA{30, 30, 30, 230}, indicatorText: color.RGBA{224, 224, 224, 255},
 }

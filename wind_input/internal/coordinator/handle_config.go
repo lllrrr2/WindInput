@@ -4,6 +4,7 @@ package coordinator
 import (
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/config"
+	"github.com/huanfeng/wind_input/pkg/theme"
 )
 
 // UpdateUIConfig 更新 UI 配置（热更新）
@@ -65,10 +66,8 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 		if uiConfig.MenuFontSize > 0 {
 			c.uiManager.SetMenuFontSize(uiConfig.MenuFontSize)
 		}
-		// 更新主题
-		if uiConfig.Theme != "" {
-			c.uiManager.LoadTheme(uiConfig.Theme)
-		}
+		// 更新主题风格和主题
+		c.updateThemeStyle(uiConfig)
 	}
 
 	c.logger.Debug("UI config updated", "candidatesPerPage", c.candidatesPerPage)
@@ -185,6 +184,42 @@ func (c *Coordinator) UpdateStartupConfig(startupConfig *config.StartupConfig) {
 	}
 
 	c.logger.Debug("Startup config updated", "rememberLastState", startupConfig.RememberLastState)
+}
+
+// updateThemeStyle handles theme style and theme name changes
+func (c *Coordinator) updateThemeStyle(uiConfig *config.UIConfig) {
+	themeStyle := uiConfig.ThemeStyle
+	if themeStyle == "" {
+		themeStyle = theme.ThemeStyleSystem
+	}
+
+	// Determine dark mode
+	isDark := false
+	switch themeStyle {
+	case theme.ThemeStyleDark:
+		isDark = true
+	case theme.ThemeStyleLight:
+		isDark = false
+	default: // system
+		isDark = theme.IsSystemDarkMode()
+	}
+
+	// Update dark mode state
+	c.uiManager.SetDarkMode(isDark)
+
+	// Load the theme (always reload to pick up new dark mode state)
+	if uiConfig.Theme != "" {
+		c.uiManager.LoadTheme(uiConfig.Theme)
+	} else {
+		c.uiManager.ReapplyTheme()
+	}
+
+	// Start/stop watcher based on style
+	if themeStyle == theme.ThemeStyleSystem {
+		c.startDarkModeWatcher()
+	} else {
+		c.stopDarkModeWatcher()
+	}
 }
 
 // ClearInputState 清空输入状态（供外部调用）
