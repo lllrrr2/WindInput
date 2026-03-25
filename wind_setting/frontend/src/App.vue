@@ -402,6 +402,16 @@ async function handleOpenLogFolder() {
   }
 }
 
+async function handleOpenConfigFolder() {
+  try {
+    if (isWailsEnv.value) {
+      await wailsApi.openConfigFolder();
+    }
+  } catch (e) {
+    console.error("打开配置目录失败", e);
+  }
+}
+
 async function handleOpenExternalLink(url: string) {
   try {
     if (isWailsEnv.value) {
@@ -527,6 +537,7 @@ onMounted(async () => {
           :formData="formData"
           :isWailsEnv="isWailsEnv"
           @openLogFolder="handleOpenLogFolder"
+          @openConfigFolder="handleOpenConfigFolder"
         />
 
         <AboutPage

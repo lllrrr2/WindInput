@@ -244,6 +244,10 @@ export async function openLogFolder(): Promise<void> {
   return App.OpenLogFolder();
 }
 
+export async function openConfigFolder(): Promise<void> {
+  return App.OpenConfigFolder();
+}
+
 export async function openExternalURL(url: string): Promise<void> {
   return App.OpenExternalURL(url);
 }

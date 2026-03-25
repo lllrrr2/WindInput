@@ -245,17 +245,6 @@ export async function reloadConfig(): Promise<
   return request("POST", "/api/config/reload");
 }
 
-// 测试转换
-export async function testConvert(
-  input: string,
-  engine: string = "current",
-  filterMode: string = "current",
-): Promise<
-  APIResponse<{ candidates: any[]; engine: string; filterMode: string }>
-> {
-  return request("POST", "/api/test/convert", { input, engine, filterMode });
-}
-
 // 默认配置值（用于前端初始化）
 export function getDefaultConfig(): Config {
   return {

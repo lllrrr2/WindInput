@@ -235,6 +235,16 @@ func (a *App) OpenLogFolder() error {
 	return exec.Command("explorer.exe", path).Start()
 }
 
+// OpenConfigFolder opens the config directory in the system file explorer.
+func (a *App) OpenConfigFolder() error {
+	base := os.Getenv("APPDATA")
+	if base == "" {
+		return fmt.Errorf("APPDATA not set")
+	}
+	path := filepath.Join(base, "WindInput")
+	return exec.Command("explorer.exe", path).Start()
+}
+
 // OpenExternalURL opens an external URL in the default browser.
 func (a *App) OpenExternalURL(url string) error {
 	if url == "" {
