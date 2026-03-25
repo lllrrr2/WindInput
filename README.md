@@ -5,7 +5,7 @@
 <h1 align="center">清风输入法 (WindInput)</h1>
 
 <p align="center">
-  一款轻量、快速的 Windows 中文输入法
+  轻量、快速、可定制的开源中文输入法
 </p>
 
 <p align="center">
@@ -103,6 +103,11 @@ ui:
 本项目源代码采用 [MIT 许可证](LICENSE)。
 
 词库数据来源于第三方项目，适用各自的许可证条款，详见 [NOTICE.md](NOTICE.md)。
+
+## 交流与反馈
+
+- **QQ 交流群**: [1085293418](https://qm.qq.com/q/group?groupId=1085293418) — 清风输入法官方交流群
+- **GitHub Issues**: [问题反馈](../../issues) — 报告 Bug 或提出建议
 
 ## 相关链接
 

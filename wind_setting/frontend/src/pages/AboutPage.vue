@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import type { Status } from "../api/settings";
 
 defineProps<{
@@ -10,6 +11,30 @@ defineProps<{
 defineEmits<{
   openExternalLink: [url: string];
 }>();
+
+const currentYear = new Date().getFullYear();
+const qqGroupNumber = "1085293418";
+const qqCopied = ref(false);
+
+async function copyQQGroup(event: Event) {
+  event.stopPropagation();
+  try {
+    await navigator.clipboard.writeText(qqGroupNumber);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = qqGroupNumber;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  }
+  qqCopied.value = true;
+  setTimeout(() => {
+    qqCopied.value = false;
+  }, 2000);
+}
 </script>
 
 <template>
@@ -20,37 +45,90 @@ defineEmits<{
     </div>
 
     <div class="settings-card about-card" v-if="status">
-      <div class="about-simple">
+      <!-- 应用标识 -->
+      <div class="about-hero">
         <div class="about-icon-wrap">
           <img :src="appIconUrl" alt="清风输入法" />
         </div>
-        <div class="about-title">
-          <h3>{{ status.service.name }}</h3>
-          <p>{{ status.service.version }}</p>
+        <div class="about-info">
+          <h3 class="about-name">{{ status.service.name }}</h3>
+          <span class="about-version-badge">v{{ status.service.version }}</span>
+          <p class="about-desc">轻量、快速、可定制的开源中文输入法</p>
         </div>
-        <div class="about-links-inline">
-          <button
-            class="link-button modern-link"
-            @click="$emit('openExternalLink', repoUrl)"
-          >
-            <span class="link-icon" aria-hidden="true">
-              <svg
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="currentColor"
-              >
-                <path
-                  d="M12 2C6.48 2 2 6.58 2 12.26c0 4.58 2.87 8.46 6.84 9.83.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.39-3.37-1.39-.45-1.2-1.1-1.52-1.1-1.52-.9-.64.07-.63.07-.63 1 .07 1.52 1.06 1.52 1.06.89 1.56 2.34 1.11 2.9.85.09-.67.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.08 0-1.12.39-2.03 1.02-2.75-.1-.26-.44-1.3.1-2.71 0 0 .84-.27 2.75 1.03.8-.23 1.66-.35 2.51-.35.85 0 1.71.12 2.51.35 1.9-1.3 2.74-1.03 2.74-1.03.54 1.41.2 2.45.1 2.71.63.72 1.02 1.63 1.02 2.75 0 3.95-2.35 4.82-4.58 5.07.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.8 0 .27.18.6.69.49 3.97-1.37 6.83-5.25 6.83-9.83C22 6.58 17.52 2 12 2z"
-                />
-              </svg>
-            </span>
-            <div class="link-text">
-              <span class="link-title">GitHub 项目主页</span>
-              <span class="link-desc">{{ repoUrl }}</span>
-            </div>
-          </button>
-        </div>
+      </div>
+
+      <!-- 链接卡片 -->
+      <div class="about-links">
+        <button
+          class="link-card"
+          @click="$emit('openExternalLink', repoUrl)"
+        >
+          <span class="link-card-icon icon-github" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.58 2 12.26c0 4.58 2.87 8.46 6.84 9.83.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.39-3.37-1.39-.45-1.2-1.1-1.52-1.1-1.52-.9-.64.07-.63.07-.63 1 .07 1.52 1.06 1.52 1.06.89 1.56 2.34 1.11 2.9.85.09-.67.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.08 0-1.12.39-2.03 1.02-2.75-.1-.26-.44-1.3.1-2.71 0 0 .84-.27 2.75 1.03.8-.23 1.66-.35 2.51-.35.85 0 1.71.12 2.51.35 1.9-1.3 2.74-1.03 2.74-1.03.54 1.41.2 2.45.1 2.71.63.72 1.02 1.63 1.02 2.75 0 3.95-2.35 4.82-4.58 5.07.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.8 0 .27.18.6.69.49 3.97-1.37 6.83-5.25 6.83-9.83C22 6.58 17.52 2 12 2z" />
+            </svg>
+          </span>
+          <div class="link-card-text">
+            <span class="link-card-title">GitHub</span>
+            <span class="link-card-desc">源码与文档</span>
+          </div>
+        </button>
+
+        <button
+          class="link-card"
+          @click="$emit('openExternalLink', repoUrl + '/issues')"
+        >
+          <span class="link-card-icon icon-issues" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
+            </svg>
+          </span>
+          <div class="link-card-text">
+            <span class="link-card-title">问题反馈</span>
+            <span class="link-card-desc">报告 Bug 或建议</span>
+          </div>
+        </button>
+
+        <button
+          class="link-card"
+          @click="$emit('openExternalLink', repoUrl + '/releases')"
+        >
+          <span class="link-card-icon icon-releases" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+            </svg>
+          </span>
+          <div class="link-card-text">
+            <span class="link-card-title">版本发布</span>
+            <span class="link-card-desc">更新日志</span>
+          </div>
+        </button>
+
+        <button
+          class="link-card qq-card"
+          @click="$emit('openExternalLink', 'https://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=&group_code=1085293418')"
+        >
+          <span class="link-card-icon icon-qq" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M21.395 15.035a40 40 0 0 0-.803-2.264l-1.079-2.695c.001-.032.014-.562.014-.836C19.526 4.632 17.351 0 12 0S4.474 4.632 4.474 9.241c0 .274.013.804.014.836l-1.08 2.695a39 39 0 0 0-.802 2.264c-1.021 3.283-.69 4.643-.438 4.673.54.065 2.103-2.472 2.103-2.472 0 1.469.756 3.387 2.394 4.771-.612.188-1.363.479-1.845.835-.434.32-.379.646-.301.778.343.578 5.883.369 7.482.189 1.6.18 7.14.389 7.483-.189.078-.132.132-.458-.301-.778-.483-.356-1.233-.646-1.846-.836 1.637-1.384 2.393-3.302 2.393-4.771 0 0 1.563 2.537 2.103 2.472.251-.03.581-1.39-.438-4.673" />
+            </svg>
+          </span>
+          <div class="link-card-text">
+            <span class="link-card-title">QQ 交流群</span>
+            <span class="link-card-desc">{{ qqGroupNumber }}</span>
+          </div>
+          <span
+            class="copy-btn"
+            :class="{ copied: qqCopied }"
+            @click="copyQQGroup($event)"
+            :title="qqCopied ? '已复制' : '复制群号'"
+          >{{ qqCopied ? "已复制" : "复制" }}</span>
+        </button>
+      </div>
+
+      <!-- 版权 -->
+      <div class="about-footer">
+        <span>&copy; {{ currentYear }} WindInput Contributors &middot; MIT License</span>
       </div>
     </div>
   </section>
@@ -58,89 +136,150 @@ defineEmits<{
 
 <style scoped>
 .about-card {
-  padding: 24px;
+  padding: 32px 24px;
 }
-.about-simple {
+
+/* 顶部标识区 */
+.about-hero {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  text-align: center;
+  gap: 20px;
+  padding-bottom: 24px;
 }
 .about-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
 }
 .about-icon-wrap img {
-  width: 96px;
-  height: 96px;
+  width: 80px;
+  height: 80px;
   object-fit: contain;
 }
-.about-title h3 {
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.about-name {
   font-size: 22px;
   font-weight: 700;
   margin: 0;
   color: #111827;
 }
-.about-title p {
-  color: #9ca3af;
-  margin: 6px 0 0;
-  font-size: 13px;
+.about-version-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 2px 10px;
+  border-radius: 999px;
+  width: fit-content;
+  letter-spacing: 0.02em;
 }
-.about-links-inline {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  width: 100%;
-  max-width: 420px;
-}
-.link-button {
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  padding: 12px 14px;
-  border-radius: 14px;
-  color: #111827;
+.about-desc {
+  color: #6b7280;
   font-size: 13px;
-  text-align: left;
-  cursor: pointer;
+  margin: 4px 0 0;
+}
+
+/* 链接卡片网格 */
+.about-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.link-card {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
     transform 0.15s;
 }
-.link-button:hover {
+.link-card:hover {
   border-color: #cbd5f5;
-  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
   transform: translateY(-1px);
 }
-.modern-link .link-icon {
+.link-card-icon {
   width: 36px;
   height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: #111827;
+  border-radius: 10px;
   color: #fff;
   flex-shrink: 0;
 }
-.modern-link .link-text {
+.icon-github {
+  background: #111827;
+}
+.icon-issues {
+  background: #f59e0b;
+}
+.icon-releases {
+  background: #10b981;
+}
+.icon-qq {
+  background: #12b7f5;
+}
+.link-card-text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
 }
-.modern-link .link-title {
-  font-weight: 600;
+.link-card-title {
   font-size: 14px;
+  font-weight: 600;
   color: #111827;
 }
-.modern-link .link-desc {
-  color: #6b7280;
+.link-card-desc {
   font-size: 12px;
+  color: #6b7280;
+}
+
+/* QQ 卡片复制按钮 */
+.copy-btn {
+  font-size: 11px;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  cursor: pointer;
+}
+.copy-btn:hover {
+  background: #dbeafe;
+}
+.copy-btn.copied {
+  opacity: 1;
+  color: #16a34a;
+  background: #dcfce7;
+}
+.qq-card:hover .copy-btn {
+  opacity: 1;
+}
+
+/* 版权 */
+.about-footer {
+  text-align: center;
+  padding-top: 24px;
+  margin-top: 8px;
+}
+.about-footer span {
+  font-size: 12px;
+  color: #9ca3af;
 }
 </style>

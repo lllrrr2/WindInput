@@ -41,6 +41,11 @@ func (a *App) GetStartPage() string {
 	return a.startPage
 }
 
+// GetVersion 获取应用版本号（供前端调用）
+func (a *App) GetVersion() string {
+	return version
+}
+
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx

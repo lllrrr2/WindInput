@@ -267,11 +267,12 @@ async function refreshStatus() {
   try {
     if (isWailsEnv.value) {
       const serviceStatus = await wailsApi.getServiceStatus();
+      const appVersion = await wailsApi.getVersion().catch(() => "dev");
       if (serviceStatus) {
         status.value = {
           service: {
             name: "清风输入法",
-            version: "1.0.0",
+            version: appVersion,
             uptime: "",
             uptimeSec: 0,
           },

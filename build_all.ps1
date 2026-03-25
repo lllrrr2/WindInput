@@ -83,9 +83,9 @@ if ($WailsMode -eq "skip") {
             exit 1
         } else {
             if ($WailsMode -eq "debug") {
-                & wails build -debug
+                & wails build -debug -ldflags "-X main.version=$AppVersion"
             } else {
-                & wails build
+                & wails build -ldflags "-X main.version=$AppVersion"
             }
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[错误] wind_setting 构建失败,终止后续流程。" -ForegroundColor Red

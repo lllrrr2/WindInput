@@ -279,6 +279,11 @@ export async function getStartPage(): Promise<string> {
   return App.GetStartPage();
 }
 
+// 版本号
+export async function getVersion(): Promise<string> {
+  return App.GetVersion();
+}
+
 // 默认配置
 export function getDefaultConfig(): Config {
   return new config.Config({
