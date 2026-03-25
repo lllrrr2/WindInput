@@ -41,6 +41,9 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 	}
 
 	if activated {
+		// IME activated - register global hotkeys for combination keys
+		c.uiManager.RegisterGlobalHotkeys(c.buildGlobalHotkeyEntries())
+
 		// IME activated - show toolbar if enabled
 		if c.toolbarVisible {
 			// Always recalculate toolbar position based on current caret/focus position
@@ -75,6 +78,9 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 			})
 		}
 	} else {
+		// IME deactivated - unregister global hotkeys
+		c.uiManager.UnregisterGlobalHotkeys()
+
 		// IME deactivated - always hide toolbar
 		c.uiManager.SetToolbarVisible(false)
 		// Also hide candidate window
@@ -300,6 +306,28 @@ func (c *Coordinator) getStatusUpdate() *bridge.StatusUpdateData {
 		CapsLock:           c.capsLockOn,
 		IconLabel:          c.getIconLabelNoLock(),
 	}
+}
+
+// buildGlobalHotkeyEntries builds the list of global hotkey entries from config.
+// Caller must hold c.mu.
+func (c *Coordinator) buildGlobalHotkeyEntries() []ui.GlobalHotkeyEntry {
+	if c.config == nil {
+		return nil
+	}
+	var entries []ui.GlobalHotkeyEntry
+	id := 1
+	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.SwitchEngine, id, "switch_engine"); ok {
+		entries = append(entries, entry)
+		id++
+	}
+	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.ToggleFullWidth, id, "toggle_full_width"); ok {
+		entries = append(entries, entry)
+		id++
+	}
+	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.TogglePunct, id, "toggle_punct"); ok {
+		entries = append(entries, entry)
+	}
+	return entries
 }
 
 // showIndicator shows a brief indicator text

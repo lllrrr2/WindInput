@@ -327,6 +327,9 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 	// Set up candidate window callbacks for mouse interaction
 	c.setupCandidateCallbacks()
 
+	// Set up global hotkey callbacks (RegisterHotKey for combination hotkeys)
+	c.setupGlobalHotkeyCallbacks()
+
 	// Initialize UI config (including debug options)
 	if c.uiManager != nil && cfg != nil {
 		c.uiManager.UpdateConfig(cfg.UI.FontSize, cfg.UI.FontPath, cfg.UI.HideCandidateWindow)

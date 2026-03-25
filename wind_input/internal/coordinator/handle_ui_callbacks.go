@@ -42,6 +42,70 @@ func (c *Coordinator) setupToolbarCallbacks() {
 	})
 }
 
+// setupGlobalHotkeyCallbacks sets up the callback for global hotkey events (RegisterHotKey)
+func (c *Coordinator) setupGlobalHotkeyCallbacks() {
+	if c.uiManager == nil {
+		return
+	}
+	c.uiManager.SetGlobalHotkeyCallback(func(command string) {
+		c.handleGlobalHotkeyCommand(command)
+	})
+}
+
+// handleGlobalHotkeyCommand handles a global hotkey event dispatched from the UI thread
+func (c *Coordinator) handleGlobalHotkeyCommand(command string) {
+	c.logger.Debug("Global hotkey command", "command", command)
+	switch command {
+	case "switch_engine":
+		c.handleGlobalSwitchEngine()
+	case "toggle_full_width":
+		c.handleToolbarToggleWidth()
+	case "toggle_punct":
+		c.handleToolbarTogglePunct()
+	}
+}
+
+// handleGlobalSwitchEngine handles schema switch triggered by RegisterHotKey
+func (c *Coordinator) handleGlobalSwitchEngine() {
+	c.mu.Lock()
+	if c.engineMgr == nil {
+		c.mu.Unlock()
+		return
+	}
+	hadInput := len(c.inputBuffer) > 0
+	c.clearState()
+	if hadInput {
+		c.hideUI()
+	}
+	var available []string
+	if c.config != nil {
+		available = c.config.Schema.Available
+	}
+	c.mu.Unlock()
+
+	newSchemaID, err := c.engineMgr.ToggleSchema(available)
+	if err != nil {
+		c.logger.Error("Failed to switch schema via global hotkey", "error", err)
+		return
+	}
+	c.logger.Info("Schema switched via global hotkey", "newSchema", newSchemaID)
+
+	go func() {
+		if err := config.UpdateSchemaActive(newSchemaID); err != nil {
+			c.logger.Error("Failed to save schema to config", "error", err)
+		}
+	}()
+
+	c.mu.Lock()
+	c.showEngineIndicator()
+	c.broadcastState()
+	c.mu.Unlock()
+
+	if hadInput && c.bridgeServer != nil {
+		c.bridgeServer.PushClearCompositionToActiveClient()
+	}
+}
+
 // setupCandidateCallbacks sets up the callbacks for candidate window mouse interactions
 // IMPORTANT: These callbacks are invoked from the UI thread (window procedure).
 // We use goroutines to avoid blocking the UI thread with lock acquisition or I/O.

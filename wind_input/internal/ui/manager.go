@@ -143,6 +143,8 @@ type UICommand struct {
 	MenuState    *UnifiedMenuState
 	MenuCallback func(id int)
 	FlipRefY     int // 翻转参考Y（下方放不下时翻转到此Y上方，0=禁用）
+	// Global hotkey registration
+	HotkeyEntries []GlobalHotkeyEntry
 }
 
 // Manager manages the candidate window UI
@@ -218,6 +220,9 @@ type Manager struct {
 
 	// Unified popup menu (shared across toolbar/candidate/TSF entries)
 	unifiedPopupMenu *PopupMenu
+
+	// Global hotkey state (RegisterHotKey for combination hotkeys)
+	globalHotkeys *globalHotkeyState
 }
 
 // NewManager creates a new UI manager
@@ -232,15 +237,16 @@ func NewManager(logger *slog.Logger) *Manager {
 	themeManager := theme.NewManager(logger)
 
 	return &Manager{
-		window:       NewCandidateWindow(logger),
-		renderer:     NewRenderer(DefaultRenderConfig()),
-		toolbar:      NewToolbarWindow(logger),
-		tooltip:      NewTooltipWindow(logger),
-		themeManager: themeManager,
-		logger:       logger,
-		readyCh:      make(chan struct{}),
-		cmdCh:        make(chan UICommand, 100), // Buffered channel to avoid blocking IPC
-		cmdEvent:     event,
+		window:        NewCandidateWindow(logger),
+		renderer:      NewRenderer(DefaultRenderConfig()),
+		toolbar:       NewToolbarWindow(logger),
+		tooltip:       NewTooltipWindow(logger),
+		themeManager:  themeManager,
+		logger:        logger,
+		readyCh:       make(chan struct{}),
+		cmdCh:         make(chan UICommand, 100), // Buffered channel to avoid blocking IPC
+		cmdEvent:      event,
+		globalHotkeys: &globalHotkeyState{logger: logger},
 		// 注意：statusIndicator* 和 tooltipDelay 的默认值统一由 config.DefaultConfig() 提供，
 		// 通过 coordinator 初始化时调用对应的 Set/Update 方法设置。
 	}
@@ -333,6 +339,11 @@ func (m *Manager) runCombinedLoop() {
 					m.logger.Info("Received WM_QUIT, exiting loop")
 					return
 				}
+				if msg.Message == wmHotkey {
+					// Global hotkey (RegisterHotKey) — dispatch to callback
+					m.globalHotkeys.handleWMHotkey(int(msg.WParam))
+					continue
+				}
 				ProcessMessage(&msg)
 			}
 
@@ -404,6 +415,10 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 		m.doShowUnifiedMenu(cmd)
 	case "dpi_changed":
 		m.doDPIChanged()
+	case "register_hotkeys":
+		m.globalHotkeys.register(cmd.HotkeyEntries)
+	case "unregister_hotkeys":
+		m.globalHotkeys.unregister()
 	}
 }
 
@@ -438,9 +453,38 @@ func (m *Manager) Destroy() {
 		m.unifiedPopupMenu.Destroy()
 		m.unifiedPopupMenu = nil
 	}
+	if m.globalHotkeys != nil {
+		m.globalHotkeys.unregister()
+	}
 	if m.cmdEvent != 0 {
 		CloseEvent(m.cmdEvent)
 		m.cmdEvent = 0
+	}
+}
+
+// SetGlobalHotkeyCallback sets the callback for global hotkey events
+func (m *Manager) SetGlobalHotkeyCallback(cb func(command string)) {
+	m.globalHotkeys.callback = cb
+}
+
+// RegisterGlobalHotkeys registers combination hotkeys via Windows RegisterHotKey API.
+// Must be called from coordinator; actual registration happens on the UI thread.
+func (m *Manager) RegisterGlobalHotkeys(entries []GlobalHotkeyEntry) {
+	select {
+	case m.cmdCh <- UICommand{Type: "register_hotkeys", HotkeyEntries: entries}:
+		SetEvent(m.cmdEvent)
+	default:
+		m.logger.Warn("Command channel full, dropping register_hotkeys")
+	}
+}
+
+// UnregisterGlobalHotkeys unregisters all previously registered global hotkeys.
+func (m *Manager) UnregisterGlobalHotkeys() {
+	select {
+	case m.cmdCh <- UICommand{Type: "unregister_hotkeys"}:
+		SetEvent(m.cmdEvent)
+	default:
+		m.logger.Warn("Command channel full, dropping unregister_hotkeys")
 	}
 }
 
