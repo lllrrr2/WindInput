@@ -72,10 +72,10 @@ Desktop.ini
 *.old_*
 
 # Generated dictionary files
-/dict/pinyin/unigram.txt
+/data/dict/pinyin/unigram.txt
 
 # User frequency data (runtime generated)
-/dict/pinyin/user_freq.txt
+/data/dict/pinyin/user_freq.txt
 
 # Logs
 *.log
