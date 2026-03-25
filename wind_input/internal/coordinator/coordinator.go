@@ -252,7 +252,7 @@ func (c *Coordinator) syncToolbarStateNoLock() {
 	c.uiManager.UpdateToolbarState(ui.ToolbarState{
 		ChineseMode:   effectiveMode == ModeChinese,
 		FullWidth:     c.fullWidth,
-		ChinesePunct:  c.chinesePunctuation,
+		ChinesePunct:  c.chinesePunctuation && effectiveMode == ModeChinese,
 		CapsLock:      c.capsLockOn,
 		EffectiveMode: int(effectiveMode),
 	})

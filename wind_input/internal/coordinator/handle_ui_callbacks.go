@@ -550,6 +550,11 @@ func (c *Coordinator) handleToolbarTogglePunct() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Don't toggle punctuation in English mode
+	if !c.chineseMode {
+		return
+	}
+
 	c.chinesePunctuation = !c.chinesePunctuation
 	c.logger.Debug("Chinese punctuation toggled via toolbar", "chinesePunctuation", c.chinesePunctuation)
 

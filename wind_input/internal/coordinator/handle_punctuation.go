@@ -201,6 +201,11 @@ func (c *Coordinator) handleToggleFullWidth() *bridge.KeyEventResult {
 
 // handleTogglePunct handles the punctuation toggle hotkey (e.g., Ctrl+.)
 func (c *Coordinator) handleTogglePunct() *bridge.KeyEventResult {
+	// Don't toggle punctuation in English mode
+	if !c.chineseMode {
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+	}
+
 	c.chinesePunctuation = !c.chinesePunctuation
 	c.logger.Debug("Chinese punctuation toggled via hotkey", "chinesePunctuation", c.chinesePunctuation)
 

@@ -69,12 +69,13 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 			c.logger.Debug("Toolbar position calculated", "x", posX, "y", posY, "caretX", c.caretX, "caretY", c.caretY)
 
 			// Show toolbar with position and state in one atomic operation
+			effMode := c.getEffectiveModeNoLock()
 			c.uiManager.ShowToolbarWithState(posX, posY, ui.ToolbarState{
-				ChineseMode:   c.chineseMode,
+				ChineseMode:   effMode == ModeChinese,
 				FullWidth:     c.fullWidth,
-				ChinesePunct:  c.chinesePunctuation,
+				ChinesePunct:  c.chinesePunctuation && effMode == ModeChinese,
 				CapsLock:      c.capsLockOn,
-				EffectiveMode: int(c.getEffectiveModeNoLock()),
+				EffectiveMode: int(effMode),
 			})
 		}
 	} else {
