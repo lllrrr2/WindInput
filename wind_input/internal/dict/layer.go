@@ -12,6 +12,7 @@ const (
 	LayerTypeLogic  LayerType = iota // Lv1: 逻辑/指令层 (date, time, uuid 等)
 	LayerTypeShadow                  // Lv2: 用户修正层 (置顶/删除/调序)
 	LayerTypeUser                    // Lv3: 用户造词层
+	LayerTypeTemp                    // Lv3.5: 临时词库层（自动学习）
 	LayerTypeCell                    // Lv4: 细胞词库层
 	LayerTypeSystem                  // Lv5: 系统主词库
 )
@@ -25,6 +26,8 @@ func (t LayerType) String() string {
 		return "shadow"
 	case LayerTypeUser:
 		return "user"
+	case LayerTypeTemp:
+		return "temp"
 	case LayerTypeCell:
 		return "cell"
 	case LayerTypeSystem:

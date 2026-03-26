@@ -14,8 +14,10 @@ import (
 type DictManager struct {
 	mu sync.RWMutex
 
-	// 数据目录（%APPDATA%\WindInput）
+	// 用户数据目录（%APPDATA%\WindInput）
 	dataDir string
+	// 程序数据目录（exe 所在目录/data，存放 system.phrases.yaml 等）
+	systemDir string
 
 	// 全局层
 	phraseLayer *PhraseLayer // Lv1: 特殊短语（全局共享）
@@ -23,11 +25,13 @@ type DictManager struct {
 	// 按方案隔离的层
 	shadowLayers map[string]*ShadowLayer // schemaID -> ShadowLayer
 	userDicts    map[string]*UserDict    // schemaID -> UserDict
+	tempDicts    map[string]*TempDict    // schemaID -> TempDict
 
 	// 当前活跃方案
 	activeSchemaID string
 	activeShadow   *ShadowLayer
 	activeUserDict *UserDict
+	activeTempDict *TempDict
 
 	// 聚合词库
 	compositeDict *CompositeDict
@@ -37,11 +41,15 @@ type DictManager struct {
 }
 
 // NewDictManager 创建词库管理器
-func NewDictManager(dataDir string) *DictManager {
+// dataDir: 用户数据目录（%APPDATA%\WindInput）
+// systemDir: 程序数据目录（exeDir/data，存放 system.phrases.yaml 等）
+func NewDictManager(dataDir, systemDir string) *DictManager {
 	return &DictManager{
 		dataDir:       dataDir,
+		systemDir:     systemDir,
 		shadowLayers:  make(map[string]*ShadowLayer),
 		userDicts:     make(map[string]*UserDict),
+		tempDicts:     make(map[string]*TempDict),
 		systemLayers:  make(map[string]DictLayer),
 		compositeDict: NewCompositeDict(),
 	}
@@ -52,9 +60,10 @@ func (dm *DictManager) Initialize() error {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 
-	// 初始化特殊短语层 (Lv1) — 全局共享
-	phrasePath := filepath.Join(dm.dataDir, "phrases.yaml")
-	dm.phraseLayer = NewPhraseLayer("phrases", phrasePath)
+	// 初始化短语层 (Lv1) — 全局共享，加载系统+用户短语
+	systemPhrasePath := filepath.Join(dm.systemDir, "system.phrases.yaml")
+	userPhrasePath := filepath.Join(dm.dataDir, "user.phrases.yaml")
+	dm.phraseLayer = NewPhraseLayer("phrases", systemPhrasePath, userPhrasePath)
 	if err := dm.phraseLayer.Load(); err != nil {
 		log.Printf("[DictManager] 加载短语配置失败: %v", err)
 	} else {
@@ -70,7 +79,13 @@ func (dm *DictManager) Initialize() error {
 // schemaID: 方案标识
 // shadowFile: Shadow 文件名（相对于 dataDir）
 // userDictFile: 用户词库文件名（相对于 dataDir）
+// 可选参数通过 SwitchSchemaFull 提供 tempDictFile
 func (dm *DictManager) SwitchSchema(schemaID, shadowFile, userDictFile string) {
+	dm.SwitchSchemaFull(schemaID, shadowFile, userDictFile, "", 5000, 5)
+}
+
+// SwitchSchemaFull 切换活跃方案（包含临时词库）
+func (dm *DictManager) SwitchSchemaFull(schemaID, shadowFile, userDictFile, tempDictFile string, tempMaxEntries, tempPromoteCount int) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 
@@ -113,6 +128,29 @@ func (dm *DictManager) SwitchSchema(schemaID, shadowFile, userDictFile string) {
 	dm.compositeDict.AddLayer(userDict)
 	dm.activeUserDict = userDict
 
+	// 4. 懒加载目标方案的 TempDict
+	if dm.activeTempDict != nil {
+		dm.compositeDict.RemoveLayer(dm.activeTempDict.Name())
+	}
+	if tempDictFile != "" {
+		tempDict, ok := dm.tempDicts[schemaID]
+		if !ok {
+			tempDictPath := filepath.Join(dm.dataDir, tempDictFile)
+			tempDict = NewTempDict("temp_"+schemaID, tempDictPath, tempMaxEntries, tempPromoteCount)
+			if err := tempDict.Load(); err != nil {
+				log.Printf("[DictManager] 加载临时词库失败 (%s): %v", schemaID, err)
+			} else {
+				log.Printf("[DictManager] 临时词库加载成功 (%s): %d 词条", schemaID, tempDict.GetWordCount())
+			}
+			dm.tempDicts[schemaID] = tempDict
+		}
+		tempDict.SetTargetDict(userDict)
+		dm.compositeDict.AddLayer(tempDict)
+		dm.activeTempDict = tempDict
+	} else {
+		dm.activeTempDict = nil
+	}
+
 	dm.activeSchemaID = schemaID
 	log.Printf("[DictManager] 切换到方案: %s", schemaID)
 }
@@ -123,9 +161,9 @@ func (dm *DictManager) SetActiveEngine(engineType string) {
 	// 映射旧引擎类型到方案 ID 和默认文件名
 	switch engineType {
 	case "pinyin":
-		dm.SwitchSchema("pinyin", "shadow_pinyin.yaml", "user_words_pinyin.txt")
+		dm.SwitchSchema("pinyin", "pinyin.shadow.yaml", "pinyin.userwords.txt")
 	case "wubi":
-		dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+		dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	default:
 		log.Printf("[DictManager] 未知引擎类型: %s", engineType)
 	}
@@ -181,6 +219,13 @@ func (dm *DictManager) GetShadowLayer() *ShadowLayer {
 	return dm.activeShadow
 }
 
+// GetTempDict 获取当前活跃的临时词库
+func (dm *DictManager) GetTempDict() *TempDict {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	return dm.activeTempDict
+}
+
 // GetPhraseLayer 获取短语层
 func (dm *DictManager) GetPhraseLayer() *PhraseLayer {
 	dm.mu.RLock()
@@ -230,6 +275,12 @@ func (dm *DictManager) Save() error {
 		}
 	}
 
+	for id, td := range dm.tempDicts {
+		if err := td.Save(); err != nil {
+			errs = append(errs, fmt.Errorf("保存临时词库失败 (%s): %w", id, err))
+		}
+	}
+
 	for id, sl := range dm.shadowLayers {
 		if sl.IsDirty() {
 			if err := sl.Save(); err != nil {
@@ -252,6 +303,10 @@ func (dm *DictManager) Close() error {
 
 	for _, ud := range dm.userDicts {
 		ud.Close()
+	}
+
+	for _, td := range dm.tempDicts {
+		td.Close()
 	}
 
 	for _, sl := range dm.shadowLayers {
@@ -313,6 +368,10 @@ func (dm *DictManager) GetStats() map[string]int {
 
 	if dm.activeUserDict != nil {
 		stats["user_words"] = dm.activeUserDict.EntryCount()
+	}
+
+	if dm.activeTempDict != nil {
+		stats["temp_words"] = dm.activeTempDict.GetWordCount()
 	}
 
 	stats["schema_count"] = len(dm.shadowLayers)

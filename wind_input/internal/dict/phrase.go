@@ -6,120 +6,68 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"gopkg.in/yaml.v3"
 )
 
-// PhraseLayer 特殊短语层
-// 支持用户自定义短语和内置命令（date, time, uuid 等）
+// PhraseLayer 短语层
+// 加载系统短语和用户短语，支持变量模板展开（$Y, $MM, $DD 等）。
+// 含变量的短语为"动态短语"，仅精确匹配（通过 SearchCommand），
+// 不含变量的为"静态短语"，支持前缀搜索。
 type PhraseLayer struct {
-	mu       sync.RWMutex
-	name     string
-	filePath string
+	mu             sync.RWMutex
+	name           string
+	systemFilePath string // 系统短语文件（随程序打包，只读）
+	userFilePath   string // 用户短语文件（用户可编辑）
 
-	// 普通短语: code -> []PhraseEntry
-	phrases map[string][]PhraseEntry
+	// 静态短语（不含变量）: code -> []PhraseEntry，参与前缀搜索
+	staticPhrases map[string][]PhraseEntry
 
-	// 命令短语: code -> CommandHandler
-	commands map[string]CommandHandler
+	// 动态短语（含 $ 变量）: code -> []PhraseEntry，仅精确匹配
+	dynamicPhrases map[string][]PhraseEntry
 
-	// 命令结果缓存：同一 code 重复查询时返回缓存，避免 UUID/时间 候选不断刷新
+	// 模板引擎
+	templateEngine *TemplateEngine
+
+	// 命令结果缓存（动态短语）
 	cmdCache    map[string][]candidate.Candidate
-	cmdCacheKey string // 当前缓存对应的输入（输入变化时整体失效）
+	cmdCacheKey string
 }
 
 // PhraseEntry 短语条目
 type PhraseEntry struct {
-	Text   string // 输出文本（可包含模板变量）
-	Weight int    // 权重
+	Text     string // 输出文本（可含 $变量模板）
+	Position int    // 候选位置
+	IsSystem bool   // 是否来自系统短语
+	Disabled bool   // 是否被禁用
 }
 
-// CommandHandler 命令处理器
-type CommandHandler func() []candidate.Candidate
-
-// PhrasesConfig phrases.yaml 配置结构
-type PhrasesConfig struct {
-	Phrases []PhraseConfig `yaml:"phrases"`
+// PhrasesFileConfig 短语文件的 YAML 结构
+type PhrasesFileConfig struct {
+	Phrases []PhraseFileEntry `yaml:"phrases"`
 }
 
-// PhraseConfig 单个短语配置
-type PhraseConfig struct {
-	Code       string   `yaml:"code"`       // 触发编码
-	Text       string   `yaml:"text"`       // 单个输出（与 candidates 二选一）
-	Candidates []string `yaml:"candidates"` // 多个候选输出
-	Type       string   `yaml:"type"`       // 类型: 空=普通短语, "command"=命令
-	Handler    string   `yaml:"handler"`    // 命令处理器名称
-	Weight     int      `yaml:"weight"`     // 权重（默认 100）
+// PhraseFileEntry 短语文件中的单条配置
+type PhraseFileEntry struct {
+	Code     string `yaml:"code"`
+	Text     string `yaml:"text"`
+	Position int    `yaml:"position"`
+	Disabled bool   `yaml:"disabled,omitempty"`
 }
 
-// NewPhraseLayer 创建特殊短语层
-func NewPhraseLayer(name string, filePath string) *PhraseLayer {
-	pl := &PhraseLayer{
-		name:     name,
-		filePath: filePath,
-		phrases:  make(map[string][]PhraseEntry),
-		commands: make(map[string]CommandHandler),
-		cmdCache: make(map[string][]candidate.Candidate),
-	}
-
-	// 注册内置命令
-	pl.registerBuiltinCommands()
-
-	return pl
-}
-
-// registerBuiltinCommands 注册内置命令
-func (pl *PhraseLayer) registerBuiltinCommands() {
-	// 日期相关
-	pl.commands["date"] = func() []candidate.Candidate {
-		now := time.Now()
-		return []candidate.Candidate{
-			{Text: now.Format("2006-01-02"), Weight: 100},
-			{Text: now.Format("2006年01月02日"), Weight: 99},
-			{Text: now.Format("01/02/2006"), Weight: 98},
-			{Text: now.Format("2006/01/02"), Weight: 97},
-		}
-	}
-
-	pl.commands["time"] = func() []candidate.Candidate {
-		now := time.Now()
-		return []candidate.Candidate{
-			{Text: now.Format("15:04:05"), Weight: 100},
-			{Text: now.Format("15:04"), Weight: 99},
-			{Text: now.Format("15时04分05秒"), Weight: 98},
-		}
-	}
-
-	pl.commands["datetime"] = func() []candidate.Candidate {
-		now := time.Now()
-		return []candidate.Candidate{
-			{Text: now.Format("2006-01-02 15:04:05"), Weight: 100},
-			{Text: now.Format("2006年01月02日 15:04:05"), Weight: 99},
-		}
-	}
-
-	pl.commands["week"] = func() []candidate.Candidate {
-		weekdays := []string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
-		weekday := weekdays[time.Now().Weekday()]
-		return []candidate.Candidate{
-			{Text: weekday, Weight: 100},
-		}
-	}
-
-	pl.commands["uuid"] = func() []candidate.Candidate {
-		return []candidate.Candidate{
-			{Text: uuid.New().String(), Weight: 100},
-		}
-	}
-
-	pl.commands["timestamp"] = func() []candidate.Candidate {
-		return []candidate.Candidate{
-			{Text: fmt.Sprintf("%d", time.Now().Unix()), Weight: 100},
-			{Text: fmt.Sprintf("%d", time.Now().UnixMilli()), Weight: 99},
-		}
+// NewPhraseLayer 创建短语层
+// systemPath: 系统短语文件路径（只读，可为空）
+// userPath: 用户短语文件路径（可读写）
+func NewPhraseLayer(name string, systemPath, userPath string) *PhraseLayer {
+	return &PhraseLayer{
+		name:           name,
+		systemFilePath: systemPath,
+		userFilePath:   userPath,
+		staticPhrases:  make(map[string][]PhraseEntry),
+		dynamicPhrases: make(map[string][]PhraseEntry),
+		templateEngine: GetTemplateEngine(),
+		cmdCache:       make(map[string][]candidate.Candidate),
 	}
 }
 
@@ -133,68 +81,42 @@ func (pl *PhraseLayer) Type() LayerType {
 	return LayerTypeLogic
 }
 
-// Search 精确查询
-// 注意：此方法仅查询普通短语，不返回命令结果（uuid, date 等）。
-// 命令结果仅通过 SearchCommand() 方法访问，防止任意代码路径意外触发命令。
+// Search 精确查询静态短语（不含变量的短语）
 func (pl *PhraseLayer) Search(code string, limit int) []candidate.Candidate {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
 	code = strings.ToLower(code)
-	var results []candidate.Candidate
-
-	// 仅查询普通短语（不含命令）
-	if entries, ok := pl.phrases[code]; ok {
-		for _, e := range entries {
-			text := pl.expandTemplate(e.Text)
-			results = append(results, candidate.Candidate{
-				Text:   text,
-				Code:   code,
-				Weight: e.Weight,
-			})
-		}
+	entries, ok := pl.staticPhrases[code]
+	if !ok {
+		return nil
 	}
 
-	// 排序
-	sort.Slice(results, func(i, j int) bool {
-		return candidate.Better(results[i], results[j])
-	})
+	results := make([]candidate.Candidate, 0, len(entries))
+	for _, e := range entries {
+		results = append(results, candidate.Candidate{
+			Text:     e.Text,
+			Code:     code,
+			Weight:   positionToWeight(e.Position),
+			IsCommon: true, // 短语由用户/系统配置，不应被 smart 过滤
+		})
+	}
 
-	// 限制数量
+	sortByPosition(results)
+
 	if limit > 0 && len(results) > limit {
 		results = results[:limit]
 	}
-
 	return results
 }
 
-// InvalidateCache 清除命令结果缓存
-// 当用户输入变化或需要刷新命令结果时调用
-func (pl *PhraseLayer) InvalidateCache() {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-	pl.cmdCache = make(map[string][]candidate.Candidate)
-}
-
-// InvalidateCacheForInput 根据输入变化决定是否清除缓存
-// 如果输入与上次缓存的输入不同，则清除缓存
-func (pl *PhraseLayer) InvalidateCacheForInput(input string) {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-	if pl.cmdCacheKey != input {
-		pl.cmdCache = make(map[string][]candidate.Candidate)
-		pl.cmdCacheKey = input
-	}
-}
-
-// SearchCommand 仅查找命令（不含普通短语和词条）
-// 用于引擎步骤 0 的特殊命令匹配，只返回 uuid/date/time 等命令结果
+// SearchCommand 查询动态短语（含变量的短语），展开模板后返回
 func (pl *PhraseLayer) SearchCommand(code string, limit int) []candidate.Candidate {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
 	code = strings.ToLower(code)
-	handler, ok := pl.commands[code]
+	entries, ok := pl.dynamicPhrases[code]
 	if !ok {
 		return nil
 	}
@@ -207,21 +129,28 @@ func (pl *PhraseLayer) SearchCommand(code string, limit int) []candidate.Candida
 		return cached
 	}
 
-	cmdResults := handler()
-	for i := range cmdResults {
-		cmdResults[i].IsCommand = true
+	results := make([]candidate.Candidate, 0, len(entries))
+	for _, e := range entries {
+		expanded := pl.templateEngine.Expand(e.Text)
+		results = append(results, candidate.Candidate{
+			Text:      expanded,
+			Code:      code,
+			Weight:    positionToWeight(e.Position),
+			IsCommand: true,
+			IsCommon:  true, // 动态短语不应被 smart 过滤
+		})
 	}
-	pl.cmdCache[code] = cmdResults
 
-	if limit > 0 && len(cmdResults) > limit {
-		return cmdResults[:limit]
+	sortByPosition(results)
+	pl.cmdCache[code] = results
+
+	if limit > 0 && len(results) > limit {
+		return results[:limit]
 	}
-	return cmdResults
+	return results
 }
 
-// SearchPrefix 前缀查询
-// 注意：命令（uuid、date 等）仅支持精确匹配，不参与前缀搜索
-// 避免输入 "u" 就触发 uuid 命令生成 UUID 字符串
+// SearchPrefix 前缀查询（仅静态短语）
 func (pl *PhraseLayer) SearchPrefix(prefix string, limit int) []candidate.Candidate {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
@@ -229,103 +158,70 @@ func (pl *PhraseLayer) SearchPrefix(prefix string, limit int) []candidate.Candid
 	prefix = strings.ToLower(prefix)
 	var results []candidate.Candidate
 
-	// 遍历短语（不包含命令）
-	for code, entries := range pl.phrases {
+	for code, entries := range pl.staticPhrases {
 		if strings.HasPrefix(code, prefix) {
 			for _, e := range entries {
-				text := pl.expandTemplate(e.Text)
 				results = append(results, candidate.Candidate{
-					Text:   text,
-					Code:   code,
-					Weight: e.Weight,
+					Text:     e.Text,
+					Code:     code,
+					Weight:   positionToWeight(e.Position),
+					IsCommon: true,
 				})
 			}
 		}
 	}
 
-	// 排序
 	sort.Slice(results, func(i, j int) bool {
 		return candidate.Better(results[i], results[j])
 	})
 
-	// 限制数量
 	if limit > 0 && len(results) > limit {
 		results = results[:limit]
 	}
-
 	return results
 }
 
-// expandTemplate 展开模板变量
-func (pl *PhraseLayer) expandTemplate(text string) string {
-	now := time.Now()
-
-	replacements := map[string]string{
-		"{year}":   now.Format("2006"),
-		"{month}":  now.Format("01"),
-		"{day}":    now.Format("02"),
-		"{hour}":   now.Format("15"),
-		"{minute}": now.Format("04"),
-		"{second}": now.Format("05"),
-		"{week}":   []string{"日", "一", "二", "三", "四", "五", "六"}[now.Weekday()],
-	}
-
-	result := text
-	for placeholder, value := range replacements {
-		result = strings.ReplaceAll(result, placeholder, value)
-	}
-
-	return result
+// InvalidateCache 清除动态短语缓存
+func (pl *PhraseLayer) InvalidateCache() {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	pl.cmdCache = make(map[string][]candidate.Candidate)
 }
 
-// Load 从 YAML 文件加载
+// InvalidateCacheForInput 根据输入变化清除缓存
+func (pl *PhraseLayer) InvalidateCacheForInput(input string) {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	if pl.cmdCacheKey != input {
+		pl.cmdCache = make(map[string][]candidate.Candidate)
+		pl.cmdCacheKey = input
+	}
+}
+
+// Load 加载系统短语和用户短语
 func (pl *PhraseLayer) Load() error {
 	pl.mu.Lock()
 	defer pl.mu.Unlock()
 
-	data, err := os.ReadFile(pl.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// 文件不存在是正常的
-			return nil
+	pl.staticPhrases = make(map[string][]PhraseEntry)
+	pl.dynamicPhrases = make(map[string][]PhraseEntry)
+	pl.cmdCache = make(map[string][]candidate.Candidate)
+
+	// 1. 加载系统短语
+	if pl.systemFilePath != "" {
+		if err := pl.loadFile(pl.systemFilePath, true); err != nil {
+			// 系统文件不存在不是错误（开发环境下可能没有）
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to load system phrases: %w", err)
+			}
 		}
-		return fmt.Errorf("failed to read phrases file: %w", err)
 	}
 
-	var config PhrasesConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse phrases file: %w", err)
-	}
-
-	// 清空现有短语（保留内置命令）
-	pl.phrases = make(map[string][]PhraseEntry)
-
-	// 加载配置
-	for _, p := range config.Phrases {
-		code := strings.ToLower(p.Code)
-		weight := p.Weight
-		if weight == 0 {
-			weight = 100 // 默认权重
-		}
-
-		if p.Type == "command" {
-			// 命令类型：注册到 commands
-			if handler, ok := pl.commands[p.Handler]; ok {
-				pl.commands[code] = handler
-			}
-		} else {
-			// 普通短语
-			if p.Text != "" {
-				pl.phrases[code] = append(pl.phrases[code], PhraseEntry{
-					Text:   p.Text,
-					Weight: weight,
-				})
-			}
-			for i, text := range p.Candidates {
-				pl.phrases[code] = append(pl.phrases[code], PhraseEntry{
-					Text:   text,
-					Weight: weight - i, // 候选项按顺序递减权重
-				})
+	// 2. 加载用户短语
+	if pl.userFilePath != "" {
+		if err := pl.loadFile(pl.userFilePath, false); err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to load user phrases: %w", err)
 			}
 		}
 	}
@@ -333,42 +229,146 @@ func (pl *PhraseLayer) Load() error {
 	return nil
 }
 
-// AddPhrase 添加短语（运行时添加，不持久化）
-func (pl *PhraseLayer) AddPhrase(code string, text string, weight int) {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
+// loadFile 从文件加载短语（需持有写锁）
+func (pl *PhraseLayer) loadFile(path string, isSystem bool) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
 
-	code = strings.ToLower(code)
-	pl.phrases[code] = append(pl.phrases[code], PhraseEntry{
-		Text:   text,
-		Weight: weight,
-	})
+	var config PhrasesFileConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse phrases file %s: %w", path, err)
+	}
+
+	for _, p := range config.Phrases {
+		code := strings.ToLower(p.Code)
+		if code == "" || p.Text == "" {
+			continue
+		}
+
+		position := p.Position
+		if position <= 0 {
+			position = 1
+		}
+
+		// 用户文件可以覆盖系统短语（同 code+text 的条目）
+		if !isSystem {
+			phraseID := code + "||" + p.Text
+			// 检查并移除系统短语中的同名条目（用户覆盖）
+			pl.removeEntryByID(phraseID)
+		}
+
+		entry := PhraseEntry{
+			Text:     p.Text,
+			Position: position,
+			IsSystem: isSystem,
+			Disabled: p.Disabled,
+		}
+
+		// 被禁用的条目不加入查询索引（但仍可被前端读取）
+		if p.Disabled {
+			continue
+		}
+
+		// $[...] 数组映射：展开为多个静态候选
+		if HasArrayMapping(p.Text) {
+			items := ExpandArrayMapping(p.Text)
+			for idx, item := range items {
+				arrEntry := PhraseEntry{
+					Text:     item,
+					Position: position + idx,
+					IsSystem: isSystem,
+				}
+				pl.staticPhrases[code] = append(pl.staticPhrases[code], arrEntry)
+			}
+			continue
+		}
+
+		// 含 $变量 的为动态短语，否则为静态短语
+		if HasVariable(p.Text) {
+			pl.dynamicPhrases[code] = append(pl.dynamicPhrases[code], entry)
+		} else {
+			pl.staticPhrases[code] = append(pl.staticPhrases[code], entry)
+		}
+	}
+
+	return nil
 }
 
-// RegisterCommand 注册自定义命令
-func (pl *PhraseLayer) RegisterCommand(code string, handler CommandHandler) {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-
-	pl.commands[strings.ToLower(code)] = handler
+// removeEntryByID 根据 "code||text" 从所有索引中移除条目（用于用户覆盖系统短语）
+func (pl *PhraseLayer) removeEntryByID(id string) {
+	for code, entries := range pl.staticPhrases {
+		for i, e := range entries {
+			if code+"||"+e.Text == id {
+				pl.staticPhrases[code] = append(entries[:i], entries[i+1:]...)
+				if len(pl.staticPhrases[code]) == 0 {
+					delete(pl.staticPhrases, code)
+				}
+				return
+			}
+		}
+	}
+	for code, entries := range pl.dynamicPhrases {
+		for i, e := range entries {
+			if code+"||"+e.Text == id {
+				pl.dynamicPhrases[code] = append(entries[:i], entries[i+1:]...)
+				if len(pl.dynamicPhrases[code]) == 0 {
+					delete(pl.dynamicPhrases, code)
+				}
+				return
+			}
+		}
+	}
 }
 
-// GetPhraseCount 获取短语数量
+// GetPhraseCount 获取静态短语数量
 func (pl *PhraseLayer) GetPhraseCount() int {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
 	count := 0
-	for _, entries := range pl.phrases {
+	for _, entries := range pl.staticPhrases {
 		count += len(entries)
 	}
 	return count
 }
 
-// GetCommandCount 获取命令数量
+// GetCommandCount 获取动态短语数量
 func (pl *PhraseLayer) GetCommandCount() int {
 	pl.mu.RLock()
 	defer pl.mu.RUnlock()
 
-	return len(pl.commands)
+	count := 0
+	for _, entries := range pl.dynamicPhrases {
+		count += len(entries)
+	}
+	return count
+}
+
+// GetUserFilePath 获取用户短语文件路径
+func (pl *PhraseLayer) GetUserFilePath() string {
+	return pl.userFilePath
+}
+
+// GetSystemFilePath 获取系统短语文件路径
+func (pl *PhraseLayer) GetSystemFilePath() string {
+	return pl.systemFilePath
+}
+
+// ===== 辅助函数 =====
+
+// positionToWeight 将位置转换为权重（position 1 → 最高权重）
+func positionToWeight(position int) int {
+	if position <= 0 {
+		position = 1
+	}
+	return 10000 - position
+}
+
+// sortByPosition 按位置排序候选
+func sortByPosition(candidates []candidate.Candidate) {
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].Weight > candidates[j].Weight
+	})
 }

@@ -9,14 +9,14 @@ import (
 func TestDictManager_SwitchSchema(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir)
 	if err := dm.Initialize(); err != nil {
 		t.Fatalf("Initialize 失败: %v", err)
 	}
 	defer dm.Close()
 
 	// 切换到 wubi86
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 
 	if dm.GetActiveSchemaID() != "wubi86" {
 		t.Errorf("期望 activeSchemaID=wubi86, 实际=%s", dm.GetActiveSchemaID())
@@ -34,7 +34,7 @@ func TestDictManager_SwitchSchema(t *testing.T) {
 	}
 
 	// 切换到 pinyin
-	dm.SwitchSchema("pinyin", "shadow_pinyin.yaml", "user_words_pinyin.txt")
+	dm.SwitchSchema("pinyin", "pinyin.shadow.yaml", "pinyin.userwords.txt")
 
 	if dm.GetActiveSchemaID() != "pinyin" {
 		t.Errorf("期望 activeSchemaID=pinyin, 实际=%s", dm.GetActiveSchemaID())
@@ -46,7 +46,7 @@ func TestDictManager_SwitchSchema(t *testing.T) {
 	}
 
 	// 切换回 wubi86，用户词应该还在
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	if dm.GetUserDict().EntryCount() != 1 {
 		t.Errorf("wubi86 用户词库应有 1 条, 实际=%d", dm.GetUserDict().EntryCount())
 	}
@@ -55,12 +55,12 @@ func TestDictManager_SwitchSchema(t *testing.T) {
 func TestDictManager_ShadowIsolation(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir)
 	dm.Initialize()
 	defer dm.Close()
 
 	// 在 wubi86 方案下置顶
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	dm.PinWord("abc", "测试", 0)
 
 	wubiShadow := dm.GetShadowLayer()
@@ -70,7 +70,7 @@ func TestDictManager_ShadowIsolation(t *testing.T) {
 	}
 
 	// 切换到 pinyin，shadow 应该是独立的
-	dm.SwitchSchema("pinyin", "shadow_pinyin.yaml", "user_words_pinyin.txt")
+	dm.SwitchSchema("pinyin", "pinyin.shadow.yaml", "pinyin.userwords.txt")
 	pinyinShadow := dm.GetShadowLayer()
 	pinyinRules := pinyinShadow.GetShadowRules("abc")
 	if pinyinRules != nil && (len(pinyinRules.Pinned) > 0 || len(pinyinRules.Deleted) > 0) {
@@ -78,7 +78,7 @@ func TestDictManager_ShadowIsolation(t *testing.T) {
 	}
 
 	// 切换回 wubi86，shadow 规则应该还在
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	rules2 := dm.GetShadowLayer().GetShadowRules("abc")
 	if rules2 == nil || len(rules2.Pinned) != 1 {
 		t.Errorf("wubi86 shadow 规则应还在")
@@ -88,15 +88,15 @@ func TestDictManager_ShadowIsolation(t *testing.T) {
 func TestDictManager_SameSchemaNoOp(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir)
 	dm.Initialize()
 	defer dm.Close()
 
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	dm.AddUserWord("a", "甲", 100)
 
 	// 再次切换到相同方案应该是 no-op
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 
 	if dm.GetUserDict().EntryCount() != 1 {
 		t.Errorf("同方案切换不应丢失数据, 实际=%d", dm.GetUserDict().EntryCount())
@@ -107,28 +107,28 @@ func TestDictManager_SaveAndReload(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 第一次：创建并保存
-	dm := NewDictManager(tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir)
 	dm.Initialize()
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	dm.AddUserWord("test", "保存测试", 200)
 	dm.PinWord("test", "保存测试", 0)
 	dm.Save()
 	dm.Close()
 
 	// 验证文件已生成
-	userDictPath := filepath.Join(tmpDir, "user_words_wubi86.txt")
+	userDictPath := filepath.Join(tmpDir, "wubi86.userwords.txt")
 	if _, err := os.Stat(userDictPath); os.IsNotExist(err) {
 		t.Error("用户词库文件应已创建")
 	}
-	shadowPath := filepath.Join(tmpDir, "shadow_wubi86.yaml")
+	shadowPath := filepath.Join(tmpDir, "wubi86.shadow.yaml")
 	if _, err := os.Stat(shadowPath); os.IsNotExist(err) {
 		t.Error("Shadow 文件应已创建")
 	}
 
 	// 第二次：重新加载
-	dm2 := NewDictManager(tmpDir)
+	dm2 := NewDictManager(tmpDir, tmpDir)
 	dm2.Initialize()
-	dm2.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm2.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	defer dm2.Close()
 
 	if dm2.GetUserDict().EntryCount() != 1 {
@@ -144,7 +144,7 @@ func TestDictManager_SaveAndReload(t *testing.T) {
 func TestDictManager_SetActiveEngine_Compat(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir)
 	dm.Initialize()
 	defer dm.Close()
 

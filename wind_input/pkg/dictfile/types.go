@@ -10,16 +10,16 @@ type PhraseEntry struct {
 }
 
 // PhraseConfig 单个短语配置
+// Text 支持变量模板语法（$Y, $MM, $DD, ${var} 等），运行时自动展开
+// Text 支持数组映射语法 $[字符列表]，每个字符展开为一个独立候选
 type PhraseConfig struct {
-	Code       string   `yaml:"code" json:"code"`             // 触发编码
-	Text       string   `yaml:"text" json:"text"`             // 单个输出（与 candidates 二选一）
-	Candidates []string `yaml:"candidates" json:"candidates"` // 多个候选输出
-	Type       string   `yaml:"type" json:"type"`             // 类型: 空=普通短语, "command"=命令
-	Handler    string   `yaml:"handler" json:"handler"`       // 命令处理器名称
-	Weight     int      `yaml:"weight" json:"weight"`         // 权重（默认 100）
+	Code     string `yaml:"code" json:"code"`                   // 触发编码
+	Text     string `yaml:"text" json:"text"`                   // 输出文本（可包含 $变量 或 $[映射]）
+	Position int    `yaml:"position" json:"position"`           // 候选位置（1=第一候选, 2=第二候选...）
+	Disabled bool   `yaml:"disabled,omitempty" json:"disabled"` // 是否禁用
 }
 
-// PhrasesConfig phrases.yaml 配置结构
+// PhrasesConfig 短语配置文件结构（system.phrases.yaml / user.phrases.yaml）
 type PhrasesConfig struct {
 	Phrases []PhraseConfig `yaml:"phrases" json:"phrases"`
 }

@@ -26,26 +26,44 @@ func (m *ManualLearning) OnCandidateCommitted(code, text string, cand candidate.
 func (m *ManualLearning) Reset() {}
 
 // AutoLearning 自动学习策略（pinyin 类型默认）
-// 选词即学，记录到用户词库
-// TODO: 后续完善权重策略、遗忘机制、噪音过滤等
+// 选词即学，记录到临时词库（如有），否则记录到用户词库
 type AutoLearning struct {
 	userDict *dict.UserDict
+	tempDict *dict.TempDict
 }
 
 func NewAutoLearning(userDict *dict.UserDict) *AutoLearning {
 	return &AutoLearning{userDict: userDict}
 }
 
+// SetTempDict 设置临时词库（自动学习优先写入临时词库）
+func (a *AutoLearning) SetTempDict(td *dict.TempDict) {
+	a.tempDict = td
+}
+
 func (a *AutoLearning) OnCandidateCommitted(code, text string, cand candidate.Candidate) {
-	if a.userDict == nil || cand.IsCommand {
+	if cand.IsCommand {
 		return
 	}
 	// 仅学习多字词
 	if len([]rune(text)) < 2 {
 		return
 	}
-	// 已存在则增加权重，不存在则新建
-	a.userDict.IncreaseWeight(code, text, 10)
+
+	// 优先写入临时词库
+	if a.tempDict != nil {
+		promoted := a.tempDict.LearnWord(code, text, 10)
+		if promoted {
+			// 达到晋升条件，自动迁移到用户词库
+			a.tempDict.PromoteWord(code, text)
+		}
+		return
+	}
+
+	// 没有临时词库时，直接写入用户词库（兼容旧行为）
+	if a.userDict != nil {
+		a.userDict.IncreaseWeight(code, text, 10)
+	}
 }
 
 func (a *AutoLearning) Reset() {}

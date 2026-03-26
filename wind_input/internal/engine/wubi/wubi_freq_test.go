@@ -29,8 +29,8 @@ func newTestEngineWithFreq(t *testing.T, protectTopN int) (*Engine, *dict.UserDi
 
 	// 创建 DictManager 并通过 SwitchSchema 初始化 UserDict
 	tmpDir := t.TempDir()
-	dm := dict.NewDictManager(tmpDir)
-	dm.SwitchSchema("test", "shadow_test.yaml", "user_words_test.txt")
+	dm := dict.NewDictManager(tmpDir, tmpDir)
+	dm.SwitchSchema("test", "test.shadow.yaml", "test.userwords.txt")
 	engine.SetDictManager(dm)
 
 	userDict := dm.GetUserDict()

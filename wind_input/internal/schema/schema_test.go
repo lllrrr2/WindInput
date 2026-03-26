@@ -27,8 +27,8 @@ dictionaries:
     type: codetable
     default: true
 user_data:
-  shadow_file: "shadow_test.yaml"
-  user_dict_file: "user_words_test.txt"
+  shadow_file: "test.shadow.yaml"
+  user_dict_file: "test.userwords.txt"
 learning:
   mode: manual
 `
@@ -92,8 +92,8 @@ dictionaries:
     type: rime_pinyin
     default: true
 user_data:
-  shadow_file: "shadow_shuangpin.yaml"
-  user_dict_file: "user_words_shuangpin.txt"
+  shadow_file: "shuangpin.shadow.yaml"
+  user_dict_file: "shuangpin.userwords.txt"
 `
 	path := filepath.Join(tmpDir, "sp.schema.yaml")
 	os.WriteFile(path, []byte(schemaContent), 0644)
@@ -291,8 +291,8 @@ dictionaries:
     type: ` + dictType + `
     default: true
 user_data:
-  shadow_file: "shadow_` + id + `.yaml"
-  user_dict_file: "user_words_` + id + `.txt"
+  shadow_file: "` + id + `.shadow.yaml"
+  user_dict_file: "` + id + `.userwords.txt"
 `
 	path := filepath.Join(dir, filename)
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {

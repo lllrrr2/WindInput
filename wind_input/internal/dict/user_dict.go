@@ -83,9 +83,10 @@ func (ud *UserDict) Search(code string, limit int) []candidate.Candidate {
 	results := make([]candidate.Candidate, 0, len(words))
 	for _, w := range words {
 		results = append(results, candidate.Candidate{
-			Text:   w.Text,
-			Code:   code,
-			Weight: w.Weight,
+			Text:     w.Text,
+			Code:     code,
+			Weight:   w.Weight,
+			IsCommon: true, // 用户词不应被 smart 过滤
 		})
 	}
 
@@ -114,9 +115,10 @@ func (ud *UserDict) SearchPrefix(prefix string, limit int) []candidate.Candidate
 		if strings.HasPrefix(code, prefix) {
 			for _, w := range words {
 				results = append(results, candidate.Candidate{
-					Text:   w.Text,
-					Code:   code,
-					Weight: w.Weight,
+					Text:     w.Text,
+					Code:     code,
+					Weight:   w.Weight,
+					IsCommon: true,
 				})
 			}
 		}

@@ -107,6 +107,7 @@ type DictSpec struct {
 type UserDataSpec struct {
 	ShadowFile   string `yaml:"shadow_file"`
 	UserDictFile string `yaml:"user_dict_file"`
+	TempDictFile string `yaml:"temp_dict_file,omitempty"`
 	UserFreqFile string `yaml:"user_freq_file,omitempty"`
 }
 
@@ -121,9 +122,11 @@ const (
 
 // LearningSpec 学习策略配置
 type LearningSpec struct {
-	Mode        LearningMode `yaml:"mode"`
-	UnigramPath string       `yaml:"unigram_path,omitempty"`
-	ProtectTopN int          `yaml:"protect_top_n,omitempty"` // 首选保护：前 N 位锁定码表原始顺序
+	Mode             LearningMode `yaml:"mode"`
+	UnigramPath      string       `yaml:"unigram_path,omitempty"`
+	ProtectTopN      int          `yaml:"protect_top_n,omitempty"`      // 首选保护：前 N 位锁定码表原始顺序
+	TempMaxEntries   int          `yaml:"temp_max_entries,omitempty"`   // 临时词库最大条目数（默认 5000）
+	TempPromoteCount int          `yaml:"temp_promote_count,omitempty"` // 选择几次后晋升到用户词库（默认 5）
 }
 
 // GetDefaultDictSpec 获取默认词库规格（dictionaries 中 default=true 的项）

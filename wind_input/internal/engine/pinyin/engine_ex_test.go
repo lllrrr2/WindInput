@@ -1057,7 +1057,7 @@ sort: by_weight
 	// 创建 CompositeDict，添加 PhraseLayer 和 PinyinDictLayer
 	composite := dict.NewCompositeDict()
 
-	phraseLayer := dict.NewPhraseLayer("phrases", filepath.Join(tmpDir, "phrases.yaml"))
+	phraseLayer := dict.NewPhraseLayer("phrases", "", filepath.Join(tmpDir, "user.phrases.yaml"))
 	composite.AddLayer(phraseLayer)
 
 	systemLayer := dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict)

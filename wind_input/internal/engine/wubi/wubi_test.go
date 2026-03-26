@@ -197,11 +197,11 @@ func TestWubiWithDictManager(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 创建 DictManager
-	dm := dict.NewDictManager(tmpDir)
+	dm := dict.NewDictManager(tmpDir, tmpDir)
 	if err := dm.Initialize(); err != nil {
 		t.Fatalf("初始化 DictManager 失败: %v", err)
 	}
-	dm.SwitchSchema("wubi86", "shadow_wubi86.yaml", "user_words_wubi86.txt")
+	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	defer dm.Close()
 
 	// 添加测试用户词
