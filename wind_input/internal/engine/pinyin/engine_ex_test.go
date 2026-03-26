@@ -1054,10 +1054,30 @@ sort: by_weight
 		t.Fatalf("加载词库失败: %v", err)
 	}
 
+	// 创建系统短语文件（包含 uuid/date 等命令）
+	systemPhrases := `phrases:
+  - code: "date"
+    text: "$Y-$MM-$DD"
+    position: 1
+  - code: "date"
+    text: "$Y年$MM月$DD日"
+    position: 2
+  - code: "uuid"
+    text: "$uuid"
+    position: 1
+`
+	systemPhrasesPath := filepath.Join(tmpDir, "system.phrases.yaml")
+	if err := os.WriteFile(systemPhrasesPath, []byte(systemPhrases), 0644); err != nil {
+		t.Fatalf("写入系统短语文件失败: %v", err)
+	}
+
 	// 创建 CompositeDict，添加 PhraseLayer 和 PinyinDictLayer
 	composite := dict.NewCompositeDict()
 
-	phraseLayer := dict.NewPhraseLayer("phrases", "", filepath.Join(tmpDir, "user.phrases.yaml"))
+	phraseLayer := dict.NewPhraseLayer("phrases", systemPhrasesPath, filepath.Join(tmpDir, "user.phrases.yaml"))
+	if err := phraseLayer.Load(); err != nil {
+		t.Fatalf("加载短语层失败: %v", err)
+	}
 	composite.AddLayer(phraseLayer)
 
 	systemLayer := dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict)
