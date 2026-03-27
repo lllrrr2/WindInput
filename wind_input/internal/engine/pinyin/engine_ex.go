@@ -163,6 +163,8 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 					Code:           completedCode,
 					Weight:         e.rimeScore(sentence, sentenceWeight, 4.0, coverage, charCount),
 					ConsumedLength: allCompletedEnd, // 仅消耗已完成音节，partial 留在 buffer
+					// Viterbi 结果来自系统词库/语言模型造句，不应被 smart/common 过滤误删。
+					IsCommon: true,
 				}
 				candidatesMap[sentence] = &c
 			}
