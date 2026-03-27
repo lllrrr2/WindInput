@@ -263,17 +263,30 @@ func (l *PinyinDictLayer) Search(code string, limit int) []candidate.Candidate {
 	if limit > 0 && len(results) > limit {
 		results = results[:limit]
 	}
+	patchPinyinIsCommon(results)
 	return results
 }
 
 // SearchPrefix 前缀查询
 func (l *PinyinDictLayer) SearchPrefix(prefix string, limit int) []candidate.Candidate {
-	return l.dict.LookupPrefix(prefix, limit)
+	results := l.dict.LookupPrefix(prefix, limit)
+	patchPinyinIsCommon(results)
+	return results
 }
 
 // SearchAbbrev 简拼查询
 func (l *PinyinDictLayer) SearchAbbrev(code string, limit int) []candidate.Candidate {
-	return l.dict.LookupAbbrev(code, limit)
+	results := l.dict.LookupAbbrev(code, limit)
+	patchPinyinIsCommon(results)
+	return results
+}
+
+// patchPinyinIsCommon 为拼音词库候选补充 IsCommon 标记
+// 拼音词库中的词条均来自标准词库文件，应视为通用词，不应被 smart filter 过滤
+func patchPinyinIsCommon(candidates []candidate.Candidate) {
+	for i := range candidates {
+		candidates[i].IsCommon = true
+	}
 }
 
 // LookupAbbrev 简拼查找，返回匹配声母缩写的词条
