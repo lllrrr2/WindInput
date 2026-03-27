@@ -24,6 +24,7 @@ type Config struct {
 	DedupCandidates   bool   // 候选去重（内部开关，未来可能开放给用户）
 	CandidateSortMode string // 候选排序模式：frequency（词频）、natural（自然顺序）
 	EnableUserFreq    bool   // 启用用户词频学习
+	FrequencyOnly     bool   // 仅调频模式：不创建新词，只调整已有词条权重
 	ProtectTopN       int    // 首选保护：前 N 位锁定码表原始顺序
 	SkipShadow        bool   // 跳过 Shadow 规则应用（混输模式下由外层统一应用）
 }
@@ -409,11 +410,23 @@ func (e *Engine) OnCandidateSelected(code, text string) {
 		}
 	}
 
-	// 使用带防护的选词方法
-	// countThreshold=3: 选中3次后才开始提权
-	// addWeight=50: 新词初始权重较低
-	// boostDelta=10: 每次提权幅度
-	userDict.OnWordSelected(code, text, 50, 10, 3)
+	if e.config.FrequencyOnly {
+		// 仅调频模式：只调整已有词条权重，不创建新词
+		userDict.IncreaseWeight(code, text, 10)
+		return
+	}
+
+	// 自动学习模式：优先使用临时词库
+	tempDict := e.dictManager.GetTempDict()
+	if tempDict != nil {
+		promoted := tempDict.LearnWord(code, text, 10)
+		if promoted {
+			tempDict.PromoteWord(code, text)
+		}
+	} else {
+		// 没有临时词库时回退到直接写入用户词库
+		userDict.OnWordSelected(code, text, 50, 10, 3)
+	}
 }
 
 // getOriginalRank 获取词在码表中的原始排名（0-based）

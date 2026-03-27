@@ -28,6 +28,7 @@ type Config struct {
 	CandidateOrder  string       // 候选排序模式：char_first(单字优先)/phrase_first(词组优先)/smart(智能混排)
 	Fuzzy           *FuzzyConfig // 模糊拼音配置（nil 表示不启用）
 	EnableUserFreq  bool         // 启用用户词频学习（默认 false，关闭词频文件生成）
+	FrequencyOnly   bool         // 仅调频模式：不创建新词，只调整已有词条权重
 	SkipShadow      bool         // 跳过 Shadow 规则应用（混输模式下由外层统一应用）
 }
 
@@ -301,12 +302,23 @@ func (e *Engine) OnCandidateSelected(code, text string) {
 		return
 	}
 
-	// 使用带防护的选词方法
-	// countThreshold=2: 拼音用户更依赖调频，阈值比五笔低
-	// addWeight=100, boostDelta=10
-	userDict.OnWordSelected(code, text, 100, 10, 2)
+	if e.config.FrequencyOnly {
+		// 仅调频模式：只调整已有词条权重，不创建新词
+		userDict.IncreaseWeight(code, text, 10)
+	} else {
+		// 自动学习模式：优先使用临时词库
+		tempDict := e.dictManager.GetTempDict()
+		if tempDict != nil {
+			promoted := tempDict.LearnWord(code, text, 10)
+			if promoted {
+				tempDict.PromoteWord(code, text)
+			}
+		} else {
+			userDict.OnWordSelected(code, text, 100, 10, 2)
+		}
+	}
 
-	// 更新 Unigram 用户频率
+	// 更新 Unigram 用户频率（两种模式都需要）
 	if e.unigram != nil {
 		e.unigram.BoostUserFreq(text, 1)
 	}

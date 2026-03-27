@@ -67,6 +67,7 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 	// 五笔学习配置
 	if s.Learning.Mode == LearningAuto || s.Learning.Mode == LearningFrequency {
 		config.EnableUserFreq = true
+		config.FrequencyOnly = (s.Learning.Mode == LearningFrequency)
 		config.ProtectTopN = s.Learning.ProtectTopN
 	}
 
@@ -210,6 +211,7 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 			loadPinyinUserFreqs(engine, userFreqPath)
 		}
 		config.EnableUserFreq = true // 同步到引擎 config，控制 OnCandidateSelected
+		config.FrequencyOnly = (s.Learning.Mode == LearningFrequency)
 	}
 
 	return &EngineBundle{
@@ -535,6 +537,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	// 五笔学习配置
 	if s.Learning.Mode == LearningAuto || s.Learning.Mode == LearningFrequency {
 		wubiConfig.EnableUserFreq = true
+		wubiConfig.FrequencyOnly = (s.Learning.Mode == LearningFrequency)
 		wubiConfig.ProtectTopN = s.Learning.ProtectTopN
 	}
 
@@ -668,6 +671,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 			loadPinyinUserFreqs(pinyinEngine, userFreqPath)
 		}
 		pinyinConfig.EnableUserFreq = true
+		pinyinConfig.FrequencyOnly = (s.Learning.Mode == LearningFrequency)
 	}
 
 	// === 4. 创建混输引擎 ===
