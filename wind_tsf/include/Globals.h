@@ -5,6 +5,7 @@
 #include <ctfutb.h>
 #include <cstdio>
 #include <cstdarg>
+#include <string>
 
 // ============================================================================
 // Logging Configuration
@@ -90,6 +91,21 @@ namespace WindLog {
 extern HINSTANCE g_hInstance;
 extern LONG g_lServerLock;
 
+struct WindHostProcessInfo
+{
+    DWORD processId = 0;
+    DWORD threadId = 0;
+    HWND hwnd = nullptr;
+    BOOL isAppContainer = FALSE;
+    DWORD integrityRid = 0;
+    DWORD queryError = ERROR_SUCCESS;
+    std::wstring processPath;
+    std::wstring processName;
+    std::wstring windowClass;
+    std::wstring windowTitle;
+    std::wstring packageFamilyName;
+};
+
 // GUID 定义
 // {7E5A5C60-1234-4567-89AB-CDEF01234567}
 // 注意：实际使用时应该生成唯一的 GUID
@@ -121,6 +137,11 @@ constexpr int KEY_MOD_ALT   = 0x04;
 // 工具函数
 LONG DllAddRef();
 LONG DllRelease();
+
+BOOL WindQueryCurrentProcessInfo(WindHostProcessInfo* info);
+BOOL WindQueryWindowProcessInfo(HWND hwnd, WindHostProcessInfo* info);
+void WindLogHostProcessInfo(int level, const wchar_t* prefix, const WindHostProcessInfo& info);
+void WindLogForegroundProcessInfo(int level, const wchar_t* prefix);
 
 // COM 工具函数
 template<class T>

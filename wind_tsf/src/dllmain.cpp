@@ -11,9 +11,22 @@ BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID pvReserved)
             g_hInstance = hInstance;
             DisableThreadLibraryCalls(hInstance);
             CFileLogger::Instance().Init();
+            {
+                WCHAR hostExe[MAX_PATH] = {};
+                DWORD len = GetModuleFileNameW(nullptr, hostExe, ARRAYSIZE(hostExe));
+                WIND_LOG_INFO_FMT(
+                    L"DllMain PROCESS_ATTACH pid=%lu tid=%lu hInstance=0x%p",
+                    GetCurrentProcessId(),
+                    GetCurrentThreadId(),
+                    hInstance
+                );
+                if (len > 0)
+                    WIND_LOG_DEBUG_FMT(L"DllMain PROCESS_ATTACH hostExe=%ls", hostExe);
+            }
             break;
 
         case DLL_PROCESS_DETACH:
+            WIND_LOG_INFO_FMT(L"DllMain PROCESS_DETACH pid=%lu tid=%lu", GetCurrentProcessId(), GetCurrentThreadId());
             CFileLogger::Instance().Shutdown();
             break;
     }

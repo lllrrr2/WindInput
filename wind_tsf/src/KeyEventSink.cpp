@@ -6,6 +6,53 @@
 #include <cctype>
 #include <cstdio>  // for swprintf
 
+namespace
+{
+    const wchar_t* _HotkeyTypeName(HotkeyType type)
+    {
+        switch (type)
+        {
+        case HotkeyType::None: return L"none";
+        case HotkeyType::ToggleMode: return L"toggle_mode";
+        case HotkeyType::Hotkey: return L"hotkey";
+        case HotkeyType::Letter: return L"letter";
+        case HotkeyType::Number: return L"number";
+        case HotkeyType::Punctuation: return L"punctuation";
+        case HotkeyType::Backspace: return L"backspace";
+        case HotkeyType::Enter: return L"enter";
+        case HotkeyType::Escape: return L"escape";
+        case HotkeyType::Space: return L"space";
+        case HotkeyType::Tab: return L"tab";
+        case HotkeyType::PageKey: return L"page_key";
+        case HotkeyType::CursorKey: return L"cursor_key";
+        case HotkeyType::SelectKey: return L"select_key";
+        }
+
+        return L"unknown";
+    }
+
+    void _LogKeyDecision(const wchar_t* phase, ULONGLONG focusSessionId, WPARAM keyCode, uint32_t modifiers,
+                         HotkeyType keyType, BOOL chineseMode, BOOL hasComposition, BOOL hasCandidates,
+                         BOOL hasInputSession, BOOL eaten, const wchar_t* decision)
+    {
+        WindLog::OutputFmt(
+            5,
+            L"compat.key phase=%ls focusSession=%llu vk=0x%02X mods=0x%04X keyType=%ls chinese=%d composing=%d candidates=%d inputSession=%d eaten=%d decision=%ls",
+            phase,
+            focusSessionId,
+            (uint32_t)keyCode,
+            modifiers,
+            _HotkeyTypeName(keyType),
+            chineseMode ? 1 : 0,
+            hasComposition ? 1 : 0,
+            hasCandidates ? 1 : 0,
+            hasInputSession ? 1 : 0,
+            eaten ? 1 : 0,
+            decision ? decision : L"-"
+        );
+    }
+}
+
 CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     : _refCount(1)
     , _pTextService(pTextService)
@@ -88,6 +135,9 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // First check if the context is read-only (browser non-editable area)
     if (_IsContextReadOnly(pContext))
     {
+        _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, 0, HotkeyType::None,
+                        _pTextService->IsChineseMode(), _pTextService->HasActiveComposition(), _hasCandidates,
+                        _pTextService->HasActiveComposition() || _hasCandidates, FALSE, L"context_readonly");
         return S_OK;
     }
 
@@ -134,6 +184,9 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
             WIND_LOG_DEBUG_FMT(L"KeyDown hotkey matched: vk=0x%02X, hash=0x%08X\n",
                          (uint32_t)wParam, normalizedKeyHash);
             *pfEaten = TRUE;
+            _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, modifiers, HotkeyType::Hotkey,
+                            _pTextService->IsChineseMode(), _pTextService->HasActiveComposition(), _hasCandidates,
+                            _pTextService->HasActiveComposition() || _hasCandidates, TRUE, L"keydown_hotkey");
             return S_OK;
         }
     }
@@ -156,6 +209,9 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     if (isToggleModeKey)
     {
         *pfEaten = TRUE;
+        _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, modifiers, HotkeyType::ToggleMode,
+                        _pTextService->IsChineseMode(), _pTextService->HasActiveComposition(), _hasCandidates,
+                        _pTextService->HasActiveComposition() || _hasCandidates, TRUE, L"toggle_mode_key");
         return S_OK;
     }
 
@@ -181,6 +237,8 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
             WIND_LOG_DEBUG_FMT(L"OnTestKeyDown: Ctrl/Alt during session, eating for cleanup: vk=0x%02X\n",
                          (uint32_t)wParam);
             *pfEaten = TRUE;
+            _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, modifiers, HotkeyType::Hotkey,
+                            isChineseMode, hasComposition, _hasCandidates, hasInputSession, TRUE, L"ctrl_alt_cleanup");
             return S_OK;
         }
 
@@ -195,6 +253,8 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
             if (hasInputSession)
             {
                 *pfEaten = TRUE;
+                _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, modifiers, keyType,
+                                isChineseMode, hasComposition, _hasCandidates, hasInputSession, TRUE, L"session_key");
                 return S_OK;
             }
         }
@@ -207,6 +267,8 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
             if (hasInputSession)
             {
                 *pfEaten = TRUE;
+                _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, modifiers, keyType,
+                                isChineseMode, hasComposition, _hasCandidates, hasInputSession, TRUE, L"session_select_or_page");
                 return S_OK;
             }
         }
@@ -214,6 +276,8 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
         {
             // Letters: always eat in Chinese mode (they start composition)
             *pfEaten = TRUE;
+            _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, modifiers, keyType,
+                            isChineseMode, hasComposition, _hasCandidates, hasInputSession, TRUE, L"chinese_letter");
             return S_OK;
         }
         else if (keyType == HotkeyType::Punctuation)
@@ -222,6 +286,8 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
             // Go always handles punctuation (returns InsertText), so the
             // OnTestKeyDown(TRUE) + OnKeyDown(TRUE) path is safe.
             *pfEaten = TRUE;
+            _LogKeyDecision(L"test_down", _pTextService->GetFocusSessionId(), wParam, modifiers, keyType,
+                            isChineseMode, hasComposition, _hasCandidates, hasInputSession, TRUE, L"chinese_punctuation");
             return S_OK;
         }
     }
@@ -345,6 +411,9 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     // Check if context is read-only
     if (_IsContextReadOnly(pContext))
     {
+        _LogKeyDecision(L"down", _pTextService->GetFocusSessionId(), wParam, modifiers, HotkeyType::None,
+                        _pTextService->IsChineseMode(), _pTextService->HasActiveComposition(), _hasCandidates,
+                        _pTextService->HasActiveComposition() || _hasCandidates, FALSE, L"context_readonly");
         return S_OK;
     }
 
@@ -414,6 +483,13 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         {
             // Letter key in Chinese mode slipped through due to state change - consume it
             *pfEaten = TRUE;
+            _LogKeyDecision(L"down", _pTextService->GetFocusSessionId(), wParam, modifiers, HotkeyType::Letter,
+                            isChineseMode, hasComposition, _hasCandidates, hasInputSession, TRUE, L"state_change_letter_consume");
+        }
+        else
+        {
+            _LogKeyDecision(L"down", _pTextService->GetFocusSessionId(), wParam, modifiers, HotkeyType::None,
+                            isChineseMode, hasComposition, _hasCandidates, hasInputSession, FALSE, L"passthrough_not_handled");
         }
         return S_OK;
     }
@@ -426,6 +502,12 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
     if (!_SendKeyToService((uint32_t)wParam, modifiers, KEY_EVENT_DOWN))
     {
         WIND_LOG_ERROR(L"Failed to send key to service");
+        WIND_LOG_DEBUG_FMT(
+            L"compat.ipc_send_failed focusSession=%llu vk=0x%02X mods=0x%04X chinese=%d composing=%d candidates=%d",
+            _pTextService->GetFocusSessionId(), (uint32_t)wParam, modifiers,
+            isChineseMode ? 1 : 0, hasComposition ? 1 : 0, _hasCandidates ? 1 : 0
+        );
+        WindLogForegroundProcessInfo(4, L"compat.ipc_send_failed.foreground_host");
 
         // Service not available - pass through letters directly
         if (wParam >= 'A' && wParam <= 'Z' && !(modifiers & (KEYMOD_CTRL | KEYMOD_ALT)))
@@ -434,6 +516,8 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
             ch = (wchar_t)towlower((wint_t)wParam);
             _pTextService->InsertText(ch);
             *pfEaten = TRUE;
+            _LogKeyDecision(L"down", _pTextService->GetFocusSessionId(), wParam, modifiers, HotkeyType::Letter,
+                            isChineseMode, hasComposition, _hasCandidates, hasInputSession, TRUE, L"ipc_failed_fallback_insert");
         }
         return S_OK;
     }
@@ -450,6 +534,11 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         WIND_LOG_DEBUG(L"OnKeyDown: Ctrl/Alt cleanup done, overriding to pass-through\n");
         *pfEaten = FALSE;
     }
+
+    _LogKeyDecision(L"down", _pTextService->GetFocusSessionId(), wParam, modifiers,
+                    isKeyDownHotkey ? HotkeyType::Hotkey : CHotkeyManager::ClassifyInputKey(wParam, modifiers),
+                    isChineseMode, hasComposition, _hasCandidates, hasInputSession, *pfEaten,
+                    isCtrlAltCleanup && !*pfEaten ? L"ctrl_alt_cleanup_passthrough" : L"service_response");
 
     return S_OK;
 }
@@ -958,6 +1047,7 @@ BOOL CKeyEventSink::_IsContextReadOnly(ITfContext* pContext)
 {
     if (!pContext)
     {
+        WIND_LOG_DEBUG_FMT(L"compat.context_status focusSession=%llu context=null", _pTextService->GetFocusSessionId());
         return TRUE;
     }
 
@@ -968,13 +1058,33 @@ BOOL CKeyEventSink::_IsContextReadOnly(ITfContext* pContext)
     {
         if (tfStatus.dwDynamicFlags & TF_SD_READONLY)
         {
+            WIND_LOG_DEBUG_FMT(
+                L"compat.context_status focusSession=%llu flags=0x%08X readonly=1 loading=0",
+                _pTextService->GetFocusSessionId(), tfStatus.dwDynamicFlags
+            );
             return TRUE;
         }
 
         if (tfStatus.dwDynamicFlags & TF_SD_LOADING)
         {
+            WIND_LOG_DEBUG_FMT(
+                L"compat.context_status focusSession=%llu flags=0x%08X readonly=0 loading=1",
+                _pTextService->GetFocusSessionId(), tfStatus.dwDynamicFlags
+            );
             return TRUE;
         }
+
+        WIND_LOG_TRACE_FMT(
+            L"compat.context_status focusSession=%llu flags=0x%08X readonly=0 loading=0",
+            _pTextService->GetFocusSessionId(), tfStatus.dwDynamicFlags
+        );
+    }
+    else
+    {
+        WIND_LOG_WARN_FMT(
+            L"compat.context_status focusSession=%llu get_status_failed hr=0x%08X",
+            _pTextService->GetFocusSessionId(), hr
+        );
     }
 
     return FALSE;

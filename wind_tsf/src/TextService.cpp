@@ -496,6 +496,7 @@ CTextService::CTextService()
     , _pLangBarItemButton(nullptr)
     , _pHotkeyManager(nullptr)
     , _bChineseMode(TRUE)
+    , _focusSessionId(0)
     , _pComposition(nullptr)
     , _hasCachedCaretPos(FALSE)
     , _hasCachedCompStartPos(FALSE)
@@ -563,7 +564,13 @@ STDAPI_(ULONG) CTextService::Release()
 
 STDAPI CTextService::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId)
 {
-    WIND_LOG_INFO(L"TextService::Activate called\n");
+    WIND_LOG_INFO_FMT(L"TextService::Activate called tfClientId=0x%08X", tfClientId);
+
+    WindHostProcessInfo currentHost;
+    if (WindQueryCurrentProcessInfo(&currentHost))
+        WindLogHostProcessInfo(4, L"compat.activate.current_host", currentHost);
+    else
+        WIND_LOG_WARN(L"compat.activate.current_host query failed");
 
     _pThreadMgr = pThreadMgr;
     _pThreadMgr->AddRef();
@@ -730,12 +737,19 @@ STDAPI CTextService::OnUninitDocumentMgr(ITfDocumentMgr* pDocMgr)
 
 STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pDocMgrPrevFocus)
 {
-    WIND_LOG_DEBUG(L"OnSetFocus called\n");
+    WIND_LOG_DEBUG_FMT(L"OnSetFocus called focus=0x%p prev=0x%p", pDocMgrFocus, pDocMgrPrevFocus);
 
     // If gaining focus (pDocMgrFocus is not null)
     if (pDocMgrFocus != nullptr)
     {
-        WIND_LOG_INFO(L"Focus gained\n");
+        _focusSessionId++;
+        WIND_LOG_DEBUG_FMT(L"Focus gained focusSession=%llu", _focusSessionId);
+
+        WindHostProcessInfo currentHost;
+        if (WindQueryCurrentProcessInfo(&currentHost))
+            WindLogHostProcessInfo(4, L"compat.focus.current_host", currentHost);
+
+        WindLogForegroundProcessInfo(4, L"compat.focus.foreground_host");
 
         // Force refresh the language bar button to ensure it's visible
         if (_pLangBarItemButton != nullptr)
@@ -753,6 +767,10 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
         // Get caret position for toolbar placement
         LONG caretX = 0, caretY = 0, caretHeight = 0;
         GetCaretPosition(&caretX, &caretY, &caretHeight);
+        WIND_LOG_DEBUG_FMT(
+            L"compat.focus.caret focusSession=%llu x=%ld y=%ld height=%ld",
+            _focusSessionId, caretX, caretY, caretHeight
+        );
 
         // Send focus_gained to service and receive response synchronously.
         // This ensures state is properly synced before user starts typing.
@@ -765,10 +783,18 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
                 ServiceResponse response;
                 if (_pIPCClient->ReceiveResponse(response))
                 {
-                    WIND_LOG_DEBUG(L"FocusGained response received\n");
+                    WIND_LOG_DEBUG_FMT(L"FocusGained response received focusSession=%llu", _focusSessionId);
                     _SyncStateFromResponse(response);
                     _pIPCClient->ClearNeedsSyncFlag();
                 }
+                else
+                {
+                    WIND_LOG_WARN_FMT(L"FocusGained response missing focusSession=%llu", _focusSessionId);
+                }
+            }
+            else
+            {
+                WIND_LOG_WARN_FMT(L"FocusGained IPC send failed focusSession=%llu", _focusSessionId);
             }
         }
     }
@@ -776,7 +802,7 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
     // If losing focus (pDocMgrFocus is null)
     if (pDocMgrFocus == nullptr)
     {
-        WIND_LOG_INFO(L"Focus lost, notifying service\n");
+        WIND_LOG_DEBUG_FMT(L"Focus lost focusSession=%llu, notifying service", _focusSessionId);
 
         // End any active composition before sending focus_lost
         EndComposition();
@@ -1121,6 +1147,11 @@ BOOL CTextService::InsertText(const std::wstring& text)
                 }
 
                 WIND_LOG_DEBUG_FMT(L"InsertText: TSF method failed (hr=0x%08X, hrSession=0x%08X), falling back to SendInput\n", hr, hrSession);
+                WIND_LOG_DEBUG_FMT(
+                    L"compat.insert_text_fallback focusSession=%llu textLen=%zu hr=0x%08X hrSession=0x%08X",
+                    _focusSessionId, text.length(), hr, hrSession
+                );
+                WindLogForegroundProcessInfo(4, L"compat.insert_text_fallback.foreground_host");
             }
         }
     }
@@ -1156,6 +1187,13 @@ BOOL CTextService::InsertText(const std::wstring& text)
     if (sent != inputs.size())
     {
         WIND_LOG_WARN_FMT(L"InsertText: SendInput sent %u of %u inputs\n", sent, (UINT)inputs.size());
+    }
+    else
+    {
+        WIND_LOG_DEBUG_FMT(
+            L"compat.sendinput_commit focusSession=%llu textLen=%zu inputs=%u",
+            _focusSessionId, text.length(), (UINT)inputs.size()
+        );
     }
 
     return TRUE;

@@ -441,6 +441,13 @@ BOOL CIPCClient::Connect()
 
         DWORD error = GetLastError();
         _LogDebug(L"Connection attempt %d failed: error=%d", attempt + 1, error);
+        if (error == ERROR_ACCESS_DENIED)
+        {
+            WindHostProcessInfo currentHost;
+            if (WindQueryCurrentProcessInfo(&currentHost))
+                WindLogHostProcessInfo(4, L"compat.ipc_connect_access_denied.current_host", currentHost);
+            WindLogForegroundProcessInfo(4, L"compat.ipc_connect_access_denied.foreground_host");
+        }
 
         if (error == ERROR_PIPE_BUSY)
         {
@@ -452,6 +459,12 @@ BOOL CIPCClient::Connect()
     }
 
     _LogError(L"Failed to connect to Go Service");
+    {
+        WindHostProcessInfo currentHost;
+        if (WindQueryCurrentProcessInfo(&currentHost))
+            WindLogHostProcessInfo(4, L"compat.ipc_connect_failed.current_host", currentHost);
+        WindLogForegroundProcessInfo(4, L"compat.ipc_connect_failed.foreground_host");
+    }
     _RecordFailure();
     return FALSE;
 }
@@ -1356,6 +1369,13 @@ BOOL CIPCClient::StartAsyncReader()
 
         DWORD error = GetLastError();
         _LogDebug(L"Push pipe connection attempt %d failed: error=%d", attempt + 1, error);
+        if (error == ERROR_ACCESS_DENIED)
+        {
+            WindHostProcessInfo currentHost;
+            if (WindQueryCurrentProcessInfo(&currentHost))
+                WindLogHostProcessInfo(4, L"compat.push_connect_access_denied.current_host", currentHost);
+            WindLogForegroundProcessInfo(4, L"compat.push_connect_access_denied.foreground_host");
+        }
 
         if (error == ERROR_PIPE_BUSY)
         {

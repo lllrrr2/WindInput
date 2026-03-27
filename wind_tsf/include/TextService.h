@@ -84,6 +84,7 @@ public:
     void ToggleInputMode();
     void SetInputMode(BOOL bChineseMode);  // Set mode from service response (no IPC)
     BOOL IsChineseMode() { return _bChineseMode; }
+    ULONGLONG GetFocusSessionId() const { return _focusSessionId; }
 
     // Check if there's an active composition
     BOOL HasActiveComposition() { return _pComposition != nullptr; }
@@ -119,6 +120,7 @@ private:
 
     // Input mode state
     BOOL _bChineseMode;
+    ULONGLONG _focusSessionId;
 
     // Composition
     ITfComposition* _pComposition;
