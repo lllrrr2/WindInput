@@ -72,8 +72,9 @@ const (
 	WS_POPUP   = 0x80000000
 	WS_VISIBLE = 0x10000000
 
-	SW_HIDE = 0
-	SW_SHOW = 5
+	SW_HIDE   = 0
+	SW_SHOW   = 5
+	SW_SHOWNA = 8
 
 	SWP_NOMOVE     = 0x0002
 	SWP_NOSIZE     = 0x0001

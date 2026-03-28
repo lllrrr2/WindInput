@@ -308,9 +308,9 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
 {
     *pfEaten = FALSE;
 
-    // Ctrl+Alt+Shift+F11: Dump TSF ring buffer logs to clipboard (debug aid for AppContainer)
-    if (wParam == VK_F11 && (GetKeyState(VK_CONTROL) & 0x8000)
-        && (GetKeyState(VK_SHIFT) & 0x8000) && (GetKeyState(VK_MENU) & 0x8000))
+    // Ctrl+Shift+F12: Dump TSF ring buffer logs to clipboard (debug aid for AppContainer)
+    if (wParam == VK_F12 && (GetKeyState(VK_CONTROL) & 0x8000)
+        && (GetKeyState(VK_SHIFT) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000))
     {
         *pfEaten = TRUE;
         std::wstring logs = CFileLogger::Instance().DumpRingBuffer();

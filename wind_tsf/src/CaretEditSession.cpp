@@ -174,26 +174,22 @@ BOOL CCaretEditSession::GetCompositionStartResult(RECT* prc)
 }
 
 // Static method to execute the edit session and get caret rect
-BOOL CCaretEditSession::GetCaretRect(ITfContext* pContext, RECT* prc)
+BOOL CCaretEditSession::GetCaretRect(ITfContext* pContext, TfClientId tfClientId, RECT* prc)
 {
     if (pContext == nullptr || prc == nullptr)
     {
         return FALSE;
     }
 
-    // Create edit session
     CCaretEditSession* pEditSession = new CCaretEditSession(pContext);
     if (pEditSession == nullptr)
     {
         return FALSE;
     }
 
-    // Request edit session with read-only access
-    // TF_ES_SYNC: Execute synchronously
-    // TF_ES_READ: Read-only access (we don't need to modify anything)
     HRESULT hrSession = S_OK;
     HRESULT hr = pContext->RequestEditSession(
-        TF_INVALID_COOKIE,  // We don't have a client ID here, use invalid
+        tfClientId,
         pEditSession,
         TF_ES_SYNC | TF_ES_READ,
         &hrSession
@@ -216,7 +212,8 @@ BOOL CCaretEditSession::GetCaretRect(ITfContext* pContext, RECT* prc)
 }
 
 // Static method to get both caret rect and composition start rect
-BOOL CCaretEditSession::GetCaretAndCompositionStartRect(ITfContext* pContext, ITfComposition* pComposition,
+BOOL CCaretEditSession::GetCaretAndCompositionStartRect(ITfContext* pContext, TfClientId tfClientId,
+                                                         ITfComposition* pComposition,
                                                          RECT* pCaretRect, RECT* pCompStartRect, BOOL* pHasCompStart)
 {
     if (pContext == nullptr || pCaretRect == nullptr)
@@ -230,12 +227,11 @@ BOOL CCaretEditSession::GetCaretAndCompositionStartRect(ITfContext* pContext, IT
         return FALSE;
     }
 
-    // Set composition so DoEditSession will also query its start position
     pEditSession->SetComposition(pComposition);
 
     HRESULT hrSession = S_OK;
     HRESULT hr = pContext->RequestEditSession(
-        TF_INVALID_COOKIE,
+        tfClientId,
         pEditSession,
         TF_ES_SYNC | TF_ES_READ,
         &hrSession

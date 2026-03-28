@@ -22,10 +22,11 @@ public:
 
     // Execute the session and get caret position
     // Returns TRUE if successful, FALSE otherwise
-    static BOOL GetCaretRect(ITfContext* pContext, RECT* prc);
+    static BOOL GetCaretRect(ITfContext* pContext, TfClientId tfClientId, RECT* prc);
 
     // Execute the session and get both caret position and composition start position
-    static BOOL GetCaretAndCompositionStartRect(ITfContext* pContext, ITfComposition* pComposition,
+    static BOOL GetCaretAndCompositionStartRect(ITfContext* pContext, TfClientId tfClientId,
+                                                 ITfComposition* pComposition,
                                                  RECT* pCaretRect, RECT* pCompStartRect, BOOL* pHasCompStart);
 
     // Get the result after DoEditSession is called

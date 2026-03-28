@@ -1245,7 +1245,7 @@ BOOL CTextService::GetCaretPositionFromTSF(LONG* px, LONG* py, LONG* pHeight)
 
     // Use EditSession to get caret position
     RECT rc = {};
-    BOOL result = CCaretEditSession::GetCaretRect(pContext, &rc);
+    BOOL result = CCaretEditSession::GetCaretRect(pContext, _tfClientId, &rc);
     pContext->Release();
 
     if (result)
@@ -1584,7 +1584,7 @@ BOOL CTextService::GetCompositionStartPosition(LONG* px, LONG* py)
     RECT caretRect = {}, compStartRect = {};
     BOOL hasCompStart = FALSE;
     BOOL result = CCaretEditSession::GetCaretAndCompositionStartRect(
-        pContext, _pComposition, &caretRect, &compStartRect, &hasCompStart);
+        pContext, _tfClientId, _pComposition, &caretRect, &compStartRect, &hasCompStart);
     pContext->Release();
 
     if (result && hasCompStart)
