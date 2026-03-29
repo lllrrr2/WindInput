@@ -48,7 +48,7 @@ Schema 驱动流程:
 | `wind_input/` | Go 输入引擎服务 (see `wind_input/AGENTS.md`) |
 | `wind_setting/` | Wails 设置界面应用 (see `wind_setting/AGENTS.md`) |
 | `data/` | Schema 方案定义、词库源数据、示例文件 (see `data/dict/AGENTS.md`) |
-| `docs/` | 项目文档 (see `docs/AGENTS.md`) |
+| `docs/` | 项目文档：design/ 设计方案、requirements/ 需求规划、testing/ 测试指南、archive/ 历史文档 (see `docs/AGENTS.md`) |
 | `dict/` | 运行时词库数据（unigram 等） |
 | `installer/` | 安装/卸载脚本 (see `installer/AGENTS.md`) |
 | `pic/` | 项目截图和图片资源 |

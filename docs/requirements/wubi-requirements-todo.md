@@ -1,6 +1,6 @@
 # 五笔输入法需求匹配 TODO
 
-> 基于 `docs/wubi_requirements.md` 与当前项目实现的对比分析，整理时间：2026-03-15
+> 基于 `docs/requirements/wubi-requirements.md` 与当前项目实现的对比分析，整理时间：2026-03-15
 
 ## 整体完成度：约 55-60%
 
