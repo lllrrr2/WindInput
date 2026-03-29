@@ -23,6 +23,7 @@ foreach ($f in $requiredFiles) {
 
 # [2/12] 停止旧进程
 Write-Host "[2/12] 停止旧进程..."
+Get-Process -Name "wind_setting" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-Process -Name "wind_input" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 

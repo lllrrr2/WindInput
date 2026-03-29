@@ -214,6 +214,8 @@ Section "Install"
 
   ; --- Step 1: Stop processes ---
   DetailPrint "正在停止旧进程..."
+  nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_setting.exe >nul 2>&1'
+  Pop $0 ; discard nsExec exit code
   nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_input.exe >nul 2>&1'
   Pop $0 ; discard nsExec exit code
   Sleep 1000
@@ -434,6 +436,8 @@ Section "Uninstall"
 
   ; --- Step 1: Stop processes ---
   DetailPrint "正在停止进程..."
+  nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_setting.exe >nul 2>&1'
+  Pop $0 ; discard nsExec exit code
   nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_input.exe >nul 2>&1'
   Pop $0 ; discard nsExec exit code
   Sleep 1000

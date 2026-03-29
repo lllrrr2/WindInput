@@ -10,6 +10,7 @@ $InstallDir = if ($env:ProgramW6432) { Join-Path $env:ProgramW6432 "WindInput" }
 
 # [1/8] 停止服务
 Write-Host "[1/8] 停止服务..."
+Get-Process -Name "wind_setting" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-Process -Name "wind_input" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
@@ -48,7 +49,7 @@ Get-ChildItem -Path $InstallDir -Filter "wind_tsf*.dll" -ErrorAction SilentlyCon
 Write-Host "[4/8] 删除文件..."
 $RandomSuffix = Get-Random -Maximum 99999999
 
-$filesToDelete = @("wind_tsf.dll", "wind_dwrite.dll", "wind_input.exe")
+$filesToDelete = @("wind_tsf.dll", "wind_dwrite.dll", "wind_input.exe", "wind_setting.exe")
 foreach ($f in $filesToDelete) {
     $filePath = Join-Path $InstallDir $f
     if (-not (Test-Path $filePath)) { continue }
