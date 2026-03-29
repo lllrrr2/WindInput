@@ -12,7 +12,7 @@ $BuildDir = Join-Path (Split-Path -Parent $ScriptDir) "build"
 
 # [1/12] 检查文件
 Write-Host "[1/12] 检查文件..."
-$requiredFiles = @("wind_tsf.dll", "wind_dwrite.dll", "wind_input.exe")
+$requiredFiles = @("wind_tsf.dll", "wind_input.exe")
 foreach ($f in $requiredFiles) {
     if (-not (Test-Path (Join-Path $BuildDir $f))) {
         Write-Host "[错误] 未找到 $f" -ForegroundColor Red
@@ -63,7 +63,7 @@ function Remove-OldFile {
 }
 
 Remove-OldFile -FilePath (Join-Path $InstallDir "wind_tsf.dll") -FileName "wind_tsf.dll" -UnregisterCOM
-Remove-OldFile -FilePath (Join-Path $InstallDir "wind_dwrite.dll") -FileName "wind_dwrite.dll"
+Remove-OldFile -FilePath (Join-Path $InstallDir "wind_dwrite.dll") -FileName "wind_dwrite.dll"  # 清理旧版本遗留
 Remove-OldFile -FilePath (Join-Path $InstallDir "wind_input.exe") -FileName "wind_input.exe"
 Remove-OldFile -FilePath (Join-Path $InstallDir "wind_setting.exe") -FileName "wind_setting.exe"
 
@@ -84,15 +84,13 @@ if (Test-Path $settingExe) {
 # 为现代宿主（开始菜单 / 搜索等 AppContainer 进程）授予 TSF DLL 读取执行权限
 Write-Host "  - 正在设置 TSF DLL 权限..."
 $appPackagesSid = "*S-1-15-2-1"
-foreach ($dllName in @("wind_tsf.dll", "wind_dwrite.dll")) {
-    $dllPath = Join-Path $InstallDir $dllName
-    if (Test-Path $dllPath) {
-        & icacls $dllPath /grant "${appPackagesSid}:(RX)" /c | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "[警告] 设置 $dllName 的 ALL APPLICATION PACKAGES 权限失败" -ForegroundColor Yellow
-        } else {
-            Write-Host "    * $dllName 已授予 ALL APPLICATION PACKAGES 读取执行权限"
-        }
+$tsfDllPath = Join-Path $InstallDir "wind_tsf.dll"
+if (Test-Path $tsfDllPath) {
+    & icacls $tsfDllPath /grant "${appPackagesSid}:(RX)" /c | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[警告] 设置 wind_tsf.dll 的 ALL APPLICATION PACKAGES 权限失败" -ForegroundColor Yellow
+    } else {
+        Write-Host "    * wind_tsf.dll 已授予 ALL APPLICATION PACKAGES 读取执行权限"
     }
 }
 
@@ -248,7 +246,6 @@ Write-Host "安装目录: $InstallDir"
 Write-Host ""
 Write-Host "已安装组件:"
 Write-Host "- wind_tsf.dll (TSF 桥接)"
-Write-Host "- wind_dwrite.dll (DirectWrite 渲染 Shim)"
 Write-Host "- wind_input.exe (输入法服务)"
 Write-Host "- wind_setting.exe (设置界面)"
 Write-Host "- data\dict\pinyin\rime_ice.dict.yaml (拼音词库入口)"

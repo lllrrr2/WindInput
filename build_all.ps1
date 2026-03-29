@@ -77,7 +77,7 @@ Write-Host "Go 服务构建成功"
 Write-Host ""
 
 # [2/6] 构建 C++ DLL
-Write-Host "[2/6] 构建 C++ DLL(wind_tsf.dll)..."
+Write-Host "[2/6] 构建 C++ DLL (wind_tsf.dll)..."
 $cppBuildDir = Join-Path $ScriptDir "wind_tsf\build"
 if (-not (Test-Path $cppBuildDir)) { New-Item -ItemType Directory -Path $cppBuildDir -Force | Out-Null }
 Push-Location $cppBuildDir
@@ -97,10 +97,6 @@ try {
 
 if (-not (Test-Path (Join-Path $BuildDir "wind_tsf.dll"))) {
     Write-Host "[错误] C++ 构建完成但 wind_tsf.dll 未生成到 build 目录" -ForegroundColor Red
-    exit 1
-}
-if (-not (Test-Path (Join-Path $BuildDir "wind_dwrite.dll"))) {
-    Write-Host "[错误] C++ 构建完成但 wind_dwrite.dll 未生成到 build 目录" -ForegroundColor Red
     exit 1
 }
 Write-Host "C++ DLL 构建成功"
@@ -323,7 +319,7 @@ Write-Host ""
 
 # [6/6] 检查输出文件
 Write-Host "[6/6] 检查输出文件..."
-$checkFiles = @("wind_tsf.dll", "wind_dwrite.dll", "wind_input.exe")
+$checkFiles = @("wind_tsf.dll", "wind_input.exe")
 foreach ($f in $checkFiles) {
     if (-not (Test-Path (Join-Path $BuildDir $f))) {
         Write-Host "[错误] 未找到 $f" -ForegroundColor Red
@@ -338,7 +334,6 @@ Write-Host "======================================"
 Write-Host ""
 Write-Host "输出文件:"
 Write-Host "- build\wind_tsf.dll（TSF 桥接）"
-Write-Host "- build\wind_dwrite.dll（DirectWrite 渲染 Shim）"
 Write-Host "- build\wind_input.exe（输入法服务）"
 Write-Host "- build\wind_setting.exe（设置界面）"
 Write-Host "- build\data\dict\pinyin\*.dict.yaml（拼音词库）"

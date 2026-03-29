@@ -49,7 +49,7 @@ Get-ChildItem -Path $InstallDir -Filter "wind_tsf*.dll" -ErrorAction SilentlyCon
 Write-Host "[4/8] 删除文件..."
 $RandomSuffix = Get-Random -Maximum 99999999
 
-$filesToDelete = @("wind_tsf.dll", "wind_dwrite.dll", "wind_input.exe", "wind_setting.exe")
+$filesToDelete = @("wind_tsf.dll", "wind_input.exe", "wind_setting.exe", "wind_dwrite.dll")
 foreach ($f in $filesToDelete) {
     $filePath = Join-Path $InstallDir $f
     if (-not (Test-Path $filePath)) { continue }

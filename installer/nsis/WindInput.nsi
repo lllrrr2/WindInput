@@ -34,11 +34,6 @@ Var RANDOM_SUFFIX
 !error "Missing file: ${BUILD_DIR}\wind_input.exe. Run build_all.ps1 first."
 !endif
 
-!if /FileExists "${BUILD_DIR}\wind_dwrite.dll"
-!else
-!error "Missing file: ${BUILD_DIR}\wind_dwrite.dll. Run build_all.ps1 first."
-!endif
-
 !if /FileExists "${BUILD_DIR}\wind_setting.exe"
 !else
 !error "Missing file: ${BUILD_DIR}\wind_setting.exe. Run build_all.ps1 -WailsMode release first."
@@ -232,7 +227,6 @@ install_unreg_done:
   SetOutPath "$PLUGINSDIR\stage"
   ClearErrors
   File "${BUILD_DIR}\wind_tsf.dll"
-  File "${BUILD_DIR}\wind_dwrite.dll"
   File "${BUILD_DIR}\wind_input.exe"
   File "${BUILD_DIR}\wind_setting.exe"
   IfErrors 0 install_stage_ok
@@ -262,20 +256,6 @@ install_stage_ok:
     SetErrorLevel 3
     Abort
 install_dll_done:
-
-  ; -- wind_dwrite.dll --
-  DetailPrint "正在安装 wind_dwrite.dll..."
-  Push "$INSTDIR\wind_dwrite.dll"
-  Push "$INSTDIR\wind_dwrite.dll.old"
-  Call BackupIfLocked
-  ClearErrors
-  CopyFiles /SILENT "$PLUGINSDIR\stage\wind_dwrite.dll" "$INSTDIR\wind_dwrite.dll"
-  IfErrors 0 install_dwrite_done
-    IfSilent +2 0
-    MessageBox MB_ICONSTOP|MB_OK "安装 wind_dwrite.dll 失败。"
-    SetErrorLevel 3
-    Abort
-install_dwrite_done:
 
   ; -- wind_input.exe --
   DetailPrint "正在安装 wind_input.exe..."
@@ -309,13 +289,10 @@ install_setting_done:
   DetailPrint "正在设置现代宿主 DLL 权限..."
   nsExec::ExecToLog 'cmd /c icacls "$INSTDIR\wind_tsf.dll" /grant *S-1-15-2-1:^(RX^) /c'
   Pop $0
-  nsExec::ExecToLog 'cmd /c icacls "$INSTDIR\wind_dwrite.dll" /grant *S-1-15-2-1:^(RX^) /c'
-  Pop $0
 
   ; --- Step 5: Cleanup staging + old backup files ---
   DetailPrint "正在清理旧文件..."
   Delete "$PLUGINSDIR\stage\wind_tsf.dll"
-  Delete "$PLUGINSDIR\stage\wind_dwrite.dll"
   Delete "$PLUGINSDIR\stage\wind_input.exe"
   Delete "$PLUGINSDIR\stage\wind_setting.exe"
   RMDir "$PLUGINSDIR\stage"
@@ -461,13 +438,8 @@ uninstall_unreg_done:
     Delete /REBOOTOK "$INSTDIR\wind_tsf.dll"
     SetRebootFlag true
 uninst_dll_done:
-  Push "$INSTDIR\wind_dwrite.dll"
-  Push "$INSTDIR\wind_dwrite.dll.old"
-  Call un.BackupIfLocked
-  IfErrors 0 uninst_dwrite_done
-    Delete /REBOOTOK "$INSTDIR\wind_dwrite.dll"
-    SetRebootFlag true
-uninst_dwrite_done:
+  ; Clean up legacy wind_dwrite.dll if present from older versions
+  Delete "$INSTDIR\wind_dwrite.dll"
   Push "$INSTDIR\wind_input.exe"
   Push "$INSTDIR\wind_input.exe.old"
   Call un.BackupIfLocked
