@@ -14,6 +14,7 @@ const (
 	StateFileName     = "state.yaml"          // 用户状态
 	SystemPhrasesFile = "system.phrases.yaml" // 系统短语（data/ 目录）
 	UserPhrasesFile   = "user.phrases.yaml"   // 用户短语（用户目录）
+	SystemConfigFile  = "config.yaml"         // 系统预置配置（data/ 目录）
 )
 
 // GetConfigDir returns the user configuration directory path
@@ -56,6 +57,24 @@ func GetUserPhrasesPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(configDir, UserPhrasesFile), nil
+}
+
+// GetExeDir returns the directory containing the current executable
+func GetExeDir() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to get executable path: %w", err)
+	}
+	return filepath.Dir(exePath), nil
+}
+
+// GetSystemConfigPath returns the path to the system default config file (data/config.yaml)
+func GetSystemConfigPath() (string, error) {
+	exeDir, err := GetExeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(GetDataDir(exeDir), SystemConfigFile), nil
 }
 
 // EnsureConfigDir ensures the config directory exists

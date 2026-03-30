@@ -194,13 +194,17 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Load loads the configuration from file
+// Load loads the configuration using three-layer merge:
+// 1. Code defaults (DefaultConfig)
+// 2. System bundled config (data/config.yaml) overlay
+// 3. User config (%APPDATA%/WindInput/config.yaml) overlay
 func Load() (*Config, error) {
 	return LoadFrom("")
 }
 
-// LoadFrom loads the configuration from a specific path
-// If path is empty, uses the default config path
+// LoadFrom loads the configuration from a specific user config path.
+// If path is empty, uses the default user config path.
+// System config (data/config.yaml) is always loaded as the middle layer.
 func LoadFrom(path string) (*Config, error) {
 	if path == "" {
 		var err error
@@ -210,40 +214,61 @@ func LoadFrom(path string) (*Config, error) {
 		}
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return DefaultConfig(), nil
+	// Layer 1: 代码默认值
+	cfg := DefaultConfig()
+
+	// Layer 2: 加载系统预置配置（data/config.yaml）覆盖代码默认值
+	if sysPath, err := GetSystemConfigPath(); err == nil {
+		if sysData, err := os.ReadFile(sysPath); err == nil {
+			// 系统配置解析失败只打印警告，不中断
+			if err := yaml.Unmarshal(sysData, cfg); err != nil {
+				fmt.Fprintf(os.Stderr, "[config] warning: failed to parse system config %s: %v\n", sysPath, err)
+			}
 		}
-		return DefaultConfig(), fmt.Errorf("failed to read config file: %w", err)
+		// 系统配置文件不存在是正常情况，不需要报错
 	}
 
-	config := DefaultConfig()
-	if err := yaml.Unmarshal(data, config); err != nil {
+	// Layer 3: 加载用户配置覆盖
+	userData, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// 用户配置不存在，使用前两层的结果
+			return cfg, nil
+		}
+		return cfg, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	if err := yaml.Unmarshal(userData, cfg); err != nil {
 		return DefaultConfig(), fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	// 兜底校验
+	applyConfigFallbacks(cfg)
+
+	return cfg, nil
+}
+
+// applyConfigFallbacks 对关键字段进行兜底处理
+func applyConfigFallbacks(cfg *Config) {
 	// Schema 兜底：如果 active 为空，使用默认值
-	if config.Schema.Active == "" {
-		config.Schema.Active = "wubi86"
+	if cfg.Schema.Active == "" {
+		cfg.Schema.Active = "wubi86"
 	}
 	// 如果 available 为空，使用默认值
-	if len(config.Schema.Available) == 0 {
-		config.Schema.Available = []string{"wubi86", "pinyin"}
+	if len(cfg.Schema.Available) == 0 {
+		cfg.Schema.Available = []string{"wubi86", "pinyin"}
 	}
 
 	// 迁移旧的 theme:"dark" 配置到新格式
-	if config.UI.Theme == "dark" {
-		config.UI.Theme = "default"
-		config.UI.ThemeStyle = "dark"
+	if cfg.UI.Theme == "dark" {
+		cfg.UI.Theme = "default"
+		cfg.UI.ThemeStyle = "dark"
 	}
 
 	// ThemeStyle 兜底
-	if config.UI.ThemeStyle == "" {
-		config.UI.ThemeStyle = "system"
+	if cfg.UI.ThemeStyle == "" {
+		cfg.UI.ThemeStyle = "system"
 	}
-
-	return config, nil
 }
 
 // Save saves the configuration to file
