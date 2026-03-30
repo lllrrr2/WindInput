@@ -196,7 +196,7 @@ func (s *Server) handleFocusGained(payload []byte, clientID int, processID uint3
 
 	statusUpdate := s.handler.HandleFocusGained()
 	if statusUpdate != nil {
-		return s.encodeStatusUpdate(statusUpdate)
+		return s.encodeStatusUpdateWithHostRender(statusUpdate, processID)
 	}
 	return s.codec.EncodeAck()
 }
@@ -400,6 +400,10 @@ func (s *Server) encodeStatusUpdateWithHostRender(status *StatusUpdateData, proc
 func (s *Server) handleHostRenderRequest(clientID int, processID uint32) []byte {
 	if s.hostRender == nil || processID == 0 {
 		s.logger.Warn("Host render request rejected: no manager or no PID", "clientID", clientID)
+		return s.codec.EncodeAck()
+	}
+	if !s.hostRender.IsProcessWhitelisted(processID) {
+		s.logger.Warn("Host render request rejected: process not whitelisted", "clientID", clientID, "processID", processID)
 		return s.codec.EncodeAck()
 	}
 

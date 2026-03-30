@@ -1,7 +1,7 @@
 # Win11 开始菜单候选框 z-order 解决方案
 
-> 状态：方案已验证，待实现
-> 最后更新：2026-03-29
+> 状态：方案 A 已实现
+> 最后更新：2026-03-30
 
 ## 1. 问题描述
 
@@ -213,13 +213,43 @@ typedef BOOL (WINAPI* GetWindowBand_t)(HWND hwnd, DWORD* pdwBand);
 4. 安装程序需将 exe 放到 `%ProgramFiles%\WindInput\`
 5. 启动方式无需改变（UIAccess 程序由 Windows 自动提权 Band）
 
-## 6. 推荐路线
+## 6. 已知问题
+
+### 6.1 服务端重启后首字符候选框不显示
+
+**触发条件**：手动重启 Go 服务端或服务端异常退出后，切换到使用 Host 渲染的应用（如开始菜单），输入第一个字符。
+
+**现象**：
+- 输入第一个字符时，嵌入文本正常显示，但候选框不出现（被隐藏在开始菜单之下）
+- 输入第二个字符时，第一个字符被吃掉，候选框正常显示
+
+**根因分析**：
+
+服务端重启后，C++ 侧通过 `_DoFullStateSync` 发送 `IMEActivated` 重建连接。但 `IMEActivated` 不会在 Go 侧触发进程白名单设置——白名单是通过 `FocusGained` 消息建立的。因此 `_EnsureHostRenderSetup` 中的 `SendHostRenderRequest` 被 Go 侧的 `IsProcessWhitelisted` 检查拒绝，Host 窗口未能建立，候选框回退到 Go 窗口渲染（Band=1，被开始菜单遮挡）。
+
+时序如下：
+
+```
+1. 服务端重启，C++ 侧检测到 NeedsStateSync
+2. _DoFullStateSync → 发送 IMEActivated（不含进程白名单信息）
+3. _EnsureHostRenderSetup → SendHostRenderRequest → 被 IsProcessWhitelisted 拒绝
+4. 首字符按键处理 → 候选框用 Go 窗口渲染 → 被开始菜单遮挡
+5. 后续交互（showUI 中的 updateHostRenderState 自愈）→ Host 渲染恢复
+```
+
+**影响范围**：仅在手动重启服务端或服务端异常退出时触发，正常使用不受影响。
+
+**可能的修复方向**：
+- 在 `_DoFullStateSync` 中补发 `FocusGained`，使进程加入白名单
+- 或让 `IMEActivated` 的处理也设置进程白名单
+
+## 7. 推荐路线
 
 **短期**：实现方案 A（DLL 代理渲染），无需额外成本，技术可行性已验证。
 
 **长期**：如果获得代码签名证书，可切换到方案 B，简化架构。两个方案可以共存——有签名时用 UIAccess，无签名时降级到 DLL 代理渲染。
 
-## 7. 参考资料
+## 8. 参考资料
 
 - [Window z-order in Windows 10 – ADeltaX](https://blog.adeltax.com/window-z-order-in-windows-10/)
 - [How to call SetWindowBand – ADeltaX](https://blog.adeltax.com/how-to-call-setwindowband/)

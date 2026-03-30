@@ -125,12 +125,15 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	}
 
 	showStart := time.Now()
-	// 首字符时延迟显示候选窗口，等待 C++ 响应后发来的准确位置
-	// 避免窗口先出现在旧位置再跳到新位置
-	if wasEmpty {
+	// 首字符且尚未拿到有效 caret 时，延迟显示候选窗口，等待 C++ 响应后
+	// 的 caret update 再显示，避免窗口先出现在错误位置。
+	// 服务重启后的首个按键会在 C++ 重连后补发 caret update；如果当前位置
+	// 已经有效，则直接显示，避免必须等到第二个字符。
+	if wasEmpty && !c.caretValid {
 		c.pendingFirstShow = true
 		c.logger.Debug("First character, deferring candidate window display")
 	} else {
+		c.pendingFirstShow = false
 		c.showUI()
 	}
 	showElapsed := time.Since(showStart)

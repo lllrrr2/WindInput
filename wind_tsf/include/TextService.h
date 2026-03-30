@@ -140,6 +140,14 @@ private:
     RECT _cachedCompStartRect;
     BOOL _hasCachedCaretPos;
     BOOL _hasCachedCompStartPos;
+    BOOL _needsFocusRecovery;
+    LONG _lastFocusCaretX;
+    LONG _lastFocusCaretY;
+    LONG _lastFocusCaretHeight;
+    BOOL _hasLastKnownCaretPos;
+    LONG _lastKnownCaretX;
+    LONG _lastKnownCaretY;
+    LONG _lastKnownCaretHeight;
 
     // Display Attribute
     TfGuidAtom _gaDisplayAttributeInput;
@@ -161,11 +169,13 @@ private:
 
     // State sync helper (internal): apply status response to local state
     void _SyncStateFromResponse(const ServiceResponse& response);
+    void _EnsureHostRenderSetup(const ServiceResponse& response, BOOL forceRefresh);
 
 public:
     // Perform full state sync with Go service (sends IMEActivated + processes response).
     // Called after new/re-connection to ensure TSF and service state are consistent.
     void _DoFullStateSync();
+    void TryRecoverFocusState();
 
     // Get display attribute GUID atom for composition
     TfGuidAtom GetDisplayAttributeInputAtom() { return _gaDisplayAttributeInput; }

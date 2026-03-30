@@ -190,6 +190,11 @@ func (c *Coordinator) showUI() {
 		return
 	}
 
+	// Re-evaluate host render right before painting. This self-heals cases where
+	// focus/lifecycle events temporarily cleared the UI callback after host render
+	// had already been set up for the active process.
+	c.updateHostRenderState()
+
 	// 设置拼音模式标记（影响右键菜单前移/后移启用状态）
 	isPinyin := c.engineMgr != nil && c.engineMgr.GetCurrentType() == engine.EngineTypePinyin
 	c.uiManager.SetPinyinMode(isPinyin)
@@ -298,6 +303,9 @@ func (c *Coordinator) showModeIndicator() {
 	if c.uiManager == nil || !c.uiManager.IsReady() {
 		return
 	}
+
+	// Keep mode indicators on the same rendering path as candidates.
+	c.updateHostRenderState()
 
 	// Build composite mode text: Chinese mode shows "中·五笔" or "中·拼音", English mode shows "En"
 	var modeText string

@@ -870,10 +870,22 @@ BOOL CKeyEventSink::_SendKeyToService(uint32_t keyCode, uint32_t modifiers, uint
     // If a new connection was established (e.g., service started after TSF loaded),
     // perform a full state sync before processing key events.
     // This covers the edge case where service becomes available between focus events.
-    if (pIPCClient->NeedsStateSync() && pIPCClient->IsConnected())
+    if (pIPCClient->NeedsStateSync())
     {
+        if (!pIPCClient->IsConnected() && !pIPCClient->Connect())
+        {
+            WIND_LOG_WARN(L"State sync needed but reconnect failed before key send");
+            return FALSE;
+        }
+
         _pTextService->_DoFullStateSync();
+
+        // Re-send caret position after reconnection/state sync so the Go side has
+        // a valid anchor before it processes the first post-restart key event.
+        _pTextService->SendCaretPositionUpdate();
     }
+
+    _pTextService->TryRecoverFocusState();
 
     // Get scan code from virtual key (optional, set to 0 if not needed)
     uint32_t scanCode = MapVirtualKeyW(keyCode, MAPVK_VK_TO_VSC);

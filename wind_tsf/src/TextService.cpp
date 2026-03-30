@@ -487,6 +487,8 @@ private:
     std::wstring _newComposition;
 };
 
+static const LONG DEFAULT_CARET_HEIGHT = 20;
+
 CTextService::CTextService()
     : _refCount(1)
     , _pThreadMgr(nullptr)
@@ -503,6 +505,14 @@ CTextService::CTextService()
     , _pComposition(nullptr)
     , _hasCachedCaretPos(FALSE)
     , _hasCachedCompStartPos(FALSE)
+    , _needsFocusRecovery(FALSE)
+    , _lastFocusCaretX(0)
+    , _lastFocusCaretY(0)
+    , _lastFocusCaretHeight(DEFAULT_CARET_HEIGHT)
+    , _hasLastKnownCaretPos(FALSE)
+    , _lastKnownCaretX(0)
+    , _lastKnownCaretY(0)
+    , _lastKnownCaretHeight(DEFAULT_CARET_HEIGHT)
     , _gaDisplayAttributeInput(TF_INVALID_GUIDATOM)
 {
     ZeroMemory(&_cachedCaretRect, sizeof(_cachedCaretRect));
@@ -788,11 +798,20 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
 
         // Get caret position for toolbar placement
         LONG caretX = 0, caretY = 0, caretHeight = 0;
-        GetCaretPosition(&caretX, &caretY, &caretHeight);
+        if (!GetCaretPosition(&caretX, &caretY, &caretHeight) && _hasLastKnownCaretPos)
+        {
+            caretX = _lastKnownCaretX;
+            caretY = _lastKnownCaretY;
+            caretHeight = _lastKnownCaretHeight;
+            WIND_LOG_INFO_FMT(L"OnSetFocus: using last known caret position x=%ld y=%ld h=%ld", caretX, caretY, caretHeight);
+        }
         WIND_LOG_DEBUG_FMT(
             L"compat.focus.caret focusSession=%llu x=%ld y=%ld height=%ld",
             _focusSessionId, caretX, caretY, caretHeight
         );
+        _lastFocusCaretX = caretX;
+        _lastFocusCaretY = caretY;
+        _lastFocusCaretHeight = caretHeight > 0 ? caretHeight : DEFAULT_CARET_HEIGHT;
 
         // Send focus_gained to service and receive response synchronously.
         // This ensures state is properly synced before user starts typing.
@@ -805,8 +824,11 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
                 ServiceResponse response;
                 if (_pIPCClient->ReceiveResponse(response))
                 {
+                    BOOL needsStateSync = _pIPCClient->NeedsStateSync();
                     WIND_LOG_DEBUG_FMT(L"FocusGained response received focusSession=%llu", _focusSessionId);
                     _SyncStateFromResponse(response);
+                    _EnsureHostRenderSetup(response, needsStateSync);
+                    _needsFocusRecovery = FALSE;
                     _pIPCClient->ClearNeedsSyncFlag();
                 }
                 else
@@ -817,6 +839,7 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
             else
             {
                 WIND_LOG_WARN_FMT(L"FocusGained IPC send failed focusSession=%llu", _focusSessionId);
+                _needsFocusRecovery = TRUE;
             }
         }
     }
@@ -840,6 +863,8 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
         {
             _pKeyEventSink->ResetComposingState();
         }
+
+        _needsFocusRecovery = FALSE;
     }
 
     return S_OK;
@@ -909,9 +934,74 @@ void CTextService::_SyncStateFromResponse(const ServiceResponse& response)
         );
     }
 
-    WIND_LOG_INFO_FMT(L"State synced: mode=%d, width=%d, punct=%d, toolbar=%d\n",
+    WIND_LOG_INFO_FMT(L"State synced: mode=%d, width=%d, punct=%d, toolbar=%d, hostRender=%d\n",
         response.IsChineseMode(), response.IsFullWidth(),
-        response.IsChinesePunct(), response.IsToolbarVisible());
+        response.IsChinesePunct(), response.IsToolbarVisible(), response.IsHostRenderAvailable());
+}
+
+void CTextService::_EnsureHostRenderSetup(const ServiceResponse& response, BOOL forceRefresh)
+{
+    if (_pIPCClient == nullptr || !_pIPCClient->IsConnected())
+        return;
+
+    BOOL hadHostWindow = (_pHostWindow != nullptr);
+    BOOL hostRenderAvailable = response.IsHostRenderAvailable();
+    BOOL shouldRetryExistingHost = forceRefresh && hadHostWindow && !hostRenderAvailable;
+
+    if (!hostRenderAvailable && !shouldRetryExistingHost)
+    {
+        if (forceRefresh && _pHostWindow != nullptr)
+        {
+            WIND_LOG_INFO(L"Host render unavailable after refresh, disabling existing host window\n");
+            _pHostWindow->Uninitialize();
+            delete _pHostWindow;
+            _pHostWindow = nullptr;
+        }
+        return;
+    }
+
+    if (shouldRetryExistingHost)
+    {
+        WIND_LOG_WARN(L"Host render flag missing after reconnect, retrying setup because host window was previously active\n");
+    }
+
+    if (_pHostWindow != nullptr && !forceRefresh)
+        return;
+
+    if (_pHostWindow != nullptr)
+    {
+        WIND_LOG_INFO(L"Refreshing host render window after service reconnection\n");
+        _pHostWindow->Uninitialize();
+        delete _pHostWindow;
+        _pHostWindow = nullptr;
+    }
+
+    WIND_LOG_INFO(L"Host render available, requesting setup\n");
+
+    ServiceResponse hrResponse;
+    if (_pIPCClient->SendHostRenderRequest(hrResponse) &&
+        hrResponse.type == ResponseType::HostRenderSetup &&
+        !hrResponse.shmName.empty() && !hrResponse.eventName.empty())
+    {
+        _pHostWindow = new CHostWindow();
+        if (!_pHostWindow->Initialize(
+            hrResponse.shmName.c_str(),
+            hrResponse.eventName.c_str(),
+            hrResponse.maxBufferSize))
+        {
+            WIND_LOG_WARN(L"Host window initialization failed, falling back to Go window\n");
+            delete _pHostWindow;
+            _pHostWindow = nullptr;
+        }
+        else
+        {
+            WIND_LOG_INFO(L"Host window initialized successfully\n");
+        }
+    }
+    else
+    {
+        WIND_LOG_WARN(L"Host render setup request failed, falling back to Go window\n");
+    }
 }
 
 void CTextService::_DoFullStateSync()
@@ -927,36 +1017,64 @@ void CTextService::_DoFullStateSync()
         if (_pIPCClient->ReceiveResponse(response))
         {
             _SyncStateFromResponse(response);
-
-            // Check if host render is available for this process
-            if (response.IsHostRenderAvailable() && _pHostWindow == nullptr)
-            {
-                WIND_LOG_INFO(L"Host render available, requesting setup\n");
-                ServiceResponse hrResponse;
-                if (_pIPCClient->SendHostRenderRequest(hrResponse) &&
-                    hrResponse.type == ResponseType::HostRenderSetup &&
-                    !hrResponse.shmName.empty() && !hrResponse.eventName.empty())
-                {
-                    _pHostWindow = new CHostWindow();
-                    if (!_pHostWindow->Initialize(
-                        hrResponse.shmName.c_str(),
-                        hrResponse.eventName.c_str(),
-                        hrResponse.maxBufferSize))
-                    {
-                        WIND_LOG_WARN(L"Host window initialization failed, falling back to Go window\n");
-                        delete _pHostWindow;
-                        _pHostWindow = nullptr;
-                    }
-                    else
-                    {
-                        WIND_LOG_INFO(L"Host window initialized successfully\n");
-                    }
-                }
-            }
+            _EnsureHostRenderSetup(response, TRUE);
         }
     }
 
     _pIPCClient->ClearNeedsSyncFlag();
+    _needsFocusRecovery = FALSE; // Full sync covers focus recovery
+}
+
+void CTextService::TryRecoverFocusState()
+{
+    if (!_needsFocusRecovery || _pIPCClient == nullptr || !_pIPCClient->IsConnected())
+        return;
+
+    LONG caretX = _lastFocusCaretX;
+    LONG caretY = _lastFocusCaretY;
+    LONG caretHeight = _lastFocusCaretHeight > 0 ? _lastFocusCaretHeight : DEFAULT_CARET_HEIGHT;
+
+    if (GetCaretPosition(&caretX, &caretY, &caretHeight))
+    {
+        _lastFocusCaretX = caretX;
+        _lastFocusCaretY = caretY;
+        _lastFocusCaretHeight = caretHeight > 0 ? caretHeight : DEFAULT_CARET_HEIGHT;
+    }
+    else if (_hasLastKnownCaretPos)
+    {
+        caretX = _lastKnownCaretX;
+        caretY = _lastKnownCaretY;
+        caretHeight = _lastKnownCaretHeight;
+        WIND_LOG_INFO_FMT(L"Recovering focus state with last known caret x=%ld y=%ld h=%ld", caretX, caretY, caretHeight);
+    }
+
+    WIND_LOG_INFO_FMT(L"Attempting deferred focus recovery focusSession=%llu x=%ld y=%ld h=%ld",
+        _focusSessionId, caretX, caretY, caretHeight);
+
+    if (_pIPCClient->SendFocusGained((int)caretX, (int)caretY, (int)caretHeight))
+    {
+        ServiceResponse response;
+        if (_pIPCClient->ReceiveResponse(response))
+        {
+            BOOL needsStateSync = _pIPCClient->NeedsStateSync();
+            _SyncStateFromResponse(response);
+            _EnsureHostRenderSetup(response, needsStateSync);
+            _needsFocusRecovery = FALSE;
+            _pIPCClient->ClearNeedsSyncFlag();
+            SendCaretPositionUpdate();
+            WIND_LOG_INFO(L"Deferred focus recovery succeeded\n");
+        }
+        else
+        {
+            WIND_LOG_WARN_FMT(L"Deferred focus recovery response missing focusSession=%llu", _focusSessionId);
+            _needsFocusRecovery = FALSE;
+        }
+    }
+    else
+    {
+        WIND_LOG_WARN_FMT(L"Deferred focus recovery send failed focusSession=%llu", _focusSessionId);
+        _needsFocusRecovery = FALSE;
+    }
 }
 
 BOOL CTextService::_InitIPCClient()
@@ -1579,13 +1697,36 @@ void CTextService::SendCaretPositionUpdate()
     {
         if (!GetCaretPosition(&x, &y, &height))
         {
-            return; // No position available at all
+            if (_hasLastKnownCaretPos)
+            {
+                x = _lastKnownCaretX;
+                y = _lastKnownCaretY;
+                height = _lastKnownCaretHeight;
+                hasPosition = TRUE;
+                WIND_LOG_INFO_FMT(L"SendCaretPositionUpdate: using last known caret x=%ld y=%ld h=%ld", x, y, height);
+            }
+            else
+            {
+                return; // No position available at all
+            }
+        }
+        else
+        {
+            hasPosition = TRUE;
         }
 
         if (_pComposition != nullptr)
         {
             GetCompositionStartPosition(&compStartX, &compStartY);
         }
+    }
+
+    if (hasPosition)
+    {
+        _hasLastKnownCaretPos = TRUE;
+        _lastKnownCaretX = x;
+        _lastKnownCaretY = y;
+        _lastKnownCaretHeight = height > 0 ? height : DEFAULT_CARET_HEIGHT;
     }
 
     // SendCaretUpdate is async (fire-and-forget), no response expected

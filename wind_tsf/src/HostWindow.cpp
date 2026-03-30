@@ -16,6 +16,8 @@
 #endif
 
 static const wchar_t* HOST_WND_CLASS = L"WindInputHostCandidateWnd";
+// Accessed only on the UI thread (STA). No synchronization needed.
+static ATOM s_hostWndClassAtom = 0;
 
 CHostWindow::CHostWindow()
     : _hwnd(NULL)
@@ -106,35 +108,29 @@ LRESULT CALLBACK CHostWindow::_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 BOOL CHostWindow::_CreateBandWindow(DWORD band)
 {
-    // Register window class (only once per process)
-    if (_wndClassAtom == 0)
+    // Register the class once per process. HostWindow instances are recreated
+    // across TSF Activate/Deactivate cycles, but the window class registration
+    // remains process-wide.
+    if (s_hostWndClassAtom == 0)
     {
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = _WndProc;
         wc.hInstance = g_hInstance;
         wc.lpszClassName = HOST_WND_CLASS;
-        _wndClassAtom = RegisterClassExW(&wc);
-        if (_wndClassAtom == 0)
+        s_hostWndClassAtom = RegisterClassExW(&wc);
+        if (s_hostWndClassAtom == 0)
         {
             DWORD err = GetLastError();
-            if (err == ERROR_CLASS_ALREADY_EXISTS)
-            {
-                // Already registered, get the atom via GetClassInfoExW
-                WNDCLASSEXW existing = { sizeof(WNDCLASSEXW) };
-                if (GetClassInfoExW(g_hInstance, HOST_WND_CLASS, &existing))
-                {
-                    // GetClassInfoExW doesn't return the ATOM directly.
-                    // Re-register will fail, so use FindAtom or just use class name with normal CreateWindowExW.
-                    // For CreateWindowInBand, we need an ATOM. Use GlobalFindAtomW.
-                    _wndClassAtom = GlobalFindAtomW(HOST_WND_CLASS);
-                }
-            }
-            if (_wndClassAtom == 0)
-            {
-                WIND_LOG_ERROR_FMT(L"HostWindow: RegisterClassExW failed, err=%u\n", err);
-                return FALSE;
-            }
+            WIND_LOG_ERROR_FMT(L"HostWindow: RegisterClassExW failed, err=%u\n", err);
+            return FALSE;
         }
+    }
+
+    _wndClassAtom = s_hostWndClassAtom;
+    if (_wndClassAtom == 0)
+    {
+        WIND_LOG_ERROR(L"HostWindow: window class atom missing after registration\n");
+        return FALSE;
     }
 
     DWORD exStyle = WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
@@ -249,6 +245,8 @@ BOOL CHostWindow::Initialize(const wchar_t* shmName, const wchar_t* eventName, D
 
 void CHostWindow::Uninitialize()
 {
+    const BOOL hadResources = (_active || _hwnd || _hSharedMem || _pSharedMem || _hEvent || _hThread || _hStopEvent || (_lastSequence != 0));
+
     _active = FALSE;
 
     // Signal render thread to stop
@@ -297,8 +295,12 @@ void CHostWindow::Uninitialize()
         _hEvent = NULL;
     }
 
+    _wndClassAtom = 0;
     _lastSequence = 0;
-    WIND_LOG_INFO(L"HostWindow: Uninitialized\n");
+    if (hadResources)
+    {
+        WIND_LOG_INFO(L"HostWindow: Uninitialized\n");
+    }
 }
 
 DWORD WINAPI CHostWindow::_RenderThread(LPVOID param)

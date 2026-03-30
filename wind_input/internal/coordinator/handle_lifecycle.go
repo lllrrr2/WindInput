@@ -60,7 +60,7 @@ func (c *Coordinator) updateHostRenderState() {
 
 	writeFrame, hideFunc := c.bridgeServer.GetActiveHostRender()
 	if writeFrame != nil {
-		c.logger.Info("Enabling host render for active process")
+		c.logger.Info("Enabling host render for active process", "alreadyEnabled", c.uiManager.IsHostRendering())
 		c.uiManager.SetHostRenderFunc(writeFrame, hideFunc)
 	} else {
 		if c.uiManager.IsHostRendering() {
