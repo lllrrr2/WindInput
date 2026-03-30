@@ -22,13 +22,48 @@ if (Test-Path $VersionFile) {
 } else {
     $AppVersion = "dev"
 }
-Write-Host "版本: $AppVersion"
+
+# 解析版本号为组件（major.minor.patch）
+$VersionCore = ($AppVersion -split '-')[0]  # 去除预发布标签
+$VersionParts = $VersionCore -split '\.'
+$VerMajor = "0"; $VerMinor = "0"; $VerPatch = "0"
+if ($VersionParts.Length -ge 1) { $VerMajor = $VersionParts[0] }
+if ($VersionParts.Length -ge 2) { $VerMinor = $VersionParts[1] }
+if ($VersionParts.Length -ge 3) { $VerPatch = $VersionParts[2] }
+
+# 生成构建号（基于 git commit 数量，每次编译自动变化）
+$VerBuild = "0"
+try {
+    $commitCount = git -C $ScriptDir rev-list --count HEAD 2>$null
+    if ($commitCount) { $VerBuild = $commitCount.Trim() }
+} catch { }
+$AppVersionNum = "$VerMajor.$VerMinor.$VerPatch.$VerBuild"
+
+Write-Host "版本: $AppVersion (构建号: $AppVersionNum)"
 Write-Host ""
 
 # SettingOnly 模式：只构建设置界面
 if ($SettingOnly) {
     Write-Host "[SettingOnly] 仅构建设置界面..."
     Write-Host ""
+
+    # 更新 wails.json 中的版本号
+    $wailsJsonPath = Join-Path $ScriptDir "wind_setting\wails.json"
+    if (Test-Path $wailsJsonPath) {
+        $wailsJson = Get-Content $wailsJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if (-not $wailsJson.info) {
+            $wailsJson | Add-Member -NotePropertyName "info" -NotePropertyValue ([PSCustomObject]@{
+                companyName = "清风输入法"
+                productName = "清风输入法 设置"
+                productVersion = $VersionCore
+                copyright = "Copyright © 2026 清风输入法"
+                comments = "清风输入法设置工具"
+            }) -Force
+        } else {
+            $wailsJson.info | Add-Member -NotePropertyName "productVersion" -NotePropertyValue $VersionCore -Force
+        }
+        $wailsJson | ConvertTo-Json -Depth 10 | Set-Content $wailsJsonPath -Encoding UTF8
+    }
 
     Push-Location (Join-Path $ScriptDir "wind_setting")
     try {
@@ -65,6 +100,14 @@ Write-Host "[1/6] 构建 Go 服务(wind_input.exe)..."
 if (-not (Test-Path $BuildDir)) { New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null }
 Push-Location (Join-Path $ScriptDir "wind_input")
 try {
+    # 生成版本资源文件 (.syso)
+    Push-Location "cmd/service"
+    & go-winres make --product-version "$AppVersion" --file-version "$AppVersionNum"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[警告] go-winres 生成资源失败，继续构建（无版本信息）" -ForegroundColor Yellow
+    }
+    Pop-Location
+
     & go build -ldflags "-H windowsgui -X main.version=$AppVersion" -o (Join-Path $BuildDir "wind_input.exe") ./cmd/service
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[错误] Go 构建失败" -ForegroundColor Red
@@ -82,10 +125,13 @@ $cppBuildDir = Join-Path $ScriptDir "wind_tsf\build"
 if (-not (Test-Path $cppBuildDir)) { New-Item -ItemType Directory -Path $cppBuildDir -Force | Out-Null }
 Push-Location $cppBuildDir
 try {
-    if (-not (Test-Path (Join-Path $cppBuildDir "CMakeCache.txt"))) {
-        & cmake ..
-        if ($LASTEXITCODE -ne 0) { Write-Host "[错误] CMake 配置失败" -ForegroundColor Red; exit 1 }
+    # 删除旧缓存确保版本变量正确更新
+    if (Test-Path (Join-Path $cppBuildDir "CMakeCache.txt")) {
+        Remove-Item (Join-Path $cppBuildDir "CMakeCache.txt") -Force
+        Remove-Item (Join-Path $cppBuildDir "CMakeFiles") -Recurse -Force -ErrorAction SilentlyContinue
     }
+    & cmake .. "-DAPP_VERSION_MAJOR=$VerMajor" "-DAPP_VERSION_MINOR=$VerMinor" "-DAPP_VERSION_PATCH=$VerPatch" "-DAPP_VERSION_BUILD=$VerBuild" "-DAPP_VERSION_STR=$VersionCore"
+    if ($LASTEXITCODE -ne 0) { Write-Host "[错误] CMake 配置失败" -ForegroundColor Red; exit 1 }
     & cmake --build . --config Release
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[错误] C++ 构建失败" -ForegroundColor Red
@@ -109,6 +155,24 @@ if ($WailsMode -eq "skip") {
 } else {
     Push-Location (Join-Path $ScriptDir "wind_setting")
     try {
+        # 更新 wails.json 中的版本号
+        $wailsJsonPath = Join-Path $ScriptDir "wind_setting\wails.json"
+        if (Test-Path $wailsJsonPath) {
+            $wailsJson = Get-Content $wailsJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if (-not $wailsJson.info) {
+                $wailsJson | Add-Member -NotePropertyName "info" -NotePropertyValue ([PSCustomObject]@{
+                    companyName = "清风输入法"
+                    productName = "清风输入法 设置"
+                    productVersion = $VersionCore
+                    copyright = "Copyright © 2026 清风输入法"
+                    comments = "清风输入法设置工具"
+                }) -Force
+            } else {
+                $wailsJson.info | Add-Member -NotePropertyName "productVersion" -NotePropertyValue $VersionCore -Force
+            }
+            $wailsJson | ConvertTo-Json -Depth 10 | Set-Content $wailsJsonPath -Encoding UTF8
+        }
+
         if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
             Write-Host "[错误] 未找到 Wails CLI,无法构建 wind_setting" -ForegroundColor Red
             Write-Host "       请先安装: go install github.com/wailsapp/wails/v2/cmd/wails@latest" -ForegroundColor Red

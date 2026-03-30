@@ -55,6 +55,9 @@ Win32/
 *.out
 coverage.*
 
+# go-winres generated resource files
+*.syso
+
 # IDE/editor
 .idea/
 .vscode/

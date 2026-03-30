@@ -4,6 +4,30 @@ project(WindTsf)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# 版本信息（由构建脚本通过 -D 传入，默认为开发版本）
+if(NOT DEFINED APP_VERSION_MAJOR)
+    set(APP_VERSION_MAJOR 0)
+endif()
+if(NOT DEFINED APP_VERSION_MINOR)
+    set(APP_VERSION_MINOR 0)
+endif()
+if(NOT DEFINED APP_VERSION_PATCH)
+    set(APP_VERSION_PATCH 0)
+endif()
+if(NOT DEFINED APP_VERSION_BUILD)
+    set(APP_VERSION_BUILD 0)
+endif()
+if(NOT DEFINED APP_VERSION_STR)
+    set(APP_VERSION_STR "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
+endif()
+
+# 从模板生成版本资源文件
+configure_file(
+    ${CMAKE_SOURCE_DIR}/res/version.rc.in
+    ${CMAKE_BINARY_DIR}/version.rc
+    @ONLY
+)
+
 # 设置输出目录（对多配置生成器也生效）
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../build)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../build)
@@ -36,11 +60,14 @@ set(SOURCES
     src/FileLogger.cpp
 )
 
-# Resource file for icon
-set(RESOURCE_FILE ${CMAKE_SOURCE_DIR}/res/resource.rc)
+# Resource files (icon + version info)
+set(RESOURCE_FILES
+    ${CMAKE_SOURCE_DIR}/res/resource.rc
+    ${CMAKE_BINARY_DIR}/version.rc
+)
 
 # 创建 DLL
-add_library(wind_tsf SHARED ${SOURCES} ${RESOURCE_FILE})
+add_library(wind_tsf SHARED ${SOURCES} ${RESOURCE_FILES})
 
 # 注意：库通过源文件中的 #pragma comment 链接
 

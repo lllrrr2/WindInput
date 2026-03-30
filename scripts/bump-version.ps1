@@ -133,5 +133,19 @@ if (Test-Path $ChangelogPath) {
     }
 }
 
+# 4. wails.json productVersion
+$WailsJsonPath = Join-Path $RootDir "wind_setting\wails.json"
+if (Test-Path $WailsJsonPath) {
+    $wailsJson = Get-Content $WailsJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($wailsJson.info) {
+        $versionCore = ($TargetVersion -split '-')[0]
+        $wailsJson.info.productVersion = $versionCore
+        $wailsJson | ConvertTo-Json -Depth 10 | Set-Content $WailsJsonPath -Encoding UTF8
+        Write-Host "  [OK] wails.json"
+    } else {
+        Write-Host "  [SKIP] wails.json (no info section)"
+    }
+}
+
 Write-Host ""
 Write-Host "Done: v$TargetVersion"
