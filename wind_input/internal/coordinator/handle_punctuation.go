@@ -2,6 +2,8 @@
 package coordinator
 
 import (
+	"strings"
+
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/engine/wubi"
@@ -473,9 +475,28 @@ func (c *Coordinator) matchHotkey(hotkeyStr string, hasCtrl, hasShift, hasAlt bo
 		needCtrl = true
 		targetKeyCode = int(ipc.VK_OEM_COMMA)
 	default:
-		// Unknown hotkey format
-		c.logger.Debug("Unknown hotkey format", "hotkey", hotkeyStr)
-		return false
+		// Generic parser: split by "+" and resolve modifiers + key
+		parts := strings.Split(strings.ToLower(hotkeyStr), "+")
+		for i, part := range parts {
+			switch part {
+			case "ctrl":
+				needCtrl = true
+			case "shift":
+				needShift = true
+			case "alt":
+				needAlt = true
+			default:
+				// Last non-modifier part is the key name
+				// Only treat the last part as the key (or any unrecognized part)
+				if i == len(parts)-1 {
+					targetKeyCode = resolveVKFromKeyName(part)
+				}
+			}
+		}
+		if targetKeyCode == 0 {
+			c.logger.Debug("Unknown hotkey format", "hotkey", hotkeyStr)
+			return false
+		}
 	}
 
 	// Check if all modifiers match
@@ -485,4 +506,70 @@ func (c *Coordinator) matchHotkey(hotkeyStr string, hasCtrl, hasShift, hasAlt bo
 
 	// Check if the key matches
 	return keyCode == targetKeyCode
+}
+
+// resolveVKFromKeyName converts a lowercase key name string to a Windows virtual key code.
+// Returns 0 if the name is not recognized.
+func resolveVKFromKeyName(name string) int {
+	// Single letter a-z → 0x41-0x5A
+	if len(name) == 1 {
+		ch := name[0]
+		if ch >= 'a' && ch <= 'z' {
+			return int(ch-'a') + 0x41
+		}
+		// Digit 0-9 → 0x30-0x39
+		if ch >= '0' && ch <= '9' {
+			return int(ch-'0') + 0x30
+		}
+	}
+
+	// F1-F12 → 0x70-0x7B
+	if len(name) >= 2 && name[0] == 'f' {
+		rest := name[1:]
+		num := 0
+		valid := true
+		for _, c := range rest {
+			if c < '0' || c > '9' {
+				valid = false
+				break
+			}
+			num = num*10 + int(c-'0')
+		}
+		if valid && num >= 1 && num <= 12 {
+			return 0x70 + num - 1
+		}
+	}
+
+	// Special keys
+	switch name {
+	case "`":
+		return int(ipc.VK_OEM_3)
+	case "space":
+		return int(ipc.VK_SPACE)
+	case ".":
+		return int(ipc.VK_OEM_PERIOD)
+	case ",":
+		return int(ipc.VK_OEM_COMMA)
+	case ";":
+		return int(ipc.VK_OEM_1)
+	case "'":
+		return int(ipc.VK_OEM_7)
+	case "/":
+		return int(ipc.VK_OEM_2)
+	case "\\":
+		return int(ipc.VK_OEM_5)
+	case "[":
+		return int(ipc.VK_OEM_4)
+	case "]":
+		return int(ipc.VK_OEM_6)
+	case "-":
+		return int(ipc.VK_OEM_MINUS)
+	case "=":
+		return int(ipc.VK_OEM_PLUS)
+	case "tab":
+		return 0x09
+	case "escape", "esc":
+		return 0x1B
+	}
+	return 0
 }

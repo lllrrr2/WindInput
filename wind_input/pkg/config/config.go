@@ -63,6 +63,10 @@ type HotkeyConfig struct {
 	SwitchEngine    string   `yaml:"switch_engine" json:"switch_engine"`
 	ToggleFullWidth string   `yaml:"toggle_full_width" json:"toggle_full_width"`
 	TogglePunct     string   `yaml:"toggle_punct" json:"toggle_punct"`
+	DeleteCandidate string   `yaml:"delete_candidate" json:"delete_candidate"` // 删除候选词: "ctrl+shift+number", "ctrl+number", "none"
+	PinCandidate    string   `yaml:"pin_candidate" json:"pin_candidate"`       // 置顶候选词: "ctrl+number", "ctrl+shift+number", "none"
+	ToggleToolbar   string   `yaml:"toggle_toolbar" json:"toggle_toolbar"`     // 显示/隐藏状态栏: 通用按键组合或 "none"
+	OpenSettings    string   `yaml:"open_settings" json:"open_settings"`       // 打开设置: 通用按键组合或 "none"
 }
 
 // UIConfig contains UI settings
@@ -148,6 +152,10 @@ func DefaultConfig() *Config {
 			SwitchEngine:    "ctrl+`",
 			ToggleFullWidth: "shift+space",
 			TogglePunct:     "ctrl+.",
+			DeleteCandidate: "ctrl+shift+number",
+			PinCandidate:    "ctrl+number",
+			ToggleToolbar:   "none",
+			OpenSettings:    "none",
 		},
 		UI: UIConfig{
 			FontSize:                18,

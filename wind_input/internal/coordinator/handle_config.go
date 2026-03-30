@@ -164,6 +164,11 @@ func (c *Coordinator) UpdateHotkeyConfig(hotkeyConfig *config.HotkeyConfig) {
 	}
 	c.hotkeysDirty = true // 标记缓存失效，下次获取时重新编译
 
+	// IME 已激活时重新注册全局快捷键，使新配置立即生效
+	if c.imeActivated && c.uiManager != nil {
+		c.uiManager.RegisterGlobalHotkeys(c.buildGlobalHotkeyEntries())
+	}
+
 	c.logger.Debug("Hotkey config updated",
 		"toggleModeKeys", hotkeyConfig.ToggleModeKeys,
 		"switchEngine", hotkeyConfig.SwitchEngine)

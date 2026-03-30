@@ -77,6 +77,16 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.handleTogglePunct()
 	}
 
+	// 候选词操作快捷键（仅在输入态且有候选时生效）
+	if c.config != nil && hasCtrl && len(c.candidates) > 0 && len(c.inputBuffer) > 0 {
+		if num := c.matchCandidateActionKey(c.config.Hotkeys.DeleteCandidate, hasCtrl, hasShift, data.KeyCode); num > 0 {
+			return c.handleDeleteCandidateByKey(num)
+		}
+		if num := c.matchCandidateActionKey(c.config.Hotkeys.PinCandidate, hasCtrl, hasShift, data.KeyCode); num > 0 {
+			return c.handlePinCandidateByKey(num)
+		}
+	}
+
 	// Handle mode toggle keys (lshift, rshift, lctrl, rctrl, capslock)
 	// IMPORTANT: This must be checked BEFORE the Ctrl/Alt pass-through check,
 	// because lctrl/rctrl are toggle mode keys but also set hasCtrl=true

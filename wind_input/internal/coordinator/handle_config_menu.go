@@ -327,6 +327,14 @@ func (c *Coordinator) buildGlobalHotkeyEntries() []ui.GlobalHotkeyEntry {
 	}
 	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.TogglePunct, id, "toggle_punct"); ok {
 		entries = append(entries, entry)
+		id++
+	}
+	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.ToggleToolbar, id, "toggle_toolbar"); ok {
+		entries = append(entries, entry)
+		id++
+	}
+	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.OpenSettings, id, "open_settings"); ok {
+		entries = append(entries, entry)
 	}
 	return entries
 }

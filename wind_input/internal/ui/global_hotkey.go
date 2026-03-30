@@ -1,6 +1,9 @@
 package ui
 
-import "log/slog"
+import (
+	"log/slog"
+	"strings"
+)
 
 var (
 	procRegisterHotKey   = user32.NewProc("RegisterHotKey")
@@ -55,10 +58,94 @@ func ParseHotkeyString(s string, id int, command string) (GlobalHotkeyEntry, boo
 		mods = hotkeyModControl | hotkeyModShift
 		vk = 0x20 // VK_SPACE
 	default:
-		return GlobalHotkeyEntry{}, false
+		// Generic parser: split by "+" and resolve modifiers + key
+		parts := strings.Split(strings.ToLower(s), "+")
+		for i, part := range parts {
+			switch part {
+			case "ctrl":
+				mods |= hotkeyModControl
+			case "shift":
+				mods |= hotkeyModShift
+			case "alt":
+				mods |= hotkeyModAlt
+			default:
+				if i == len(parts)-1 {
+					vk = resolveVK(part)
+				}
+			}
+		}
+		if vk == 0 {
+			return GlobalHotkeyEntry{}, false
+		}
 	}
 
 	return GlobalHotkeyEntry{ID: id, Modifiers: mods, VK: vk, Command: command}, true
+}
+
+// resolveVK converts a lowercase key name string to a Windows virtual key code (uint32).
+// Returns 0 if the name is not recognized.
+func resolveVK(name string) uint32 {
+	// Single letter a-z → 0x41-0x5A
+	if len(name) == 1 {
+		ch := name[0]
+		if ch >= 'a' && ch <= 'z' {
+			return uint32(ch-'a') + 0x41
+		}
+		// Digit 0-9 → 0x30-0x39
+		if ch >= '0' && ch <= '9' {
+			return uint32(ch-'0') + 0x30
+		}
+	}
+
+	// F1-F12 → 0x70-0x7B
+	if len(name) >= 2 && name[0] == 'f' {
+		rest := name[1:]
+		num := uint32(0)
+		valid := true
+		for _, c := range rest {
+			if c < '0' || c > '9' {
+				valid = false
+				break
+			}
+			num = num*10 + uint32(c-'0')
+		}
+		if valid && num >= 1 && num <= 12 {
+			return 0x70 + num - 1
+		}
+	}
+
+	// Special keys
+	switch name {
+	case "`":
+		return 0xC0 // VK_OEM_3
+	case "space":
+		return 0x20 // VK_SPACE
+	case ".":
+		return 0xBE // VK_OEM_PERIOD
+	case ",":
+		return 0xBC // VK_OEM_COMMA
+	case ";":
+		return 0xBA // VK_OEM_1
+	case "'":
+		return 0xDE // VK_OEM_7
+	case "/":
+		return 0xBF // VK_OEM_2
+	case "\\":
+		return 0xDC // VK_OEM_5
+	case "[":
+		return 0xDB // VK_OEM_4
+	case "]":
+		return 0xDD // VK_OEM_6
+	case "-":
+		return 0xBD // VK_OEM_MINUS
+	case "=":
+		return 0xBB // VK_OEM_PLUS
+	case "tab":
+		return 0x09
+	case "escape", "esc":
+		return 0x1B
+	}
+	return 0
 }
 
 // globalHotkeyState tracks registered hotkeys on the UI thread

@@ -62,7 +62,8 @@ if ($SettingOnly) {
         } else {
             $wailsJson.info | Add-Member -NotePropertyName "productVersion" -NotePropertyValue $VersionCore -Force
         }
-        $wailsJson | ConvertTo-Json -Depth 10 | Set-Content $wailsJsonPath -Encoding UTF8
+        $jsonText = $wailsJson | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($wailsJsonPath, $jsonText, (New-Object System.Text.UTF8Encoding $false))
     }
 
     Push-Location (Join-Path $ScriptDir "wind_setting")
@@ -170,7 +171,8 @@ if ($WailsMode -eq "skip") {
             } else {
                 $wailsJson.info | Add-Member -NotePropertyName "productVersion" -NotePropertyValue $VersionCore -Force
             }
-            $wailsJson | ConvertTo-Json -Depth 10 | Set-Content $wailsJsonPath -Encoding UTF8
+            $jsonText = $wailsJson | ConvertTo-Json -Depth 10
+            [System.IO.File]::WriteAllText($wailsJsonPath, $jsonText, (New-Object System.Text.UTF8Encoding $false))
         }
 
         if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {

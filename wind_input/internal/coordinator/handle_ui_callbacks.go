@@ -62,6 +62,10 @@ func (c *Coordinator) handleGlobalHotkeyCommand(command string) {
 		c.handleToolbarToggleWidth()
 	case "toggle_punct":
 		c.handleToolbarTogglePunct()
+	case "toggle_toolbar":
+		c.HandleMenuCommand("toggle_toolbar")
+	case "open_settings":
+		c.HandleMenuCommand("open_settings")
 	}
 }
 

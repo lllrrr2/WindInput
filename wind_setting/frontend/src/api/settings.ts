@@ -74,6 +74,10 @@ export interface HotkeyConfig {
   switch_engine: string;
   toggle_full_width: string;
   toggle_punct: string;
+  delete_candidate: string; // "ctrl+shift+number", "ctrl+number", "none"
+  pin_candidate: string; // "ctrl+number", "ctrl+shift+number", "none"
+  toggle_toolbar: string; // 通用按键组合或 "none"
+  open_settings: string; // 通用按键组合或 "none"
 }
 
 // UI配置
@@ -305,6 +309,10 @@ export function getDefaultConfig(): Config {
       switch_engine: "ctrl+`",
       toggle_full_width: "shift+space",
       toggle_punct: "ctrl+.",
+      delete_candidate: "ctrl+shift+number",
+      pin_candidate: "ctrl+number",
+      toggle_toolbar: "none",
+      open_settings: "none",
     },
     ui: {
       font_size: 18,
