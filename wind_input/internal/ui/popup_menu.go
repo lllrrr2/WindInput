@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/huanfeng/wind_input/pkg/theme"
 	"golang.org/x/sys/windows"
@@ -86,14 +87,94 @@ const (
 )
 
 var (
-	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
+	procGetAsyncKeyState    = user32.NewProc("GetAsyncKeyState")
+	procSetWindowsHookExW   = user32.NewProc("SetWindowsHookExW")
+	procUnhookWindowsHookEx = user32.NewProc("UnhookWindowsHookEx")
+	procCallNextHookEx      = user32.NewProc("CallNextHookEx")
+	procRtlMoveMemory       = kernel32.NewProc("RtlMoveMemory")
 )
 
 // VK_LBUTTON is the virtual key code for left mouse button
 const VK_LBUTTON = 0x01
 
+// Keyboard constants for menu navigation
+const (
+	WH_KEYBOARD_LL = 13
+
+	WM_KEYDOWN = 0x0100
+
+	VK_RETURN = 0x0D
+	VK_ESCAPE = 0x1B
+	VK_LEFT   = 0x25
+	VK_UP     = 0x26
+	VK_RIGHT  = 0x27
+	VK_DOWN   = 0x28
+)
+
 // Global popup menu registry
 var popupMenus = NewWindowRegistry[PopupMenu]()
+
+// Global keyboard hook state for popup menu navigation
+var (
+	menuKeyboardHook   uintptr
+	menuKeyboardHookCb uintptr
+	activeRootMenu     *PopupMenu
+
+	// Keyboard navigation mode: suppresses spurious mouse events until mouse actually moves.
+	// When the user navigates the menu via keyboard, Windows may generate phantom
+	// WM_MOUSEMOVE/WM_MOUSELEAVE events (e.g., when a submenu window is shown/hidden).
+	// We record the cursor position on the first key press and ignore mouse events
+	// until the cursor physically moves to a different position.
+	menuKbNavActive bool
+	menuKbNavMouseX int32
+	menuKbNavMouseY int32
+)
+
+func init() {
+	menuKeyboardHookCb = syscall.NewCallback(menuKeyboardHookProc)
+}
+
+// menuKeyboardHookProc is the low-level keyboard hook callback.
+// It intercepts keyboard input when a popup menu is visible, enabling
+// arrow key navigation, Enter/Escape, and shortcut key activation.
+func menuKeyboardHookProc(nCode, wParam, lParam uintptr) uintptr {
+	if int32(nCode) >= 0 && activeRootMenu != nil && wParam == WM_KEYDOWN {
+		// Read vkCode from KBDLLHOOKSTRUCT via RtlMoveMemory to satisfy go vet.
+		// lParam points to a Windows-allocated struct; its first DWORD is vkCode.
+		var vkCode uint32
+		procRtlMoveMemory.Call(uintptr(unsafe.Pointer(&vkCode)), lParam, 4)
+		if activeRootMenu.handleKeyDown(vkCode) {
+			return 1 // Key consumed, don't pass to next hook
+		}
+	}
+	ret, _, _ := procCallNextHookEx.Call(menuKeyboardHook, uintptr(nCode), wParam, lParam)
+	return ret
+}
+
+// installMenuKeyboardHook installs a low-level keyboard hook for menu navigation.
+// Must be called from the UI thread (which has a message loop).
+func installMenuKeyboardHook(root *PopupMenu) {
+	if menuKeyboardHook != 0 {
+		return
+	}
+	activeRootMenu = root
+	menuKeyboardHook, _, _ = procSetWindowsHookExW.Call(
+		WH_KEYBOARD_LL,
+		menuKeyboardHookCb,
+		0, // hMod: 0 for low-level hooks
+		0, // dwThreadId: 0 for all threads
+	)
+}
+
+// uninstallMenuKeyboardHook removes the low-level keyboard hook.
+func uninstallMenuKeyboardHook() {
+	if menuKeyboardHook != 0 {
+		procUnhookWindowsHookEx.Call(menuKeyboardHook)
+		menuKeyboardHook = 0
+	}
+	activeRootMenu = nil
+	menuKbNavActive = false
+}
 
 // popupMenuWndProc is the window procedure for popup menu
 func popupMenuWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
@@ -530,13 +611,16 @@ func (m *PopupMenu) Show(items []MenuItem, x, y int, callback PopupMenuCallback)
 	isChild := m.parentMenu != nil
 	m.mu.Unlock()
 
-	// Only root menu captures mouse and starts timer
+	// Only root menu captures mouse, starts timer, and installs keyboard hook
 	if !isChild {
 		// Capture mouse to detect clicks outside the menu
 		procSetCapture.Call(uintptr(m.hwnd))
 
 		// Start timer to check mouse state (backup for cross-process click detection)
 		procSetTimer.Call(uintptr(m.hwnd), MENU_CHECK_TIMER_ID, MENU_CHECK_INTERVAL, 0)
+
+		// Install keyboard hook for arrow keys, Enter, Escape, and shortcut keys
+		installMenuKeyboardHook(m)
 	}
 
 	// Start tracking mouse leave
@@ -558,9 +642,10 @@ func (m *PopupMenu) Hide() {
 		// Stop timers
 		procKillTimer.Call(uintptr(m.hwnd), SUBMENU_TIMER_ID)
 		if !isChild {
-			// Only root menu releases capture and stops check timer
+			// Only root menu releases capture, stops check timer, and removes keyboard hook
 			procKillTimer.Call(uintptr(m.hwnd), MENU_CHECK_TIMER_ID)
 			procReleaseCapture.Call()
+			uninstallMenuKeyboardHook()
 		}
 		procShowWindow.Call(uintptr(m.hwnd), SW_HIDE)
 	}
