@@ -42,7 +42,7 @@ func navigateFilePath() string {
 // ensureSingleInstance checks if another instance is already running.
 // If another instance exists, sends the startPage via event+file, activates
 // the existing window, and returns false.
-func ensureSingleInstance(startPage string) (windows.Handle, bool) {
+func ensureSingleInstance(startPage string, addWordParams AddWordParams) (windows.Handle, bool) {
 	name, _ := windows.UTF16PtrFromString(mutexName)
 	handle, err := windows.CreateMutex(nil, false, name)
 	if err == windows.ERROR_ALREADY_EXISTS {
@@ -50,7 +50,13 @@ func ensureSingleInstance(startPage string) (windows.Handle, bool) {
 			windows.CloseHandle(handle)
 		}
 		if startPage != "" {
-			sendPageToExisting(startPage)
+			// 加词模式：发送 "add-word|text|code|schema" 格式
+			if startPage == "add-word" {
+				msg := "add-word|" + addWordParams.Text + "|" + addWordParams.Code + "|" + addWordParams.SchemaID
+				sendPageToExisting(msg)
+			} else {
+				sendPageToExisting(startPage)
+			}
 		}
 		activateExistingWindow()
 		return 0, false
@@ -121,11 +127,27 @@ func startIPCListener(ctx context.Context) {
 				}
 				os.Remove(tmpFile)
 
-				page := strings.TrimSpace(string(data))
-				log.Printf("[singleton] 收到导航请求: %q", page)
-				if page != "" && validPages[page] {
-					wailsRuntime.EventsEmit(ctx, "navigate", page)
-					log.Printf("[singleton] 已发送导航事件到前端: %s", page)
+				raw := strings.TrimSpace(string(data))
+				log.Printf("[singleton] 收到导航请求: %q", raw)
+
+				// 支持加词参数格式: "add-word|text|code|schema"
+				if strings.HasPrefix(raw, "add-word|") {
+					parts := strings.SplitN(raw, "|", 4)
+					params := map[string]string{"page": "add-word"}
+					if len(parts) > 1 {
+						params["text"] = parts[1]
+					}
+					if len(parts) > 2 {
+						params["code"] = parts[2]
+					}
+					if len(parts) > 3 {
+						params["schema_id"] = parts[3]
+					}
+					wailsRuntime.EventsEmit(ctx, "navigate-addword", params)
+					log.Printf("[singleton] 已发送加词导航事件到前端")
+				} else if raw != "" && validPages[raw] {
+					wailsRuntime.EventsEmit(ctx, "navigate", raw)
+					log.Printf("[singleton] 已发送导航事件到前端: %s", raw)
 				}
 			}
 		}

@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { EventsOn } from "../wailsjs/runtime/runtime";
+import {
+  EventsOn,
+  Quit,
+  Show,
+  WindowSetAlwaysOnTop,
+} from "../wailsjs/runtime/runtime";
 import * as api from "./api/settings";
 import * as wailsApi from "./api/wails";
 import type { Config, Status, EngineInfo, TSFLogConfig } from "./api/settings";
@@ -14,6 +19,8 @@ import AppearancePage from "./pages/AppearancePage.vue";
 import DictionaryPage from "./pages/DictionaryPage.vue";
 import AdvancedPage from "./pages/AdvancedPage.vue";
 import AboutPage from "./pages/AboutPage.vue";
+import AddWordPage from "./pages/AddWordPage.vue";
+import type { AddWordParams } from "./api/wails";
 
 // 检测是否在 Wails 环境中
 const isWailsEnv = computed(() => {
@@ -28,6 +35,9 @@ const error = ref("");
 const connected = ref(false);
 const activeTab = ref("general");
 const saving = ref(false);
+const addWordParams = ref<AddWordParams | null>(null);
+const showAddWordDialog = ref(false);
+const isStandaloneAddWord = ref(false); // 独立加词窗口模式（无设置主界面）
 const saveMessage = ref("");
 const saveMessageType = ref<"success" | "error">("success");
 const hotkeyConflicts = ref<string[]>([]);
@@ -241,6 +251,19 @@ function hasUnsavedChanges(): boolean {
   );
 }
 
+// 关闭加词对话框
+function handleAddWordClose() {
+  showAddWordDialog.value = false;
+  // 独立窗口模式下关闭 = 退出应用
+  if (isStandaloneAddWord.value) {
+    try {
+      Quit();
+    } catch {
+      // 忽略
+    }
+  }
+}
+
 // 重新加载配置（丢弃本地修改，从实际文件重新读取）
 async function handleReloadConfig() {
   if (hasUnsavedChanges()) {
@@ -446,8 +469,23 @@ onMounted(async () => {
 
     try {
       const page = await wailsApi.getStartPage();
-      if (page) {
+      if (page && page !== "add-word") {
         activeTab.value = page;
+      }
+      // 加词模式：作为独立窗口打开
+      if (page === "add-word") {
+        isStandaloneAddWord.value = true;
+        try {
+          addWordParams.value = await wailsApi.getAddWordParams();
+        } catch {
+          addWordParams.value = { text: "", code: "", schema_id: "" };
+        }
+        showAddWordDialog.value = true;
+        // 强制窗口前置（从后台进程启动时 Windows 不会自动给予前台权限）
+        try {
+          WindowSetAlwaysOnTop(true);
+          setTimeout(() => WindowSetAlwaysOnTop(false), 300);
+        } catch {}
       }
     } catch (e) {
       // 忽略错误，使用默认页面
@@ -459,13 +497,35 @@ onMounted(async () => {
         activeTab.value = page;
       }
     });
+
+    // 监听加词导航事件（从已有实例的 IPC 传来）
+    EventsOn("navigate-addword", (params: any) => {
+      addWordParams.value = {
+        text: params.text || "",
+        code: params.code || "",
+        schema_id: params.schema_id || "",
+      };
+      showAddWordDialog.value = true;
+      // 将窗口拉到最前
+      try { Show(); } catch {}
+    });
   }
 });
 </script>
 
 <template>
   <div class="app">
-    <aside class="sidebar">
+    <!-- 加词对话框（模态浮层，可在任何页面上弹出） -->
+    <AddWordPage
+      v-if="showAddWordDialog"
+      :initialText="addWordParams?.text"
+      :initialCode="addWordParams?.code"
+      :initialSchema="addWordParams?.schema_id"
+      :standalone="isStandaloneAddWord"
+      @close="handleAddWordClose"
+    />
+
+    <aside v-show="!isStandaloneAddWord" class="sidebar">
       <div class="logo">
         <img class="logo-icon" :src="appIconUrl" alt="清风输入法" />
         <div class="logo-title">
@@ -513,7 +573,7 @@ onMounted(async () => {
       </div>
     </aside>
 
-    <main class="main">
+    <main v-show="!isStandaloneAddWord" class="main">
       <div v-if="loading" class="loading">
         <div class="spinner"></div>
         <p>加载中...</p>

@@ -448,6 +448,16 @@ export async function getStartPage(): Promise<string> {
   return App.GetStartPage();
 }
 
+// 加词参数
+export interface AddWordParams {
+  text: string;
+  code: string;
+  schema_id: string;
+}
+export async function getAddWordParams(): Promise<AddWordParams> {
+  return App.GetAddWordParams();
+}
+
 // 版本号
 export async function getVersion(): Promise<string> {
   return App.GetVersion();

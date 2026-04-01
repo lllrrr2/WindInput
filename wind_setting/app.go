@@ -17,6 +17,9 @@ type App struct {
 	// 启动页面（通过命令行参数指定）
 	startPage string
 
+	// 加词对话框参数
+	addWordParams AddWordParams
+
 	// 编辑器
 	configEditor       *editor.ConfigEditor
 	phraseEditor       *editor.PhraseEditor // 用户短语编辑器
@@ -49,6 +52,11 @@ func NewApp() *App {
 // GetStartPage 获取启动页面（供前端调用）
 func (a *App) GetStartPage() string {
 	return a.startPage
+}
+
+// GetAddWordParams 获取加词对话框参数（供前端调用）
+func (a *App) GetAddWordParams() AddWordParams {
+	return a.addWordParams
 }
 
 // GetVersion 获取应用版本号（供前端调用）

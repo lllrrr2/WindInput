@@ -131,9 +131,33 @@ func (c *Coordinator) confirmAddWord() *bridge.KeyEventResult {
 
 // openAddWordDialog 打开加词对话框
 func (c *Coordinator) openAddWordDialog() *bridge.KeyEventResult {
+	word := ""
+	code := ""
+	schemaID := ""
+	if c.addWordLen >= addWordMinLen && len(c.addWordChars) >= addWordMinLen {
+		word = string(c.addWordChars[len(c.addWordChars)-c.addWordLen:])
+		code = c.addWordCode
+	}
+	if c.engineMgr != nil {
+		schemaID = c.engineMgr.GetCurrentSchemaID()
+	}
+
 	c.exitAddWordMode()
+
 	if c.uiManager != nil {
-		c.uiManager.OpenSettingsWithPage("add-word")
+		// 构造参数：--page=add-word --text=xxx --code=xxx --schema=xxx
+		// ShellExecute 会自动按空格拆分为独立的命令行参数
+		page := "add-word"
+		if word != "" {
+			page += " --text=" + word
+		}
+		if code != "" {
+			page += " --code=" + code
+		}
+		if schemaID != "" {
+			page += " --schema=" + schemaID
+		}
+		c.uiManager.OpenSettingsWithPage(page)
 	}
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
 }
@@ -214,7 +238,7 @@ func (c *Coordinator) showAddWordPreview() {
 
 	if len(c.addWordChars) < addWordMinLen || c.addWordLen < addWordMinLen {
 		candidates = []ui.Candidate{
-			{Text: "[加词] 无最近输入", Index: -1},
+			{Text: "[快捷加词] 无最近输入", Index: -1},
 			{Index: -1, Comment: "请先输入文字后再使用  Esc关闭"},
 		}
 	} else {
@@ -224,8 +248,8 @@ func (c *Coordinator) showAddWordPreview() {
 			comment = "编码: " + c.addWordCode
 		}
 		candidates = []ui.Candidate{
-			{Text: "[加词] " + word, Index: -1, Comment: comment},
-			{Index: -1, Comment: "↑↓调整长度  Enter添加  Esc取消"},
+			{Text: "[快捷加词] " + word, Index: -1, Comment: comment},
+			{Index: -1, Comment: "↑↓调整长度  Enter添加  Ctrl+Enter编辑  Esc取消"},
 		}
 	}
 
