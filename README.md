@@ -9,22 +9,28 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0--alpha-blue" alt="Version">
+  <img src="https://img.shields.io/github/v/release/huanfeng/WindInput?include_prereleases&label=version&color=blue" alt="Version">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-brightgreen" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
 > **⚠️ 早期开发阶段**
 >
-> 本项目目前处于 alpha 阶段（v0.1.0-alpha），功能和配置格式可能随版本更新发生变化。
-> 升级后如遇到异常，请尝试删除配置目录 `%APPDATA%\WindInput\` 以恢复默认配置。
+> * 本项目目前处于 alpha 阶段，功能和配置格式可能随版本更新发生变化。\
+> * 升级后如遇到异常，请尝试删除配置目录 `%APPDATA%\WindInput\` 以恢复默认配置。
+
+> **⚠️ 已知问题**
+>
+> * 输入法天然需要更高权限，当前没有数字签名，所以安装时可能会被 Windows 安全中心拦截。\
+> * 本输入法采用独立窗口渲染模式，在没有数字签名的情况下，无法申请更高的显示层级，所以无法显示在开始菜单之上，目前已通过跨进程的宿主渲染方式优化，但在开始菜单上的候选输入框不支持鼠标操作。
 
 ## 特性
 
 - **专为五笔设计** — 支持五笔 86、五笔拼音混输，同时提供全拼和双拼输入
 - **智能候选** — 精准匹配，快速上屏
 - **高 DPI 适配** — 完美支持高分辨率和多显示器环境，界面清晰锐利
-- **快捷切换** — Shift/Ctrl/CapsLock 中英文切换可配置，Shift + 字母临时英文输入
+- **亮暗主题** — 支持主题的亮色和暗色模式，并且可以随系统自动切换
+- **状态提示** — 输入光标处会提示当前的中英文、标点及输入方案状态
 - **方案驱动** — 通过 YAML 方案文件灵活定义输入行为
 - **图形设置** — 内置设置工具，所有配置可视化调整，修改即时生效
 - **轻量运行** — 资源占用低，启动迅速
@@ -33,7 +39,7 @@
 
 ### 使用安装包（推荐）
 
-从 [Releases](../../releases) 页面下载最新的安装包（`清风输入法-x.x.x-Setup.exe`），双击运行即可。
+从 [Releases](../../releases) 页面下载最新的安装包（`WindInput-x.x.x-Setup.exe`），双击运行即可。
 
 安装完成后，按 `Win + Space` 或 `Ctrl + Shift` 切换到清风输入法。
 
@@ -55,15 +61,15 @@
 配置文件位于 `%APPDATA%\WindInput\config.yaml`，也可通过设置工具修改：
 
 ```yaml
-engine:
-  type: pinyin              # pinyin / wubi
+schema:
+  active: "wubi86"            # 当前输入方案：wubi86 / wubi86_pinyin
 
 hotkeys:
   toggle_mode_keys: [lshift, rshift]   # 中英切换键
 
 ui:
   font_size: 18             # 候选窗字体大小
-  candidates_per_page: 9    # 每页候选数量
+  candidates_per_page: 7    # 每页候选数量
 ```
 
 完整配置项请参阅设置工具中的说明。
