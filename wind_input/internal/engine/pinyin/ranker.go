@@ -291,7 +291,8 @@ func (s *Scorer) Score(f CandidateFeatures) float64 {
 // ============================================================
 
 // rimeMaxDictWeight 词库最大权重（归一化基准）
-const rimeMaxDictWeight = 1000000.0
+// 与 dict.NormalizedWeightMax (10000) 对齐，所有词库权重在 WDB 构建时已归一化到 [0, 10000]
+const rimeMaxDictWeight = 10000.0
 
 // NormalizeWeight 将词库整数 weight 归一化到 [-15, 0] 区间
 func NormalizeWeight(dictWeight float64) float64 {
