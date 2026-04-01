@@ -212,10 +212,13 @@ func (ud *UserDict) Update(code string, text string, newWeight int) error {
 	return fmt.Errorf("word not found: %s", text)
 }
 
-// Load 从文件加载
+// Load 从文件加载（会清空已有数据后重新加载）
 func (ud *UserDict) Load() error {
 	ud.mu.Lock()
 	defer ud.mu.Unlock()
+
+	// 清空已有数据，避免重复加载导致条目膨胀
+	ud.entries = make(map[string][]UserWord)
 
 	file, err := os.Open(ud.filePath)
 	if err != nil {
@@ -269,12 +272,25 @@ func (ud *UserDict) Load() error {
 			}
 		}
 
-		ud.entries[code] = append(ud.entries[code], UserWord{
-			Text:      text,
-			Weight:    weight,
-			Count:     count,
-			CreatedAt: createdAt,
-		})
+		// 去重：同一编码下相同文本只保留一条（取较高权重）
+		duplicate := false
+		for i, w := range ud.entries[code] {
+			if w.Text == text {
+				if weight > w.Weight {
+					ud.entries[code][i].Weight = weight
+				}
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			ud.entries[code] = append(ud.entries[code], UserWord{
+				Text:      text,
+				Weight:    weight,
+				Count:     count,
+				CreatedAt: createdAt,
+			})
+		}
 	}
 
 	return scanner.Err()

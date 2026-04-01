@@ -25,6 +25,7 @@ func LoadUserDictFrom(path string) (*UserDictData, error) {
 	defer file.Close()
 
 	var words []UserWord
+	seen := make(map[string]int) // "code||text" -> index in words，用于去重
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -60,6 +61,16 @@ func LoadUserDictFrom(path string) (*UserDictData, error) {
 			createdAt = time.Now()
 		}
 
+		// 去重：同一 code+text 只保留一条（取较高权重）
+		key := code + "||" + text
+		if idx, ok := seen[key]; ok {
+			if weight > words[idx].Weight {
+				words[idx].Weight = weight
+			}
+			continue
+		}
+
+		seen[key] = len(words)
 		words = append(words, UserWord{
 			Code:      code,
 			Text:      text,
