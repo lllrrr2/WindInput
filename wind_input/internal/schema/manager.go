@@ -18,6 +18,9 @@ type SchemaManager struct {
 
 // NewSchemaManager 创建方案管理器
 func NewSchemaManager(exeDir, dataDir string, logger *slog.Logger) *SchemaManager {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &SchemaManager{
 		schemas: make(map[string]*Schema),
 		exeDir:  exeDir,

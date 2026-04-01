@@ -33,7 +33,7 @@ func loadRealDict(t *testing.T) *dict.CompositeDict {
 	t.Helper()
 	dictDir := getRealDictDir(t)
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(dictDir); err != nil {
 		t.Fatalf("加载真实词库失败: %v", err)
 	}
@@ -45,7 +45,7 @@ func loadRealDict(t *testing.T) *dict.CompositeDict {
 func loadRealEngine(t *testing.T) *Engine {
 	t.Helper()
 	d := loadRealDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	dictDir := getRealDictDir(t)
 	unigramPath := filepath.Join(dictDir, "unigram.txt")
@@ -62,7 +62,7 @@ func loadRealEngine(t *testing.T) *Engine {
 // TestRealDict_IncrementalInput_nizhibuzhidao 使用真实词库逐字符输入
 func TestRealDict_IncrementalInput_nizhibuzhidao(t *testing.T) {
 	d := loadRealDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	input := "nizhibuzhidao"
 	for i := 1; i <= len(input); i++ {
@@ -82,7 +82,7 @@ func TestRealDict_IncrementalInput_nizhibuzhidao(t *testing.T) {
 // TestRealDict_IncrementalInput_wobuzhidao 使用真实词库逐字符输入
 func TestRealDict_IncrementalInput_wobuzhidao(t *testing.T) {
 	d := loadRealDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	input := "wobuzhidao"
 	for i := 1; i <= len(input); i++ {
@@ -102,7 +102,7 @@ func TestRealDict_IncrementalInput_wobuzhidao(t *testing.T) {
 // TestRealDict_KeyAssertions 使用真实词库的关键断言
 func TestRealDict_KeyAssertions(t *testing.T) {
 	d := loadRealDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input        string

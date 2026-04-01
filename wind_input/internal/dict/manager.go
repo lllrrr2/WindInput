@@ -46,6 +46,9 @@ type DictManager struct {
 // dataDir: 用户数据目录（%APPDATA%\WindInput）
 // systemDir: 程序数据目录（exeDir/data，存放 system.phrases.yaml 等）
 func NewDictManager(dataDir, systemDir string, logger *slog.Logger) *DictManager {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &DictManager{
 		logger:        logger,
 		dataDir:       dataDir,

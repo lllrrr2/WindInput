@@ -9,7 +9,7 @@ import (
 func TestDictManager_SwitchSchema(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir, tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir, nil)
 	if err := dm.Initialize(); err != nil {
 		t.Fatalf("Initialize 失败: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestDictManager_SwitchSchema(t *testing.T) {
 func TestDictManager_ShadowIsolation(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir, tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir, nil)
 	dm.Initialize()
 	defer dm.Close()
 
@@ -88,7 +88,7 @@ func TestDictManager_ShadowIsolation(t *testing.T) {
 func TestDictManager_SameSchemaNoOp(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir, tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir, nil)
 	dm.Initialize()
 	defer dm.Close()
 
@@ -107,7 +107,7 @@ func TestDictManager_SaveAndReload(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 第一次：创建并保存
-	dm := NewDictManager(tmpDir, tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir, nil)
 	dm.Initialize()
 	dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	dm.AddUserWord("test", "保存测试", 200)
@@ -126,7 +126,7 @@ func TestDictManager_SaveAndReload(t *testing.T) {
 	}
 
 	// 第二次：重新加载
-	dm2 := NewDictManager(tmpDir, tmpDir)
+	dm2 := NewDictManager(tmpDir, tmpDir, nil)
 	dm2.Initialize()
 	dm2.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	defer dm2.Close()
@@ -144,7 +144,7 @@ func TestDictManager_SaveAndReload(t *testing.T) {
 func TestDictManager_SetActiveEngine_Compat(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	dm := NewDictManager(tmpDir, tmpDir)
+	dm := NewDictManager(tmpDir, tmpDir, nil)
 	dm.Initialize()
 	defer dm.Close()
 

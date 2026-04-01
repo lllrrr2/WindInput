@@ -40,7 +40,7 @@ sort: by_weight
 func TestPinyinDictLoad(t *testing.T) {
 	tmpDir := createTestRimeDir(t)
 
-	d := NewPinyinDict()
+	d := NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestPinyinDictRealDict(t *testing.T) {
 		t.Skip("跳过测试：无法找到 Rime 词库目录")
 	}
 
-	d := NewPinyinDict()
+	d := NewPinyinDict(nil)
 	if err := d.LoadRimeDir(dictPath); err != nil {
 		t.Skipf("跳过测试：无法加载词库 %s: %v", dictPath, err)
 	}
@@ -162,7 +162,7 @@ func TestCompositeDictWithPinyinLayer(t *testing.T) {
 		t.Skip("跳过测试：无法找到 Rime 词库目录")
 	}
 
-	pinyinDict := NewPinyinDict()
+	pinyinDict := NewPinyinDict(nil)
 	if err := pinyinDict.LoadRimeDir(dictPath); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestCompositeDictWithPinyinLayer(t *testing.T) {
 func TestPinyinDictLayer(t *testing.T) {
 	tmpDir := createTestRimeDir(t)
 
-	d := NewPinyinDict()
+	d := NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载失败: %v", err)
 	}

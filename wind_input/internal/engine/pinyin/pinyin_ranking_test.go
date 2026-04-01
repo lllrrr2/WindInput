@@ -66,7 +66,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -91,7 +91,7 @@ func findCandidate(result *PinyinConvertResult, text string) (int, bool) {
 
 func TestFullPinyinBeatsAbbrev_dazhongwu(t *testing.T) {
 	d := createExtendedTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("dazhongwu", 50)
 
@@ -130,7 +130,7 @@ func TestFullPinyinBeatsAbbrev_dazhongwu(t *testing.T) {
 
 func TestPartialSuffixKeepsExactMatch_wobuzhidaog(t *testing.T) {
 	d := createExtendedTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 先验证无 partial 时的基线
 	resultBase := engine.ConvertEx("wobuzhidao", 50)
@@ -198,7 +198,7 @@ func TestPartialSuffixKeepsExactMatch_wobuzhidaog(t *testing.T) {
 
 func TestPartialSuffixKeepsExactMatch_nihaozh(t *testing.T) {
 	d := createExtendedTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("nihaozh", 50)
 
@@ -236,7 +236,7 @@ func TestPartialSuffixKeepsExactMatch_nihaozh(t *testing.T) {
 
 func TestRemainingBufferAfterPartialCommit(t *testing.T) {
 	d := createExtendedTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 模拟选了 "我" 后的剩余输入
 	remaining := "buzhidaogaid"
@@ -296,7 +296,7 @@ func TestRemainingBufferAfterPartialCommit(t *testing.T) {
 
 func TestPureAbbrevStillWorks(t *testing.T) {
 	d := createExtendedTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("bzd", 30)
 
@@ -319,7 +319,7 @@ func TestPureAbbrevStillWorks(t *testing.T) {
 
 func TestConsumedLengthWithPartial(t *testing.T) {
 	d := createExtendedTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input    string

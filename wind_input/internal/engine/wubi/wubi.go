@@ -56,6 +56,9 @@ func NewEngine(config *Config, logger *slog.Logger) *Engine {
 	if config == nil {
 		config = DefaultConfig()
 	}
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Engine{
 		config: config,
 		logger: logger,

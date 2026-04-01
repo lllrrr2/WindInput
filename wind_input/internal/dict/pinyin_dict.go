@@ -28,6 +28,9 @@ type PinyinDict struct {
 
 // NewPinyinDict 创建拼音词库
 func NewPinyinDict(logger *slog.Logger) *PinyinDict {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &PinyinDict{logger: logger}
 }
 

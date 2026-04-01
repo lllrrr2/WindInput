@@ -51,7 +51,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -62,7 +62,7 @@ sort: by_weight
 // 检查每一步的第一候选和 preedit 是否合理。
 func TestIncrementalInput_nishuobushuo(t *testing.T) {
 	d := createDictForIncrementalTest(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	input := "nishuobushuo"
 	for i := 1; i <= len(input); i++ {
@@ -96,7 +96,7 @@ func TestIncrementalInput_nishuobushuo(t *testing.T) {
 // TestIncrementalInput_KeyAssertions 针对关键节点的断言
 func TestIncrementalInput_KeyAssertions(t *testing.T) {
 	d := createDictForIncrementalTest(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input       string

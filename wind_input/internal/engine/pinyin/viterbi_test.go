@@ -44,7 +44,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestViterbiLongInput(t *testing.T) {
 
 func TestViterbiEmpty(t *testing.T) {
 	st := NewSyllableTrie()
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	lattice := BuildLattice("xyz", st, wrapInCompositeDict(d), nil)
 
 	result := ViterbiDecode(lattice, nil)

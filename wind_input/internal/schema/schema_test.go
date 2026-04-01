@@ -222,7 +222,7 @@ func TestSchemaManager(t *testing.T) {
 	writeTestSchema(t, exeSchemaDir, "wubi86.schema.yaml", "wubi86", "codetable")
 	writeTestSchema(t, exeSchemaDir, "pinyin.schema.yaml", "pinyin", "pinyin")
 
-	sm := NewSchemaManager(exeDir, dataDir)
+	sm := NewSchemaManager(exeDir, dataDir, nil)
 	if err := sm.LoadSchemas(); err != nil {
 		t.Fatalf("LoadSchemas 失败: %v", err)
 	}

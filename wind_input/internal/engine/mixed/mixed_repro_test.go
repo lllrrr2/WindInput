@@ -29,7 +29,7 @@ func newRealMixedEngine(t *testing.T) *Engine {
 
 	dictRoot := getBuiltDictRoot(t)
 
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(nil)
 	if err := pinyinDict.LoadRimeDir(filepath.Join(dictRoot, "pinyin", "cn_dicts")); err != nil {
 		t.Fatalf("load pinyin dict: %v", err)
 	}
@@ -40,7 +40,7 @@ func newRealMixedEngine(t *testing.T) *Engine {
 		FilterMode:      "smart",
 		UseSmartCompose: true,
 		ShowWubiHint:    true,
-	})
+	}, nil)
 	if err := pinyinEngine.LoadUnigram(filepath.Join(dictRoot, "pinyin", "unigram.txt")); err != nil {
 		t.Fatalf("load unigram: %v", err)
 	}
@@ -49,7 +49,7 @@ func newRealMixedEngine(t *testing.T) *Engine {
 		MinPinyinLength: 2,
 		WubiWeightBoost: 10000000,
 		ShowSourceHint:  true,
-	})
+	}, nil)
 }
 
 func hasCandidateText(cands []candidate.Candidate, want string) bool {

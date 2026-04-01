@@ -15,7 +15,7 @@ func newTestEngineWithFreq(t *testing.T, protectTopN int) (*Engine, *dict.UserDi
 		ProtectTopN:     protectTopN,
 		DedupCandidates: true,
 	}
-	engine := NewEngine(config)
+	engine := NewEngine(config, nil)
 
 	// 加载真实码表（如果可用）
 	dictPath := getTestDictPath(t)
@@ -29,7 +29,7 @@ func newTestEngineWithFreq(t *testing.T, protectTopN int) (*Engine, *dict.UserDi
 
 	// 创建 DictManager 并通过 SwitchSchema 初始化 UserDict
 	tmpDir := t.TempDir()
-	dm := dict.NewDictManager(tmpDir, tmpDir)
+	dm := dict.NewDictManager(tmpDir, tmpDir, nil)
 	dm.SwitchSchema("test", "test.shadow.yaml", "test.userwords.txt")
 	engine.SetDictManager(dm)
 
@@ -46,7 +46,7 @@ func TestWubiOnCandidateSelected_DisabledByDefault(t *testing.T) {
 		MaxCodeLength:  4,
 		EnableUserFreq: false, // 关闭
 	}
-	engine := NewEngine(config)
+	engine := NewEngine(config, nil)
 
 	// 不应 panic
 	engine.OnCandidateSelected("sf", "树发")

@@ -63,6 +63,9 @@ func NewEngine(wubiEng *wubi.Engine, pinyinEng *pinyin.Engine, config *Config, l
 	if config == nil {
 		config = DefaultConfig()
 	}
+	if logger == nil {
+		logger = slog.Default()
+	}
 	maxCodeLen := 4
 	if wubiEng != nil && wubiEng.GetConfig() != nil {
 		maxCodeLen = wubiEng.GetConfig().MaxCodeLength

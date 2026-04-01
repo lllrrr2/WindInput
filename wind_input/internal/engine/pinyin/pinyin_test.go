@@ -42,7 +42,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -51,7 +51,7 @@ sort: by_weight
 
 func TestEngineConvert(t *testing.T) {
 	d := createTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input    string
@@ -95,7 +95,7 @@ func TestEngineConvert(t *testing.T) {
 
 func TestEngineConvertEmpty(t *testing.T) {
 	d := createTestDict(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	candidates, err := engine.Convert("", 10)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestEngineConvertWithRealDict(t *testing.T) {
 		t.Skip("跳过测试：无法找到 Rime 词库目录")
 	}
 
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(nil)
 	if err := pinyinDict.LoadRimeDir(dictPath); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestEngineConvertWithRealDict(t *testing.T) {
 		FilterMode:      "all",
 		UseSmartCompose: false,
 	}
-	engine := NewEngineWithConfig(composite, config)
+	engine := NewEngineWithConfig(composite, config, nil)
 
 	tests := []struct {
 		input    string
@@ -224,7 +224,7 @@ func TestExplicitSeparator_XiAn(t *testing.T) {
 		t.Skip("跳过测试：无法找到 Rime 词库目录")
 	}
 
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(nil)
 	if err := pinyinDict.LoadRimeDir(dictPath); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestExplicitSeparator_XiAn(t *testing.T) {
 		FilterMode:      "all",
 		UseSmartCompose: false,
 	}
-	engine := NewEngineWithConfig(composite, config)
+	engine := NewEngineWithConfig(composite, config, nil)
 
 	// 测试带显式分隔符的输入
 	input := "xi'an"
@@ -295,7 +295,7 @@ func TestLeadingPartialCandidates(t *testing.T) {
 		t.Skip("跳过测试：无法找到 Rime 词库目录")
 	}
 
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(nil)
 	if err := pinyinDict.LoadRimeDir(dictPath); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestLeadingPartialCandidates(t *testing.T) {
 		FilterMode:      "all",
 		UseSmartCompose: false,
 	}
-	engine := NewEngineWithConfig(composite, config)
+	engine := NewEngineWithConfig(composite, config, nil)
 
 	for _, input := range []string{"sdem", "sdeo", "sde", "bdem"} {
 		result := engine.ConvertEx(input, 50)

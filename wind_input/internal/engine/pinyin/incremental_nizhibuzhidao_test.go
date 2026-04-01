@@ -48,7 +48,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -59,7 +59,7 @@ sort: by_weight
 // 验证每一步的候选排序和 ConsumedLength 合理性。
 func TestIncrementalInput_nizhibuzhidao(t *testing.T) {
 	d := createDictForNizhibuzhidao(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	input := "nizhibuzhidao"
 	for i := 1; i <= len(input); i++ {
@@ -83,7 +83,7 @@ func TestIncrementalInput_nizhibuzhidao(t *testing.T) {
 // TestNizhibuzhidao_KeyAssertions 关键节点断言
 func TestNizhibuzhidao_KeyAssertions(t *testing.T) {
 	d := createDictForNizhibuzhidao(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input         string
@@ -223,7 +223,7 @@ func TestNizhibuzhidao_KeyAssertions(t *testing.T) {
 // TestConsumedLengthNeverExceedsInput 所有候选的 ConsumedLength 不应超过输入长度
 func TestConsumedLengthNeverExceedsInput(t *testing.T) {
 	d := createDictForNizhibuzhidao(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	inputs := []string{
 		"n", "ni", "niz", "nizh", "nizhi",

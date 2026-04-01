@@ -42,6 +42,9 @@ type Engine struct {
 
 // NewEngine 创建拼音引擎
 func NewEngine(d *dict.CompositeDict, logger *slog.Logger) *Engine {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Engine{
 		dict:         d,
 		syllableTrie: NewSyllableTrie(),
@@ -56,6 +59,9 @@ func NewEngine(d *dict.CompositeDict, logger *slog.Logger) *Engine {
 func NewEngineWithConfig(d *dict.CompositeDict, config *Config, logger *slog.Logger) *Engine {
 	if config == nil {
 		config = &Config{ShowWubiHint: false, FilterMode: "smart"}
+	}
+	if logger == nil {
+		logger = slog.Default()
 	}
 	return &Engine{
 		dict:         d,

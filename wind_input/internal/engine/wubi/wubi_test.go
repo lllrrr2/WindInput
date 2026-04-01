@@ -52,7 +52,7 @@ func initCommonCharsForTest(dictPath string) {
 func TestWubiBasicLookup(t *testing.T) {
 	dictPath := getTestDictPath(t)
 
-	engine := NewEngine(DefaultConfig())
+	engine := NewEngine(DefaultConfig(), nil)
 	if err := engine.LoadCodeTable(dictPath); err != nil {
 		t.Fatalf("加载码表失败: %v", err)
 	}
@@ -107,7 +107,7 @@ func getCandidateTexts(candidates []candidate.Candidate) []string {
 func TestWubiEmptyCode(t *testing.T) {
 	dictPath := getTestDictPath(t)
 
-	engine := NewEngine(DefaultConfig())
+	engine := NewEngine(DefaultConfig(), nil)
 	if err := engine.LoadCodeTable(dictPath); err != nil {
 		t.Fatalf("加载码表失败: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestWubiEmptyCode(t *testing.T) {
 func TestWubiPrefixMatch(t *testing.T) {
 	dictPath := getTestDictPath(t)
 
-	engine := NewEngine(DefaultConfig())
+	engine := NewEngine(DefaultConfig(), nil)
 	if err := engine.LoadCodeTable(dictPath); err != nil {
 		t.Fatalf("加载码表失败: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestWubiPrefixMatch(t *testing.T) {
 func TestWubiNoPinyinContamination(t *testing.T) {
 	dictPath := getTestDictPath(t)
 
-	engine := NewEngine(DefaultConfig())
+	engine := NewEngine(DefaultConfig(), nil)
 	if err := engine.LoadCodeTable(dictPath); err != nil {
 		t.Fatalf("加载码表失败: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestWubiWithDictManager(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 创建 DictManager
-	dm := dict.NewDictManager(tmpDir, tmpDir)
+	dm := dict.NewDictManager(tmpDir, tmpDir, nil)
 	if err := dm.Initialize(); err != nil {
 		t.Fatalf("初始化 DictManager 失败: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestWubiWithDictManager(t *testing.T) {
 	}
 
 	// 创建五笔引擎
-	engine := NewEngine(DefaultConfig())
+	engine := NewEngine(DefaultConfig(), nil)
 	if err := engine.LoadCodeTable(dictPath); err != nil {
 		t.Fatalf("加载码表失败: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestWubiAutoCommit(t *testing.T) {
 	config := DefaultConfig()
 	config.AutoCommitAt4 = true
 
-	engine := NewEngine(config)
+	engine := NewEngine(config, nil)
 	if err := engine.LoadCodeTable(dictPath); err != nil {
 		t.Fatalf("加载码表失败: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestWubiTopCodeCommit(t *testing.T) {
 	config := DefaultConfig()
 	config.TopCodeCommit = true
 
-	engine := NewEngine(config)
+	engine := NewEngine(config, nil)
 	if err := engine.LoadCodeTable(dictPath); err != nil {
 		t.Fatalf("加载码表失败: %v", err)
 	}

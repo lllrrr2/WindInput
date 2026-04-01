@@ -79,7 +79,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -88,7 +88,7 @@ sort: by_weight
 
 func TestEngineConvertEx(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input          string
@@ -172,7 +172,7 @@ func TestEngineConvertEx(t *testing.T) {
 // TestEngineConvertExRanking 测试排序：常用词应优先于生僻词
 func TestEngineConvertExRanking(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 构建一个简单的 Unigram 模型，模拟真实字频
 	// 常见字（这、是、事、时）频率高，生僻字（赭）频率低
@@ -226,7 +226,7 @@ func TestEngineConvertExRanking(t *testing.T) {
 // TestEngineConvertExPrefixPrediction 测试前缀预测："wome" 应包含 "我们"
 func TestEngineConvertExPrefixPrediction(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 输入 "wome"（还没输完 "women"），应该通过前缀匹配找到 "我们"
 	result := engine.ConvertEx("wome", 10)
@@ -264,7 +264,7 @@ func TestEngineConvertExPrefixPrediction(t *testing.T) {
 
 func TestEngineConvertExEmpty(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("", 10)
 
@@ -279,7 +279,7 @@ func TestEngineConvertExEmpty(t *testing.T) {
 
 func TestEngineParseInput(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input       string
@@ -302,7 +302,7 @@ func TestEngineParseInput(t *testing.T) {
 
 func TestEngineGetPossibleSyllables(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		prefix      string
@@ -330,7 +330,7 @@ func TestEngineGetPossibleSyllables(t *testing.T) {
 
 func TestEngineIsValidSyllable(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	validSyllables := []string{"ni", "hao", "zhong", "guo", "wo", "men"}
 	for _, s := range validSyllables {
@@ -349,7 +349,7 @@ func TestEngineIsValidSyllable(t *testing.T) {
 
 func TestEngineIsValidSyllablePrefix(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	validPrefixes := []string{"zh", "sh", "ch", "n", "h", "z"}
 	for _, s := range validPrefixes {
@@ -367,7 +367,7 @@ func TestEngineConvertExLongInput(t *testing.T) {
 		FilterMode:      "all",
 		UseSmartCompose: true,
 	}
-	engine := NewEngineWithConfig(d, config)
+	engine := NewEngineWithConfig(d, config, nil)
 
 	// 构建 Unigram 以启用 Viterbi
 	unigram := NewUnigramModel()
@@ -464,7 +464,7 @@ func TestEngineConvertExSortModes(t *testing.T) {
 				FilterMode:     "all",
 				CandidateOrder: tt.order,
 			}
-			engine := NewEngineWithConfig(d, config)
+			engine := NewEngineWithConfig(d, config, nil)
 			engine.SetUnigram(unigram)
 
 			result := engine.ConvertEx("zheshi", 20)
@@ -493,7 +493,7 @@ func TestEngineConvertExFilterModes(t *testing.T) {
 	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			config := &Config{FilterMode: mode}
-			engine := NewEngineWithConfig(d, config)
+			engine := NewEngineWithConfig(d, config, nil)
 
 			result := engine.ConvertEx("nihao", 50)
 			if result == nil {
@@ -524,7 +524,7 @@ func TestEngineConvertExFilterModes(t *testing.T) {
 	// 比较 ConvertRaw（无过滤）和 Convert（有过滤）
 	t.Run("ConvertRaw_vs_Convert", func(t *testing.T) {
 		config := &Config{FilterMode: "smart"}
-		engine := NewEngineWithConfig(d, config)
+		engine := NewEngineWithConfig(d, config, nil)
 
 		raw, err := engine.ConvertRaw("nihao", 50)
 		if err != nil {
@@ -546,7 +546,7 @@ func TestEngineConvertExFilterModes(t *testing.T) {
 // TestEngineConvertExConsumedLength 测试部分上屏的 ConsumedLength
 func TestEngineConvertExConsumedLength(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	tests := []struct {
 		input     string
@@ -603,7 +603,7 @@ func TestEngineConvertExFuzzyIntegration(t *testing.T) {
 		FilterMode: "all",
 		Fuzzy:      fuzzyConfig,
 	}
-	engine := NewEngineWithConfig(d, config)
+	engine := NewEngineWithConfig(d, config, nil)
 
 	// "zeshi" 通过 z↔zh 模糊应该能找到 "这是"（zhe shi）
 	t.Run("fuzzy_zh_z", func(t *testing.T) {
@@ -652,7 +652,7 @@ func TestEngineConvertExFuzzyIntegration(t *testing.T) {
 	// 无模糊配置时，"si" 不应找到 "shi" 的字
 	t.Run("no_fuzzy", func(t *testing.T) {
 		noFuzzyConfig := &Config{FilterMode: "all"}
-		noFuzzyEngine := NewEngineWithConfig(d, noFuzzyConfig)
+		noFuzzyEngine := NewEngineWithConfig(d, noFuzzyConfig, nil)
 
 		result := noFuzzyEngine.ConvertEx("si", 20)
 		for _, c := range result.Candidates {
@@ -666,7 +666,7 @@ func TestEngineConvertExFuzzyIntegration(t *testing.T) {
 // TestEngineUserFreqLearning 用户词频学习测试
 func TestEngineUserFreqLearning(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 创建 Unigram
 	unigram := NewUnigramModel()
@@ -717,7 +717,7 @@ func TestEngineUserFreqLearning(t *testing.T) {
 // TestEngineConvertViaConvert 确保 Convert/ConvertRaw 委托到 convertCore 行为正确
 func TestEngineConvertViaConvert(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 空输入
 	candidates, err := engine.Convert("", 10)
@@ -757,7 +757,7 @@ func TestEngineConvertViaConvert(t *testing.T) {
 // TestEngineConvertExAbbrev 简拼词组匹配测试
 func TestEngineConvertExAbbrev(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 输入 "bzd" 应匹配简拼 "不知道"（bu zhi dao → b+z+d）
 	t.Run("bzd_abbrev", func(t *testing.T) {
@@ -822,7 +822,7 @@ func TestEngineConvertExAbbrev(t *testing.T) {
 // 当所有音节都是 partial 时，首音节应生成单字候选
 func TestEngineConvertExFirstPartialCandidate(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 输入 "bzd"，所有音节 ["b","z","d"] 都是 partial
 	// 首音节 "b" 应生成候选（不、白、北 等 b 开头的单字）
@@ -873,7 +873,7 @@ func TestEngineConvertExFirstPartialCandidate(t *testing.T) {
 // TestEngineConvertExMultiSyllableShowsSingleChars 多音节输入应同时显示首音节单字
 func TestEngineConvertExMultiSyllableShowsSingleChars(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 输入 "nihao"（2 音节），应同时包含词组"你好"和首音节单字"你"、"妮"
 	result := engine.ConvertEx("nihao", 30)
@@ -924,7 +924,7 @@ func TestEngineConvertExMultiSyllableShowsSingleChars(t *testing.T) {
 // TestEngineConvertExTiwenShowsChars "tiwen" 应同时显示词组和首音节单字
 func TestEngineConvertExTiwenShowsChars(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("tiwen", 30)
 
@@ -981,7 +981,7 @@ func TestEngineConvertExTiwenShowsChars(t *testing.T) {
 // TestEngineConvertExSingleLetterPriority 单字母输入时单字应优先于词组
 func TestEngineConvertExSingleLetterPriority(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 输入 "b"：单字（不、白、北）应排在词组（版权等）前面
 	result := engine.ConvertEx("b", 30)
@@ -1049,7 +1049,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(nil)
 	if err := pinyinDict.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -1089,7 +1089,7 @@ sort: by_weight
 // TestCommand_uuid 输入 "uuid" 应返回 UUID 格式字符串
 func TestCommand_uuid(t *testing.T) {
 	d := createTestDictWithPhraseLayer(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("uuid", 10)
 
@@ -1121,7 +1121,7 @@ func TestCommand_uuid(t *testing.T) {
 // TestCommand_date 输入 "date" 应返回日期格式
 func TestCommand_date(t *testing.T) {
 	d := createTestDictWithPhraseLayer(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("date", 10)
 
@@ -1153,7 +1153,7 @@ func TestCommand_date(t *testing.T) {
 // TestCommand_uNotUuid 输入 "u" 不应显示 UUID
 func TestCommand_uNotUuid(t *testing.T) {
 	d := createTestDictWithPhraseLayer(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("u", 10)
 
@@ -1175,7 +1175,7 @@ func TestCommand_uNotUuid(t *testing.T) {
 // TestCommand_uuidCacheStability UUID 命令缓存应保持候选稳定
 func TestCommand_uuidCacheStability(t *testing.T) {
 	d := createTestDictWithPhraseLayer(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 第一次查询
 	result1 := engine.ConvertEx("uuid", 10)
@@ -1208,7 +1208,7 @@ func TestCommand_uuidCacheStability(t *testing.T) {
 // TestAbbrev_bzd 简拼 "bzd" 应匹配"不知道"
 func TestAbbrev_bzd(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("bzd", 20)
 
@@ -1231,7 +1231,7 @@ func TestAbbrev_bzd(t *testing.T) {
 // TestAbbrev_nh 简拼 "nh" 应匹配"你好"
 func TestAbbrev_nh(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("nh", 20)
 
@@ -1254,7 +1254,7 @@ func TestAbbrev_nh(t *testing.T) {
 // TestMixedAbbrev_nizm 混合简拼 "nizm" 应匹配"你在吗"
 func TestMixedAbbrev_nizm(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("nizm", 20)
 
@@ -1303,7 +1303,7 @@ sort: by_weight
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(nil)
 	if err := pinyinDict.LoadRimeDir(tmpDir); err != nil {
 		t.Fatalf("加载词库失败: %v", err)
 	}
@@ -1319,7 +1319,7 @@ sort: by_weight
 	composite.AddLayer(ud)
 	composite.AddLayer(dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict))
 
-	engine := NewEngine(composite)
+	engine := NewEngine(composite, nil)
 	result := engine.ConvertEx("sfg", 50)
 
 	found := false
@@ -1345,7 +1345,7 @@ sort: by_weight
 // TestMixedAbbrev_nihao "nihao" 应该"你好"排第一
 func TestMixedAbbrev_nihao(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("nihao", 20)
 
@@ -1374,7 +1374,7 @@ func TestMixedAbbrev_nihao(t *testing.T) {
 // TestPartialSuffix_nihaozh "nihaozh" 应有"你好"和 zh 相关候选
 func TestPartialSuffix_nihaozh(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("nihaozh", 20)
 
@@ -1419,7 +1419,7 @@ func TestPartialSuffix_nihaozh(t *testing.T) {
 // TestSingleLetter_b 单字母 "b" 输入时单字应排在词组前面
 func TestSingleLetter_b(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("b", 30)
 
@@ -1476,7 +1476,7 @@ func TestWeightLevels(t *testing.T) {
 // TestConvertWithSeparator 测试含 ' 分隔符的输入（如 xi'an）能正确产出候选
 func TestConvertWithSeparator(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	// 测试 xi'an 应该能产出候选
 	result := engine.ConvertEx("xi'an", 20)
@@ -1519,7 +1519,7 @@ func TestConvertWithSeparator(t *testing.T) {
 // "xian" 可切为 "xian" 或 "xi+an"，候选中应同时包含来自两条路径的词
 func TestConvertMultiSegmentation(t *testing.T) {
 	d := createTestDictForEx(t)
-	engine := NewEngine(d)
+	engine := NewEngine(d, nil)
 
 	result := engine.ConvertEx("xian", 50)
 	if result.IsEmpty {
@@ -1568,12 +1568,12 @@ sort: by_weight
 		b.Fatalf("写入测试文件失败: %v", err)
 	}
 
-	d := dict.NewPinyinDict()
+	d := dict.NewPinyinDict(nil)
 	if err := d.LoadRimeDir(tmpDir); err != nil {
 		b.Fatalf("加载词库失败: %v", err)
 	}
 
-	engine := NewEngine(wrapInCompositeDict(d))
+	engine := NewEngine(wrapInCompositeDict(d), nil)
 	inputs := []string{"nihao", "zhongguo", "women", "nihaozh"}
 
 	b.ResetTimer()
