@@ -103,9 +103,13 @@ Push-Location (Join-Path $ScriptDir "wind_input")
 try {
     # 生成版本资源文件 (.syso)
     Push-Location "cmd/service"
-    & go-winres make --product-version "$AppVersion" --file-version "$AppVersionNum"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[警告] go-winres 生成资源失败，继续构建（无版本信息）" -ForegroundColor Yellow
+    if (Get-Command go-winres -ErrorAction SilentlyContinue) {
+        & go-winres make --product-version "$AppVersion" --file-version "$AppVersionNum"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[警告] go-winres 生成资源失败，继续构建（无版本信息）" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "[警告] go-winres 未安装，跳过版本资源生成" -ForegroundColor Yellow
     }
     Pop-Location
 
