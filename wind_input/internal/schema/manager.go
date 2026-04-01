@@ -2,7 +2,7 @@ package schema
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -13,14 +13,16 @@ type SchemaManager struct {
 	activeID string
 	exeDir   string
 	dataDir  string
+	logger   *slog.Logger
 }
 
 // NewSchemaManager 创建方案管理器
-func NewSchemaManager(exeDir, dataDir string) *SchemaManager {
+func NewSchemaManager(exeDir, dataDir string, logger *slog.Logger) *SchemaManager {
 	return &SchemaManager{
 		schemas: make(map[string]*Schema),
 		exeDir:  exeDir,
 		dataDir: dataDir,
+		logger:  logger,
 	}
 }
 
@@ -37,7 +39,7 @@ func (sm *SchemaManager) LoadSchemas() error {
 	sm.schemas = schemas
 
 	for id, s := range schemas {
-		log.Printf("[schema] 已加载方案: %s (%s)", s.Schema.Name, id)
+		sm.logger.Info("已加载方案", "name", s.Schema.Name, "id", id)
 	}
 
 	return nil

@@ -2,7 +2,7 @@ package engine
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
@@ -37,13 +37,17 @@ type Manager struct {
 	// 反向索引缓存（字 → 编码列表）
 	cachedReverseIndex    map[string][]string
 	cachedReverseSchemaID string
+
+	// 日志
+	logger *slog.Logger
 }
 
 // NewManager 创建引擎管理器
-func NewManager() *Manager {
+func NewManager(logger *slog.Logger) *Manager {
 	return &Manager{
 		engines:      make(map[string]Engine),
 		systemLayers: make(map[string]dict.DictLayer),
+		logger:       logger,
 	}
 }
 
@@ -99,7 +103,7 @@ func (m *Manager) SwitchSchema(schemaID string) error {
 		m.cachedReverseSchemaID = ""
 		// 重新注册缓存引擎的系统词库层
 		m.reRegisterSystemLayer(schemaID)
-		log.Printf("[EngineManager] 切换到已加载方案: %s", schemaID)
+		m.logger.Info("切换到已加载方案", "schemaID", schemaID)
 		return nil
 	}
 
@@ -113,7 +117,7 @@ func (m *Manager) SwitchSchema(schemaID string) error {
 	// 清空反向索引缓存，切换方案后重建
 	m.cachedReverseIndex = nil
 	m.cachedReverseSchemaID = ""
-	log.Printf("[EngineManager] 加载并切换方案: %s", schemaID)
+	m.logger.Info("加载并切换方案", "schemaID", schemaID)
 	return nil
 }
 
@@ -203,7 +207,7 @@ func (m *Manager) ActivateTempSchema(schemaID string) error {
 
 	m.currentID = schemaID
 	m.currentEngine = m.engines[schemaID]
-	log.Printf("[EngineManager] 临时激活方案: %s (保存: %s)", schemaID, m.savedSchemaID)
+	m.logger.Info("临时激活方案", "schemaID", schemaID, "saved", m.savedSchemaID)
 	return nil
 }
 
@@ -221,7 +225,7 @@ func (m *Manager) DeactivateTempSchema() {
 		m.currentEngine = eng
 	}
 
-	log.Printf("[EngineManager] 退出临时方案: %s, 恢复: %s", m.tempSchemaID, m.savedSchemaID)
+	m.logger.Info("退出临时方案", "tempSchemaID", m.tempSchemaID, "restored", m.savedSchemaID)
 	m.tempSchemaID = ""
 	m.savedSchemaID = ""
 }
@@ -244,7 +248,7 @@ func (m *Manager) loadSchemaEngineLocked(schemaID string) error {
 		return fmt.Errorf("方案 %q 不存在", schemaID)
 	}
 
-	bundle, err := schema.CreateEngineFromSchema(s, m.exeDir, m.dictManager)
+	bundle, err := schema.CreateEngineFromSchema(s, m.exeDir, m.dictManager, m.logger)
 	if err != nil {
 		return fmt.Errorf("创建方案 %q 引擎失败: %w", schemaID, err)
 	}
@@ -292,7 +296,7 @@ func (m *Manager) reRegisterSystemLayer(schemaID string) {
 	// 从缓存的 systemLayers 中取出该方案的系统词库层并重新注册
 	if layer, ok := m.systemLayers[schemaID]; ok && layer != nil {
 		m.dictManager.RegisterSystemLayer(layer.Name(), layer)
-		log.Printf("[EngineManager] 重新注册系统词库层: %s (方案: %s)", layer.Name(), schemaID)
+		m.logger.Info("重新注册系统词库层", "layer", layer.Name(), "schemaID", schemaID)
 	}
 }
 
@@ -507,7 +511,7 @@ func (m *Manager) ConvertEx(input string, maxCandidates int) *ConvertResult {
 
 	candidates, err := engine.Convert(input, maxCandidates)
 	if err != nil {
-		log.Printf("[EngineManager] 转换错误: %v", err)
+		m.logger.Warn("转换错误", "error", err)
 	}
 	return &ConvertResult{
 		Candidates: candidates,
@@ -609,7 +613,7 @@ func (m *Manager) EnsurePinyinLoaded() error {
 		return nil
 	}
 
-	log.Printf("[EngineManager] 临时拼音：加载拼音引擎...")
+	m.logger.Info("临时拼音：加载拼音引擎")
 	return m.loadSchemaEngineLocked(pinyinID)
 }
 
@@ -634,7 +638,7 @@ func (m *Manager) ActivateTempPinyin() {
 	//    保留 DictManager.systemLayers 中的引用供后续恢复。
 	if compositeDict.GetLayerByName("codetable-system") != nil {
 		compositeDict.RemoveLayer("codetable-system")
-		log.Printf("[EngineManager] 临时拼音：暂时移除五笔码表层")
+		m.logger.Info("临时拼音：暂时移除五笔码表层")
 	}
 
 	// 2. 如果拼音词库层已注册（首次由 createPinyinEngine 注册），直接返回
@@ -649,7 +653,7 @@ func (m *Manager) ActivateTempPinyin() {
 
 	if ok && layer != nil {
 		m.dictManager.RegisterSystemLayer(layer.Name(), layer)
-		log.Printf("[EngineManager] 临时拼音：注册拼音词库层")
+		m.logger.Info("临时拼音：注册拼音词库层")
 	}
 }
 
@@ -667,7 +671,7 @@ func (m *Manager) DeactivateTempPinyin() {
 	// 1. 卸载拼音词库层
 	if compositeDict.GetLayerByName("pinyin-system") != nil {
 		m.dictManager.UnregisterSystemLayer("pinyin-system")
-		log.Printf("[EngineManager] 临时拼音：卸载拼音词库层")
+		m.logger.Info("临时拼音：卸载拼音词库层")
 	}
 
 	// 2. 恢复五笔码表层
@@ -678,7 +682,7 @@ func (m *Manager) DeactivateTempPinyin() {
 
 	if ok && wubiLayer != nil && compositeDict.GetLayerByName(wubiLayer.Name()) == nil {
 		compositeDict.AddLayer(wubiLayer)
-		log.Printf("[EngineManager] 临时拼音：恢复五笔码表层")
+		m.logger.Info("临时拼音：恢复五笔码表层")
 	}
 }
 

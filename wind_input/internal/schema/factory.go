@@ -2,7 +2,7 @@ package schema
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,21 +25,21 @@ type EngineBundle struct {
 }
 
 // CreateEngineFromSchema 根据 Schema 创建引擎实例并加载词库
-func CreateEngineFromSchema(s *Schema, exeDir string, dm *dict.DictManager) (*EngineBundle, error) {
+func CreateEngineFromSchema(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
 	switch s.Engine.Type {
 	case EngineTypeCodeTable:
-		return createCodeTableEngine(s, exeDir, dm)
+		return createCodeTableEngine(s, exeDir, dm, logger)
 	case EngineTypePinyin:
-		return createPinyinEngine(s, exeDir, dm)
+		return createPinyinEngine(s, exeDir, dm, logger)
 	case EngineTypeMixed:
-		return createMixedEngine(s, exeDir, dm)
+		return createMixedEngine(s, exeDir, dm, logger)
 	default:
 		return nil, fmt.Errorf("不支持的引擎类型: %s", s.Engine.Type)
 	}
 }
 
 // createCodeTableEngine 创建码表引擎（五笔等）
-func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineBundle, error) {
+func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
 	spec := s.Engine.CodeTable
 	if spec == nil {
 		spec = &CodeTableSpec{
@@ -71,16 +71,16 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 		config.ProtectTopN = s.Learning.ProtectTopN
 	}
 
-	engine := wubi.NewEngine(config)
+	engine := wubi.NewEngine(config, logger)
 
 	// 加载主码表
 	dictSpec := s.GetDefaultDictSpec()
 	if dictSpec != nil {
 		srcPath := resolvePath(exeDir, dictSpec.Path)
-		if err := loadWubiCodeTable(engine, srcPath, dictSpec.Type); err != nil {
+		if err := loadWubiCodeTable(engine, srcPath, dictSpec.Type, logger); err != nil {
 			return nil, fmt.Errorf("加载码表失败: %w", err)
 		}
-		log.Printf("[SchemaFactory] 码表加载成功 (%s), 词条数: %d", s.Schema.ID, engine.GetEntryCount())
+		logger.Info("码表加载成功", "schemaID", s.Schema.ID, "entryCount", engine.GetEntryCount())
 	}
 
 	// 注册码表为 CompositeDict 的 system layer + 设置 DictManager
@@ -96,7 +96,7 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 	}
 
 	// 后台预生成拼音 wdb
-	go preGeneratePinyinWdb(s, exeDir)
+	go preGeneratePinyinWdb(s, exeDir, logger)
 
 	// GC 释放临时内存
 	go func() {
@@ -111,7 +111,7 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Eng
 }
 
 // createPinyinEngine 创建拼音引擎
-func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineBundle, error) {
+func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
 	spec := s.Engine.Pinyin
 	if spec == nil {
 		spec = &PinyinSpec{
@@ -142,12 +142,12 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 	}
 
 	// 加载拼音词库
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(logger)
 
 	dictSpec := s.GetDefaultDictSpec()
 	if dictSpec != nil {
 		dictPath := resolvePath(exeDir, dictSpec.Path)
-		if err := loadPinyinDict(pinyinDict, dictPath); err != nil {
+		if err := loadPinyinDict(pinyinDict, dictPath, logger); err != nil {
 			return nil, fmt.Errorf("加载拼音词库失败: %w", err)
 		}
 	}
@@ -158,7 +158,7 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 		systemLayer := dict.NewPinyinDictLayer("pinyin-system", dict.LayerTypeSystem, pinyinDict)
 		dm.RegisterSystemLayer("pinyin-system", systemLayer)
 		compositeDict = dm.GetCompositeDict()
-		log.Printf("[SchemaFactory] 拼音引擎使用 CompositeDict")
+		logger.Info("拼音引擎使用 CompositeDict")
 	} else {
 		// 无 DictManager 时创建独立 CompositeDict
 		compositeDict = dict.NewCompositeDict()
@@ -166,24 +166,24 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 		compositeDict.AddLayer(systemLayer)
 	}
 
-	engine := pinyin.NewEngineWithConfig(compositeDict, config)
+	engine := pinyin.NewEngineWithConfig(compositeDict, config, logger)
 
 	// 配置双拼转换器
 	if spec.Scheme == "shuangpin" && spec.Shuangpin != nil {
 		spScheme := shuangpin.Get(spec.Shuangpin.Layout)
 		if spScheme != nil {
 			engine.SetShuangpinConverter(shuangpin.NewConverter(spScheme))
-			log.Printf("[SchemaFactory] 双拼模式: layout=%s (%s)", spScheme.ID, spScheme.Name)
+			logger.Info("双拼模式", "layout", spScheme.ID, "name", spScheme.Name)
 		} else {
-			log.Printf("[SchemaFactory] 未知的双拼方案: %s，回退到全拼", spec.Shuangpin.Layout)
+			logger.Warn("未知的双拼方案，回退到全拼", "layout", spec.Shuangpin.Layout)
 		}
 	}
 
 	// 加载 Unigram 语言模型
 	if s.Learning.UnigramPath != "" {
 		unigramTxtPath := resolvePath(exeDir, s.Learning.UnigramPath)
-		if err := loadUnigramModel(engine, unigramTxtPath); err != nil {
-			log.Printf("[SchemaFactory] %v", err)
+		if err := loadUnigramModel(engine, unigramTxtPath, logger); err != nil {
+			logger.Warn("加载 Unigram 模型失败", "err", err)
 		}
 	}
 
@@ -191,10 +191,10 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 	reverseDicts := s.GetDictsByRole(DictRoleReverseLookup)
 	for _, rd := range reverseDicts {
 		rdPath := resolvePath(exeDir, rd.Path)
-		if err := loadWubiTableForPinyin(engine, rdPath, rd.Type); err != nil {
-			log.Printf("[SchemaFactory] 加载反查码表失败: %v", err)
+		if err := loadWubiTableForPinyin(engine, rdPath, rd.Type, logger); err != nil {
+			logger.Warn("加载反查码表失败", "err", err)
 		} else {
-			log.Printf("[SchemaFactory] 反查码表加载成功")
+			logger.Info("反查码表加载成功")
 		}
 	}
 
@@ -208,7 +208,7 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 	if s.Learning.Mode == LearningAuto || s.Learning.Mode == LearningFrequency {
 		if s.UserData.UserFreqFile != "" {
 			userFreqPath := resolvePath(exeDir, s.UserData.UserFreqFile)
-			loadPinyinUserFreqs(engine, userFreqPath)
+			loadPinyinUserFreqs(engine, userFreqPath, logger)
 		}
 		config.EnableUserFreq = true // 同步到引擎 config，控制 OnCandidateSelected
 		config.FrequencyOnly = (s.Learning.Mode == LearningFrequency)
@@ -222,21 +222,21 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager) (*Engine
 
 // --- 词库加载辅助函数（从 manager_init.go 迁移） ---
 
-func loadPinyinDict(pinyinDict *dict.PinyinDict, dictPath string) error {
+func loadPinyinDict(pinyinDict *dict.PinyinDict, dictPath string, logger *slog.Logger) error {
 	dictDir := filepath.Dir(dictPath)
 	srcPaths := dictcache.RimePinyinSourcePaths(dictPath)
 
 	wdbInDir := filepath.Join(dictDir, "pinyin.wdb")
 	if !dictcache.NeedsRegenerate(srcPaths, wdbInDir) {
 		if err := pinyinDict.LoadBinary(wdbInDir); err == nil {
-			log.Printf("[SchemaFactory] 拼音词库(预编译 wdb)加载成功, 编码数: %d", pinyinDict.EntryCount())
+			logger.Info("拼音词库(预编译 wdb)加载成功", "entryCount", pinyinDict.EntryCount())
 			return nil
 		}
 	}
 
 	wdbCachePath := dictcache.CachePath("pinyin")
 	if dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
-		if err := dictcache.ConvertPinyinToWdb(dictPath, wdbCachePath); err != nil {
+		if err := dictcache.ConvertPinyinToWdb(dictPath, wdbCachePath, logger); err != nil {
 			if _, statErr := os.Stat(wdbInDir); statErr == nil {
 				if err := pinyinDict.LoadBinary(wdbInDir); err == nil {
 					return nil
@@ -249,11 +249,11 @@ func loadPinyinDict(pinyinDict *dict.PinyinDict, dictPath string) error {
 	if err := pinyinDict.LoadBinary(wdbCachePath); err != nil {
 		return fmt.Errorf("加载缓存拼音词库失败: %w", err)
 	}
-	log.Printf("[SchemaFactory] 拼音词库(缓存 wdb)加载成功, 编码数: %d", pinyinDict.EntryCount())
+	logger.Info("拼音词库(缓存 wdb)加载成功", "entryCount", pinyinDict.EntryCount())
 	return nil
 }
 
-func loadUnigramModel(engine *pinyin.Engine, txtPath string) error {
+func loadUnigramModel(engine *pinyin.Engine, txtPath string, logger *slog.Logger) error {
 	wdbPath := strings.TrimSuffix(txtPath, ".txt") + ".wdb"
 
 	if _, err := os.Stat(wdbPath); err == nil {
@@ -261,7 +261,7 @@ func loadUnigramModel(engine *pinyin.Engine, txtPath string) error {
 			bm, err := pinyin.NewBinaryUnigramModel(wdbPath)
 			if err == nil {
 				engine.SetUnigram(bm)
-				log.Printf("[SchemaFactory] Unigram 模型(预编译 wdb)加载成功: %d 词条", bm.Size())
+				logger.Info("Unigram 模型(预编译 wdb)加载成功", "size", bm.Size())
 				return nil
 			}
 		}
@@ -270,8 +270,8 @@ func loadUnigramModel(engine *pinyin.Engine, txtPath string) error {
 	wdbCachePath := dictcache.CachePath("unigram")
 	if dictcache.NeedsRegenerate([]string{txtPath}, wdbCachePath) {
 		if _, err := os.Stat(txtPath); err == nil {
-			if err := dictcache.ConvertUnigramToWdb(txtPath, wdbCachePath); err != nil {
-				log.Printf("[SchemaFactory] 转换 Unigram 到 wdb 失败: %v", err)
+			if err := dictcache.ConvertUnigramToWdb(txtPath, wdbCachePath, logger); err != nil {
+				logger.Warn("转换 Unigram 到 wdb 失败", "err", err)
 			}
 		}
 	}
@@ -280,7 +280,7 @@ func loadUnigramModel(engine *pinyin.Engine, txtPath string) error {
 		bm, err := pinyin.NewBinaryUnigramModel(wdbCachePath)
 		if err == nil {
 			engine.SetUnigram(bm)
-			log.Printf("[SchemaFactory] Unigram 模型(缓存 wdb)加载成功: %d 词条", bm.Size())
+			logger.Info("Unigram 模型(缓存 wdb)加载成功", "size", bm.Size())
 			return nil
 		}
 	}
@@ -288,7 +288,7 @@ func loadUnigramModel(engine *pinyin.Engine, txtPath string) error {
 	return fmt.Errorf("Unigram 模型 wdb 不可用，智能组句功能将不可用")
 }
 
-func loadWubiCodeTable(engine *wubi.Engine, srcPath, dictType string) error {
+func loadWubiCodeTable(engine *wubi.Engine, srcPath, dictType string, logger *slog.Logger) error {
 	var srcDir string
 	var srcPaths []string
 
@@ -313,9 +313,9 @@ func loadWubiCodeTable(engine *wubi.Engine, srcPath, dictType string) error {
 	if len(srcPaths) == 0 || dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
 		var convertErr error
 		if dictType == "rime_wubi" {
-			convertErr = dictcache.ConvertRimeWubiToWdb(srcPath, wdbCachePath)
+			convertErr = dictcache.ConvertRimeWubiToWdb(srcPath, wdbCachePath, logger)
 		} else {
-			convertErr = dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath)
+			convertErr = dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath, logger)
 		}
 		if convertErr != nil {
 			return fmt.Errorf("转换五笔码表到 wdb 失败: %w", convertErr)
@@ -336,7 +336,7 @@ func loadWubiFromWdb(engine *wubi.Engine, wdbPath string) error {
 	// 从 sidecar meta.json 恢复 Header 信息
 	meta, err := dictcache.LoadCodeTableMeta(wdbPath)
 	if err != nil {
-		log.Printf("[SchemaFactory] 加载码表 meta 失败: %v", err)
+		slog.Default().Warn("加载码表 meta 失败", "err", err)
 	} else {
 		engine.RestoreCodeTableHeader(dict.CodeTableHeader{
 			Name:          meta.Name,
@@ -353,11 +353,11 @@ func loadWubiFromWdb(engine *wubi.Engine, wdbPath string) error {
 }
 
 // LoadWubiTableForPinyinEngine 为拼音引擎加载五笔反查码表（导出供热更新使用）
-func LoadWubiTableForPinyinEngine(engine *pinyin.Engine, srcPath, dictType string) error {
-	return loadWubiTableForPinyin(engine, srcPath, dictType)
+func LoadWubiTableForPinyinEngine(engine *pinyin.Engine, srcPath, dictType string, logger *slog.Logger) error {
+	return loadWubiTableForPinyin(engine, srcPath, dictType, logger)
 }
 
-func loadWubiTableForPinyin(engine *pinyin.Engine, srcPath, dictType string) error {
+func loadWubiTableForPinyin(engine *pinyin.Engine, srcPath, dictType string, logger *slog.Logger) error {
 	var srcDir string
 	var srcPaths []string
 
@@ -380,9 +380,9 @@ func loadWubiTableForPinyin(engine *pinyin.Engine, srcPath, dictType string) err
 	if len(srcPaths) == 0 || dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
 		var convertErr error
 		if dictType == "rime_wubi" {
-			convertErr = dictcache.ConvertRimeWubiToWdb(srcPath, wdbCachePath)
+			convertErr = dictcache.ConvertRimeWubiToWdb(srcPath, wdbCachePath, logger)
 		} else {
-			convertErr = dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath)
+			convertErr = dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath, logger)
 		}
 		if convertErr != nil {
 			return fmt.Errorf("生成五笔反查码表缓存失败: %w", convertErr)
@@ -397,23 +397,23 @@ func loadWubiTableForPinyin(engine *pinyin.Engine, srcPath, dictType string) err
 }
 
 // LoadPinyinUserFreqs 加载拼音用户词频
-func loadPinyinUserFreqs(engine *pinyin.Engine, path string) {
+func loadPinyinUserFreqs(engine *pinyin.Engine, path string, logger *slog.Logger) {
 	if engine.GetUnigram() == nil {
 		return
 	}
 	if m := engine.GetUnigramModel(); m != nil {
 		if err := m.LoadUserFreqs(path); err != nil {
-			log.Printf("[SchemaFactory] 加载用户词频失败: %v", err)
+			logger.Warn("加载用户词频失败", "err", err)
 		} else {
-			log.Printf("[SchemaFactory] 用户词频加载成功")
+			logger.Info("用户词频加载成功")
 		}
 		return
 	}
 	if bm := engine.GetBinaryUnigramModel(); bm != nil {
 		if err := bm.LoadUserFreqs(path); err != nil {
-			log.Printf("[SchemaFactory] 加载用户词频失败: %v", err)
+			logger.Warn("加载用户词频失败", "err", err)
 		} else {
-			log.Printf("[SchemaFactory] 用户词频加载成功")
+			logger.Info("用户词频加载成功")
 		}
 	}
 }
@@ -425,18 +425,18 @@ func SavePinyinUserFreqs(engine *pinyin.Engine, path string) {
 	}
 	if m := engine.GetUnigramModel(); m != nil {
 		if err := m.SaveUserFreqs(path); err != nil {
-			log.Printf("[SchemaFactory] 保存用户词频失败: %v", err)
+			slog.Default().Warn("保存用户词频失败", "err", err)
 		}
 		return
 	}
 	if bm := engine.GetBinaryUnigramModel(); bm != nil {
 		if err := bm.SaveUserFreqs(path); err != nil {
-			log.Printf("[SchemaFactory] 保存用户词频失败: %v", err)
+			slog.Default().Warn("保存用户词频失败", "err", err)
 		}
 	}
 }
 
-func preGeneratePinyinWdb(s *Schema, exeDir string) {
+func preGeneratePinyinWdb(s *Schema, exeDir string, logger *slog.Logger) {
 	// 查找拼音词库路径
 	var pinyinDictPath string
 	for _, d := range s.Dicts {
@@ -454,9 +454,9 @@ func preGeneratePinyinWdb(s *Schema, exeDir string) {
 	srcPaths := dictcache.RimePinyinSourcePaths(pinyinDictPath)
 	wdbCachePath := dictcache.CachePath("pinyin")
 	if dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
-		log.Printf("[SchemaFactory] 后台预生成拼音 wdb...")
-		if err := dictcache.ConvertPinyinToWdb(pinyinDictPath, wdbCachePath); err != nil {
-			log.Printf("[SchemaFactory] 后台预生成拼音 wdb 失败: %v", err)
+		logger.Debug("后台预生成拼音 wdb...")
+		if err := dictcache.ConvertPinyinToWdb(pinyinDictPath, wdbCachePath, logger); err != nil {
+			logger.Warn("后台预生成拼音 wdb 失败", "err", err)
 		}
 	}
 
@@ -472,7 +472,7 @@ func preGeneratePinyinWdb(s *Schema, exeDir string) {
 	}
 	if dictcache.NeedsRegenerate([]string{unigramTxtPath}, unigramCachePath) {
 		if _, err := os.Stat(unigramTxtPath); err == nil {
-			dictcache.ConvertUnigramToWdb(unigramTxtPath, unigramCachePath)
+			dictcache.ConvertUnigramToWdb(unigramTxtPath, unigramCachePath, logger)
 		}
 	}
 
@@ -497,7 +497,7 @@ func resolvePath(exeDir, path string) string {
 // createMixedEngine 创建混输引擎（五笔+拼音并行查询）
 // 五笔引擎使用 DictManager 的主 CompositeDict（含 codetable-system 层），
 // 拼音引擎使用独立的 CompositeDict（含 pinyin-system 层），避免交叉污染。
-func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineBundle, error) {
+func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
 	// === 1. 读取混输配置 ===
 	mixedSpec := s.Engine.Mixed
 	if mixedSpec == nil {
@@ -541,7 +541,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 		wubiConfig.ProtectTopN = s.Learning.ProtectTopN
 	}
 
-	wubiEngine := wubi.NewEngine(wubiConfig)
+	wubiEngine := wubi.NewEngine(wubiConfig, logger)
 
 	// 加载五笔码表（从 dictionaries 中查找五笔词库）
 	var wubiDictSpec *DictSpec
@@ -553,10 +553,10 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	}
 	if wubiDictSpec != nil {
 		srcPath := resolvePath(exeDir, wubiDictSpec.Path)
-		if err := loadWubiCodeTable(wubiEngine, srcPath, wubiDictSpec.Type); err != nil {
+		if err := loadWubiCodeTable(wubiEngine, srcPath, wubiDictSpec.Type, logger); err != nil {
 			return nil, fmt.Errorf("混输：加载五笔码表失败: %w", err)
 		}
-		log.Printf("[SchemaFactory] 混输：五笔码表加载成功 (%s), 词条数: %d", s.Schema.ID, wubiEngine.GetEntryCount())
+		logger.Info("混输：五笔码表加载成功", "schemaID", s.Schema.ID, "entryCount", wubiEngine.GetEntryCount())
 	}
 
 	// 注册五笔码表到 DictManager 的主 CompositeDict
@@ -602,7 +602,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	}
 
 	// 加载拼音词库
-	pinyinDict := dict.NewPinyinDict()
+	pinyinDict := dict.NewPinyinDict(logger)
 	var pinyinDictSpec *DictSpec
 	for i := range s.Dicts {
 		if s.Dicts[i].Type == "rime_pinyin" {
@@ -612,7 +612,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	}
 	if pinyinDictSpec != nil {
 		dictPath := resolvePath(exeDir, pinyinDictSpec.Path)
-		if err := loadPinyinDict(pinyinDict, dictPath); err != nil {
+		if err := loadPinyinDict(pinyinDict, dictPath, logger); err != nil {
 			return nil, fmt.Errorf("混输：加载拼音词库失败: %w", err)
 		}
 	}
@@ -631,22 +631,22 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 		}
 	}
 
-	pinyinEngine := pinyin.NewEngineWithConfig(pinyinCompositeDict, pinyinConfig)
+	pinyinEngine := pinyin.NewEngineWithConfig(pinyinCompositeDict, pinyinConfig, logger)
 
 	// 混输模式下的双拼转换器
 	if pinyinSpec.Scheme == "shuangpin" && pinyinSpec.Shuangpin != nil {
 		spScheme := shuangpin.Get(pinyinSpec.Shuangpin.Layout)
 		if spScheme != nil {
 			pinyinEngine.SetShuangpinConverter(shuangpin.NewConverter(spScheme))
-			log.Printf("[SchemaFactory] 混输双拼模式: layout=%s (%s)", spScheme.ID, spScheme.Name)
+			logger.Info("混输双拼模式", "layout", spScheme.ID, "name", spScheme.Name)
 		}
 	}
 
 	// 加载 Unigram 语言模型
 	if s.Learning.UnigramPath != "" {
 		unigramTxtPath := resolvePath(exeDir, s.Learning.UnigramPath)
-		if err := loadUnigramModel(pinyinEngine, unigramTxtPath); err != nil {
-			log.Printf("[SchemaFactory] 混输：%v", err)
+		if err := loadUnigramModel(pinyinEngine, unigramTxtPath, logger); err != nil {
+			logger.Warn("混输：加载 Unigram 模型失败", "err", err)
 		}
 	}
 
@@ -654,8 +654,8 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	reverseDicts := s.GetDictsByRole(DictRoleReverseLookup)
 	for _, rd := range reverseDicts {
 		rdPath := resolvePath(exeDir, rd.Path)
-		if err := loadWubiTableForPinyin(pinyinEngine, rdPath, rd.Type); err != nil {
-			log.Printf("[SchemaFactory] 混输：加载反查码表失败: %v", err)
+		if err := loadWubiTableForPinyin(pinyinEngine, rdPath, rd.Type, logger); err != nil {
+			logger.Warn("混输：加载反查码表失败", "err", err)
 		}
 	}
 
@@ -668,7 +668,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 	if s.Learning.Mode == LearningAuto || s.Learning.Mode == LearningFrequency {
 		if s.UserData.UserFreqFile != "" {
 			userFreqPath := resolvePath(exeDir, s.UserData.UserFreqFile)
-			loadPinyinUserFreqs(pinyinEngine, userFreqPath)
+			loadPinyinUserFreqs(pinyinEngine, userFreqPath, logger)
 		}
 		pinyinConfig.EnableUserFreq = true
 		pinyinConfig.FrequencyOnly = (s.Learning.Mode == LearningFrequency)
@@ -687,15 +687,14 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager) (*EngineB
 		mixedConfig.WubiWeightBoost = 10000000
 	}
 
-	mixedEngine := mixed.NewEngine(wubiEngine, pinyinEngine, mixedConfig)
+	mixedEngine := mixed.NewEngine(wubiEngine, pinyinEngine, mixedConfig, logger)
 
 	// 设置 DictManager（用于合并后统一应用 Shadow 规则）
 	if dm != nil {
 		mixedEngine.SetDictManager(dm)
 	}
 
-	log.Printf("[SchemaFactory] 混输引擎创建成功 (%s): 五笔=%d词条, 拼音=%d编码",
-		s.Schema.ID, wubiEngine.GetEntryCount(), pinyinDict.EntryCount())
+	logger.Info("混输引擎创建成功", "schemaID", s.Schema.ID, "wubiEntries", wubiEngine.GetEntryCount(), "pinyinEntries", pinyinDict.EntryCount())
 
 	// GC 释放临时内存
 	go func() {

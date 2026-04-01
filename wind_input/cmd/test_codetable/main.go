@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -61,7 +62,7 @@ func main() {
 		ClearOnEmptyAt4: true,
 		TopCodeCommit:   true, // 启用顶码
 		PunctCommit:     true,
-	})
+	}, slog.Default())
 	engine.LoadCodeTable(dictPath)
 
 	// 测试查询

@@ -193,30 +193,6 @@ func joinSyllables(syllables []string) string {
 }
 
 // ============================================================
-// 候选去重与合并
-// ============================================================
-
-// DeduplicateCandidates 对候选词去重，保留权重最高的
-func DeduplicateCandidates(candidates []candidate.Candidate) []candidate.Candidate {
-	seen := make(map[string]int) // text -> index
-	result := make([]candidate.Candidate, 0, len(candidates))
-
-	for _, cand := range candidates {
-		if idx, exists := seen[cand.Text]; exists {
-			// 已存在，保留权重更高的
-			if cand.Weight > result[idx].Weight {
-				result[idx] = cand
-			}
-		} else {
-			seen[cand.Text] = len(result)
-			result = append(result, cand)
-		}
-	}
-
-	return result
-}
-
-// ============================================================
 // Scorer 统一候选评分器
 // 使用特征向量计算归一化分数，替代硬编码权重层级
 // ============================================================
@@ -307,31 +283,6 @@ func (s *Scorer) Score(f CandidateFeatures) float64 {
 	score += f.FreqScore * 0.00001
 
 	return score
-}
-
-// MergeCandidates 合并多个候选列表，去重并重新排序
-func MergeCandidates(lists ...[]candidate.Candidate) []candidate.Candidate {
-	// 计算总容量
-	total := 0
-	for _, list := range lists {
-		total += len(list)
-	}
-
-	// 合并
-	merged := make([]candidate.Candidate, 0, total)
-	for _, list := range lists {
-		merged = append(merged, list...)
-	}
-
-	// 去重
-	deduped := DeduplicateCandidates(merged)
-
-	// 重新按权重排序
-	sort.Slice(deduped, func(i, j int) bool {
-		return deduped[i].Weight > deduped[j].Weight
-	})
-
-	return deduped
 }
 
 // ============================================================

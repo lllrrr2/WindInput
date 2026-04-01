@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"log"
-
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/engine/mixed"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
@@ -41,7 +39,7 @@ func (m *Manager) UpdateFilterMode(mode string) {
 		}
 	}
 
-	log.Printf("[EngineManager] 更新过滤模式: %s", mode)
+	m.logger.Info("更新过滤模式", "mode", mode)
 }
 
 // UpdateWubiOptions 更新五笔引擎的选项（热更新）
@@ -66,8 +64,14 @@ func (m *Manager) UpdateWubiOptions(autoCommitAt4, clearOnEmptyAt4, topCodeCommi
 		m.dictManager.SetSortMode(candidate.CandidateSortMode(candidateSortMode))
 	}
 
-	log.Printf("[EngineManager] 更新五笔选项: autoCommitAt4=%v, clearOnEmptyAt4=%v, topCodeCommit=%v, punctCommit=%v, showCodeHint=%v, singleCodeInput=%v, candidateSortMode=%s",
-		autoCommitAt4, clearOnEmptyAt4, topCodeCommit, punctCommit, showCodeHint, singleCodeInput, candidateSortMode)
+	m.logger.Info("更新五笔选项",
+		"autoCommitAt4", autoCommitAt4,
+		"clearOnEmptyAt4", clearOnEmptyAt4,
+		"topCodeCommit", topCodeCommit,
+		"punctCommit", punctCommit,
+		"showCodeHint", showCodeHint,
+		"singleCodeInput", singleCodeInput,
+		"candidateSortMode", candidateSortMode)
 }
 
 // updateWubiConfig 更新五笔引擎配置（内部辅助函数）
@@ -142,7 +146,7 @@ func (m *Manager) UpdatePinyinOptions(pinyinCfg *config.PinyinConfig) {
 		}
 	}
 
-	log.Printf("[EngineManager] 更新拼音选项: showWubiHint=%v, fuzzyEnabled=%v", pinyinCfg.ShowWubiHint, pinyinCfg.Fuzzy.Enabled)
+	m.logger.Info("更新拼音选项", "showWubiHint", pinyinCfg.ShowWubiHint, "fuzzyEnabled", pinyinCfg.Fuzzy.Enabled)
 }
 
 // UpdateShuangpinLayout 热更新双拼方案布局
@@ -174,9 +178,9 @@ func (m *Manager) UpdateShuangpinLayout(layoutID string) {
 	}
 
 	if layoutID == "" {
-		log.Printf("[EngineManager] 切换到全拼模式")
+		m.logger.Info("切换到全拼模式")
 	} else {
-		log.Printf("[EngineManager] 更新双拼方案: %s", layoutID)
+		m.logger.Info("更新双拼方案", "layoutID", layoutID)
 	}
 }
 
@@ -197,10 +201,10 @@ func (m *Manager) loadWubiReverseForPinyin(pinyinEngine *pinyin.Engine) {
 			if m.exeDir != "" && !isAbsPath(rdPath) {
 				rdPath = m.exeDir + "/" + rdPath
 			}
-			if err := schema.LoadWubiTableForPinyinEngine(pinyinEngine, rdPath, d.Type); err != nil {
-				log.Printf("[EngineManager] 加载五笔反查码表失败: %v", err)
+			if err := schema.LoadWubiTableForPinyinEngine(pinyinEngine, rdPath, d.Type, m.logger); err != nil {
+				m.logger.Warn("加载五笔反查码表失败", "error", err)
 			} else {
-				log.Printf("[EngineManager] 五笔反查码表加载成功")
+				m.logger.Info("五笔反查码表加载成功")
 			}
 			return
 		}

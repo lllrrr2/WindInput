@@ -363,6 +363,7 @@ func getVirtualKeyCode(keyName string) (uint32, bool) {
 }
 
 // GetHotkeyDisplayName returns a human-readable name for a key hash
+// TODO: 供设置界面显示热键名称时使用
 func GetHotkeyDisplayName(hash uint32) string {
 	mods, keyCode := ipc.ParseKeyHash(hash)
 

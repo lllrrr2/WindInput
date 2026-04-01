@@ -1,7 +1,7 @@
 package dict
 
 import (
-	"log"
+	"log/slog"
 	"sort"
 )
 
@@ -11,15 +11,17 @@ import (
 // 支持晋升（将词条迁移到用户词库）和清空操作。
 type TempDict struct {
 	*UserDict
+	logger       *slog.Logger
 	maxEntries   int       // 最大条目数（0=不限制）
 	promoteCount int       // 晋升所需选择次数（0=不自动晋升）
 	targetDict   *UserDict // 晋升目标词库
 }
 
 // NewTempDict 创建临时词库
-func NewTempDict(name string, filePath string, maxEntries, promoteCount int) *TempDict {
+func NewTempDict(name string, filePath string, maxEntries, promoteCount int, logger *slog.Logger) *TempDict {
 	return &TempDict{
 		UserDict:     NewUserDict(name, filePath),
+		logger:       logger,
 		maxEntries:   maxEntries,
 		promoteCount: promoteCount,
 	}
@@ -217,7 +219,7 @@ func (td *TempDict) evictIfNeeded() {
 	}
 
 	if removed > 0 {
-		log.Printf("[TempDict] 淘汰 %d 条低权重词条", removed)
+		td.logger.Info("淘汰低权重词条", "removed", removed)
 	}
 }
 

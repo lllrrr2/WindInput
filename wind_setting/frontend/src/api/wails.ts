@@ -122,10 +122,6 @@ export async function saveTSFLogConfig(cfg: TSFLogConfig): Promise<void> {
   return (window as any).go.main.App.SaveTSFLogConfig(cfg as any);
 }
 
-export async function checkConfigModified(): Promise<boolean> {
-  return App.CheckConfigModified();
-}
-
 export async function reloadConfig(): Promise<void> {
   return App.ReloadConfig();
 }
@@ -182,14 +178,6 @@ export async function removeSystemPhraseOverride(
   return App.RemoveSystemPhraseOverride(code, text);
 }
 
-export async function checkPhrasesModified(): Promise<boolean> {
-  return App.CheckPhrasesModified();
-}
-
-export async function reloadPhrases(): Promise<void> {
-  return App.ReloadPhrases();
-}
-
 // 用户词库管理
 export async function getUserDict(): Promise<UserWordItem[]> {
   return App.GetUserDict();
@@ -224,10 +212,6 @@ export async function getUserDictStats(): Promise<DictStats> {
     phrase_count: stats["phrase_count"] || 0,
     shadow_count: stats["shadow_count"] || 0,
   };
-}
-
-export async function checkUserDictModified(): Promise<boolean> {
-  return App.CheckUserDictModified();
 }
 
 export async function reloadUserDict(): Promise<void> {
@@ -318,23 +302,37 @@ export interface TempWordItem {
   count: number;
 }
 
-export async function getTempDictBySchema(schemaID: string): Promise<TempWordItem[]> {
+export async function getTempDictBySchema(
+  schemaID: string,
+): Promise<TempWordItem[]> {
   return App.GetTempDictBySchema(schemaID) as unknown as TempWordItem[];
 }
 
-export async function clearTempDictForSchema(schemaID: string): Promise<number> {
+export async function clearTempDictForSchema(
+  schemaID: string,
+): Promise<number> {
   return App.ClearTempDictForSchema(schemaID);
 }
 
-export async function promoteTempWordForSchema(schemaID: string, code: string, text: string): Promise<void> {
+export async function promoteTempWordForSchema(
+  schemaID: string,
+  code: string,
+  text: string,
+): Promise<void> {
   return App.PromoteTempWordForSchema(schemaID, code, text);
 }
 
-export async function promoteAllTempWordsForSchema(schemaID: string): Promise<number> {
+export async function promoteAllTempWordsForSchema(
+  schemaID: string,
+): Promise<number> {
   return App.PromoteAllTempWordsForSchema(schemaID);
 }
 
-export async function removeTempWordForSchema(schemaID: string, code: string, text: string): Promise<void> {
+export async function removeTempWordForSchema(
+  schemaID: string,
+  code: string,
+  text: string,
+): Promise<void> {
   return App.RemoveTempWordForSchema(schemaID, code, text);
 }
 
@@ -397,10 +395,6 @@ export async function removeShadowRule(
 }
 
 // 控制管道
-export async function checkServiceRunning(): Promise<boolean> {
-  return App.CheckServiceRunning();
-}
-
 export async function notifyReload(target: string): Promise<void> {
   return App.NotifyReload(target);
 }
@@ -422,10 +416,6 @@ export async function getServiceStatus(): Promise<ServiceStatus | null> {
 }
 
 // 文件变化检测
-export async function checkAllFilesModified(): Promise<FileChangeStatus> {
-  return App.CheckAllFilesModified();
-}
-
 export async function reloadAllFiles(): Promise<void> {
   return App.ReloadAllFiles();
 }

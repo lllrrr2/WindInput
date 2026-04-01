@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -35,8 +35,8 @@ func MetaPath(wdbPath string) string {
 }
 
 // ConvertCodeTableToWdb 将文本码表转换为 wdb 二进制格式
-func ConvertCodeTableToWdb(srcPath, wdbPath string) error {
-	log.Printf("[dictcache] 转换码表: %s → %s", srcPath, wdbPath)
+func ConvertCodeTableToWdb(srcPath, wdbPath string, logger *slog.Logger) error {
+	logger.Info("转换码表", "src", srcPath, "dst", wdbPath)
 
 	ct, err := dict.LoadCodeTable(srcPath)
 	if err != nil {
@@ -96,10 +96,10 @@ func ConvertCodeTableToWdb(srcPath, wdbPath string) error {
 
 	// Deprecated: 写入 meta.json sidecar（Phase 3 移除，manager_init.go 仍在使用）
 	if err := writeMetaJSON(MetaPath(wdbPath), &meta); err != nil {
-		log.Printf("[dictcache] 写入 sidecar meta.json 失败（非致命）: %v", err)
+		logger.Warn("写入 sidecar meta.json 失败", "error", err)
 	}
 
-	log.Printf("[dictcache] 码表转换完成: %d 编码", len(entries))
+	logger.Info("码表转换完成", "codes", len(entries))
 	return nil
 }
 
@@ -140,8 +140,8 @@ func writeMetaJSON(path string, meta *CodeTableMeta) error {
 // ConvertPinyinToWdb 将拼音 YAML 词库转换为 wdb 二进制格式
 // mainDictPath 为主词库 .dict.yaml 文件路径（如 rime_ice.dict.yaml），
 // 自动从其 import_tables 发现关联词库（如 cn_dicts/8105.dict.yaml）。
-func ConvertPinyinToWdb(mainDictPath, wdbPath string) error {
-	log.Printf("[dictcache] 转换拼音词库: %s → %s", mainDictPath, wdbPath)
+func ConvertPinyinToWdb(mainDictPath, wdbPath string, logger *slog.Logger) error {
+	logger.Info("转换拼音词库", "src", mainDictPath, "dst", wdbPath)
 
 	dictDir := filepath.Dir(mainDictPath)
 	codeEntries := make(map[string][]dictEntry)
@@ -156,12 +156,12 @@ func ConvertPinyinToWdb(mainDictPath, wdbPath string) error {
 			continue
 		}
 
-		count, err := loadRimeFile(path, codeEntries, abbrevEntries)
+		count, err := loadRimeFile(path, codeEntries, abbrevEntries, logger)
 		if err != nil {
-			log.Printf("[dictcache] 加载 %s 失败（非致命）: %v", name, err)
+			logger.Warn("加载词库失败", "name", name, "error", err)
 			continue
 		}
-		log.Printf("[dictcache] 加载 %s: %d 条", name, count)
+		logger.Info("加载词库", "name", name, "count", count)
 		totalCount += count
 	}
 
@@ -215,7 +215,7 @@ func ConvertPinyinToWdb(mainDictPath, wdbPath string) error {
 		return fmt.Errorf("flush 失败: %w", err)
 	}
 
-	log.Printf("[dictcache] 拼音词库转换完成: %d codes, %d abbrevs", len(codeEntries), len(abbrevEntries))
+	logger.Info("拼音词库转换完成", "codes", len(codeEntries), "abbrevs", len(abbrevEntries))
 	return nil
 }
 
@@ -249,8 +249,8 @@ func discoverRimePinyinFiles(mainDictPath string) []string {
 }
 
 // ConvertUnigramToWdb 将 unigram.txt 转换为 unigram.wdb
-func ConvertUnigramToWdb(txtPath, wdbPath string) error {
-	log.Printf("[dictcache] 转换 Unigram: %s → %s", txtPath, wdbPath)
+func ConvertUnigramToWdb(txtPath, wdbPath string, logger *slog.Logger) error {
+	logger.Info("转换 Unigram", "src", txtPath, "dst", wdbPath)
 
 	file, err := os.Open(txtPath)
 	if err != nil {
@@ -308,7 +308,7 @@ func ConvertUnigramToWdb(txtPath, wdbPath string) error {
 		return fmt.Errorf("flush 失败: %w", err)
 	}
 
-	log.Printf("[dictcache] Unigram 转换完成: %d 词条", len(freqs))
+	logger.Info("Unigram 转换完成", "count", len(freqs))
 	return nil
 }
 
@@ -317,19 +317,19 @@ func ConvertUnigramToWdb(txtPath, wdbPath string) error {
 // import_tables 发现关联词库，并扫描同目录下同名前缀的额外词库文件。
 // 遵循 RIME 标准：所有词库平等合并，按 weight 统一排序。
 // 精确匹配优先于前缀匹配由引擎层 -2000000 降权保障，无需此处调整权重。
-func ConvertRimeWubiToWdb(mainDictPath, wdbPath string) error {
-	log.Printf("[dictcache] 转换 rime 五笔词库: %s → %s", mainDictPath, wdbPath)
+func ConvertRimeWubiToWdb(mainDictPath, wdbPath string, logger *slog.Logger) error {
+	logger.Info("转换 rime 五笔词库", "src", mainDictPath, "dst", wdbPath)
 
 	dictDir := filepath.Dir(mainDictPath)
 	codeEntries := make(map[string][]dictEntry)
 	totalCount := 0
 
 	// 1. 加载主词库
-	count, err := loadRimeWubiFile(mainDictPath, codeEntries)
+	count, err := loadRimeWubiFile(mainDictPath, codeEntries, logger)
 	if err != nil {
 		return fmt.Errorf("加载主词库失败: %w", err)
 	}
-	log.Printf("[dictcache] 主词库 %s: %d 条", filepath.Base(mainDictPath), count)
+	logger.Info("加载词库", "name", filepath.Base(mainDictPath), "count", count)
 	totalCount += count
 
 	// 2. 发现关联词库：import_tables + 目录扫描
@@ -339,12 +339,12 @@ func ConvertRimeWubiToWdb(mainDictPath, wdbPath string) error {
 		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 			continue
 		}
-		c, loadErr := loadRimeWubiFile(path, codeEntries)
+		c, loadErr := loadRimeWubiFile(path, codeEntries, logger)
 		if loadErr != nil {
-			log.Printf("[dictcache] 加载 %s 失败（非致命）: %v", name, loadErr)
+			logger.Warn("加载词库失败", "name", name, "error", loadErr)
 			continue
 		}
-		log.Printf("[dictcache] 扩展词库 %s: %d 条", name, c)
+		logger.Info("加载词库", "name", name, "count", c)
 		totalCount += c
 	}
 
@@ -400,10 +400,10 @@ func ConvertRimeWubiToWdb(mainDictPath, wdbPath string) error {
 	}
 
 	if err := writeMetaJSON(MetaPath(wdbPath), &meta); err != nil {
-		log.Printf("[dictcache] 写入 sidecar meta.json 失败（非致命）: %v", err)
+		logger.Warn("写入 sidecar meta.json 失败", "error", err)
 	}
 
-	log.Printf("[dictcache] rime 五笔词库转换完成: %d 编码, %d 词条", len(codeEntries), totalCount)
+	logger.Info("rime 五笔词库转换完成", "codes", len(codeEntries), "count", totalCount)
 	return nil
 }
 
@@ -492,7 +492,7 @@ func parseRimeImportTables(path string) []string {
 // 权重策略基于词库自身的 sort 字段：
 //   - sort: by_weight → 使用显式权重（权威词库，如主词库）
 //   - sort: original  → 忽略显式权重，统一 weight=1（补充词库，不与主词库竞争）
-func loadRimeWubiFile(path string, codeEntries map[string][]dictEntry) (int, error) {
+func loadRimeWubiFile(path string, codeEntries map[string][]dictEntry, logger *slog.Logger) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return 0, err
@@ -571,7 +571,7 @@ type dictEntry struct {
 	weight int
 }
 
-func loadRimeFile(path string, codeEntries map[string][]dictEntry, abbrevEntries map[string][]dictEntry) (int, error) {
+func loadRimeFile(path string, codeEntries map[string][]dictEntry, abbrevEntries map[string][]dictEntry, logger *slog.Logger) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return 0, err

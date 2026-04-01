@@ -450,13 +450,6 @@ input:checked + .slider:before {
   padding: 5px 10px;
   font-size: 12px;
 }
-.btn-danger {
-  color: #dc2626;
-  border-color: #fecaca;
-}
-.btn-danger:hover {
-  background: #fee2e2;
-}
 .btn-icon {
   width: 28px;
   height: 28px;
@@ -720,15 +713,6 @@ input:checked + .slider:before {
 .form-row .input-sm {
   max-width: 120px;
 }
-.form-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
-}
-
 /* ========== Shared: Dialog ========== */
 .dialog-overlay {
   position: fixed;

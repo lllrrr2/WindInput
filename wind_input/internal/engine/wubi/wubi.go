@@ -2,7 +2,7 @@
 package wubi
 
 import (
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -48,15 +48,17 @@ type Engine struct {
 	codeTable   *dict.CodeTable // 主码表
 	config      *Config
 	dictManager *dict.DictManager // 词库管理器（可选，用于查询用户词和短语）
+	logger      *slog.Logger
 }
 
 // NewEngine 创建五笔引擎
-func NewEngine(config *Config) *Engine {
+func NewEngine(config *Config, logger *slog.Logger) *Engine {
 	if config == nil {
 		config = DefaultConfig()
 	}
 	return &Engine{
 		config: config,
+		logger: logger,
 	}
 }
 
@@ -330,17 +332,15 @@ func (e *Engine) checkAutoCommit(result *ConvertResult, input string, candidates
 	}
 
 	inputLen := len(input)
-	log.Printf("[Wubi] checkAutoCommit: input=%s, len=%d, candidates=%d, autoCommitAt4=%v, maxCode=%d",
-		input, inputLen, len(candidates), e.config.AutoCommitAt4, e.config.MaxCodeLength)
+	e.logger.Debug("checkAutoCommit", "input", input, "len", inputLen, "candidates", len(candidates), "autoCommitAt4", e.config.AutoCommitAt4, "maxCode", e.config.MaxCodeLength)
 
 	// 四码唯一时自动上屏
 	if e.config.AutoCommitAt4 && inputLen >= e.config.MaxCodeLength && len(candidates) == 1 {
 		result.ShouldCommit = true
 		result.CommitText = candidates[0].Text
-		log.Printf("[Wubi] AutoCommitAt4 triggered: text=%s", result.CommitText)
+		e.logger.Debug("AutoCommitAt4 triggered", "text", result.CommitText)
 	} else if e.config.AutoCommitAt4 {
-		log.Printf("[Wubi] AutoCommitAt4 NOT triggered: inputLen(%d) >= maxCode(%d)=%v, candidates=%d",
-			inputLen, e.config.MaxCodeLength, inputLen >= e.config.MaxCodeLength, len(candidates))
+		e.logger.Debug("AutoCommitAt4 NOT triggered", "inputLen", inputLen, "maxCode", e.config.MaxCodeLength, "lenGEmax", inputLen >= e.config.MaxCodeLength, "candidates", len(candidates))
 	}
 }
 
@@ -348,17 +348,15 @@ func (e *Engine) checkAutoCommit(result *ConvertResult, input string, candidates
 // 当输入第五码时，自动上屏首选并将第五码作为新输入
 // 通过 ConvertEx 走完整候选流水线，确保顶码结果与用户看到的首选一致
 func (e *Engine) HandleTopCode(input string) (commitText string, newInput string, shouldCommit bool) {
-	log.Printf("[Wubi] HandleTopCode: input=%s, topCodeCommit=%v, maxCodeLength=%d",
-		input, e.config.TopCodeCommit, e.config.MaxCodeLength)
+	e.logger.Debug("HandleTopCode", "input", input, "topCodeCommit", e.config.TopCodeCommit, "maxCodeLength", e.config.MaxCodeLength)
 
 	if !e.config.TopCodeCommit {
-		log.Printf("[Wubi] HandleTopCode: TopCodeCommit is disabled")
+		e.logger.Debug("HandleTopCode: TopCodeCommit is disabled")
 		return "", input, false
 	}
 
 	if len(input) <= e.config.MaxCodeLength {
-		log.Printf("[Wubi] HandleTopCode: input length %d <= maxCodeLength %d, skipping",
-			len(input), e.config.MaxCodeLength)
+		e.logger.Debug("HandleTopCode: input too short, skipping", "inputLen", len(input), "maxCodeLength", e.config.MaxCodeLength)
 		return "", input, false
 	}
 
@@ -366,14 +364,14 @@ func (e *Engine) HandleTopCode(input string) (commitText string, newInput string
 	prefix := input[:e.config.MaxCodeLength]
 	result := e.ConvertEx(prefix, 1)
 
-	log.Printf("[Wubi] HandleTopCode: prefix=%s, candidates=%d", prefix, len(result.Candidates))
+	e.logger.Debug("HandleTopCode", "prefix", prefix, "candidates", len(result.Candidates))
 
 	if len(result.Candidates) > 0 {
-		log.Printf("[Wubi] HandleTopCode: commit=%s, newInput=%s", result.Candidates[0].Text, input[e.config.MaxCodeLength:])
+		e.logger.Debug("HandleTopCode commit", "commit", result.Candidates[0].Text, "newInput", input[e.config.MaxCodeLength:])
 		return result.Candidates[0].Text, input[e.config.MaxCodeLength:], true
 	}
 
-	log.Printf("[Wubi] HandleTopCode: no candidates found for prefix %s", prefix)
+	e.logger.Debug("HandleTopCode: no candidates found", "prefix", prefix)
 	return "", input, false
 }
 

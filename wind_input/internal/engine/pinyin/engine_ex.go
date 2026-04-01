@@ -95,8 +95,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	// allCompletedEnd: 所有已完成音节在原始输入中的结束位置
 	allCompletedEnd := parsed.ConsumedBytesForCompletedN(syllableCount)
 
-	logDebug("[PinyinEngine] input=%q preedit=%q completed=%v partial=%q allSyllables=%v parseElapsed=%v",
-		input, result.PreeditDisplay, completedSyllables, partial, allSyllables, time.Since(convertStart))
+	e.logger.Debug("convertCore", "input", input, "preedit", result.PreeditDisplay, "completed", completedSyllables, "partial", partial, "allSyllables", allSyllables, "parseElapsed", time.Since(convertStart))
 
 	// 检查首个 completed syllable 是否也是输入的第一个段
 	// 例如 sdem → allSyllables=["s","de","m"]，completedSyllables=["de"]
@@ -126,7 +125,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 			candidatesMap[c.Text] = &c
 		}
 		if len(cmdResults) > 0 {
-			logDebug("[PinyinEngine] command match for %q: %d results", input, len(cmdResults))
+			e.logger.Debug("command match", "input", input, "results", len(cmdResults))
 		}
 	}
 
@@ -199,7 +198,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 			c.ConsumedLength = allCompletedEnd // 基于 Parser 音节位置精确计算
 			candidatesMap[c.Text] = &c
 		}
-		logDebug("[PinyinEngine] exact match for %q: %d results (partial=%q)", exactInput, len(exactResults), partial)
+		e.logger.Debug("exact match", "input", exactInput, "results", len(exactResults), "partial", partial)
 	}
 
 	// ── 步骤 1b：多切分并行打分 ──
@@ -257,7 +256,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 				c.ConsumedLength = len(input)
 				candidatesMap[c.Text] = &c
 			}
-			logDebug("[PinyinEngine] prefix match for %q: %d results", input, len(prefixResults))
+			e.logger.Debug("prefix match", "input", input, "results", len(prefixResults))
 		}
 	}
 
@@ -508,15 +507,14 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	// 9. 添加五笔编码提示
 	wubiStart := time.Now()
 	e.addWubiHints(result.Candidates)
-	logDebug("[PinyinEngine] wubiHints elapsed=%v", time.Since(wubiStart))
+	e.logger.Debug("wubiHints", "elapsed", time.Since(wubiStart))
 
 	// 10. 双拼后处理：回映 ConsumedLength + 替换预编辑显示
 	if spResult != nil {
 		e.shuangpinPostprocess(result, spResult, originalInput)
 	}
 
-	logDebug("[PinyinEngine] final candidates=%d isEmpty=%v elapsed=%v",
-		len(result.Candidates), result.IsEmpty, time.Since(convertStart))
+	e.logger.Debug("final", "candidates", len(result.Candidates), "isEmpty", result.IsEmpty, "elapsed", time.Since(convertStart))
 
 	return result
 }

@@ -2,7 +2,7 @@ package dict
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"path/filepath"
 	"sync"
 
@@ -13,6 +13,8 @@ import (
 // 统一管理所有词库层的加载、保存和生命周期
 type DictManager struct {
 	mu sync.RWMutex
+
+	logger *slog.Logger
 
 	// 用户数据目录（%APPDATA%\WindInput）
 	dataDir string
@@ -43,8 +45,9 @@ type DictManager struct {
 // NewDictManager 创建词库管理器
 // dataDir: 用户数据目录（%APPDATA%\WindInput）
 // systemDir: 程序数据目录（exeDir/data，存放 system.phrases.yaml 等）
-func NewDictManager(dataDir, systemDir string) *DictManager {
+func NewDictManager(dataDir, systemDir string, logger *slog.Logger) *DictManager {
 	return &DictManager{
+		logger:        logger,
 		dataDir:       dataDir,
 		systemDir:     systemDir,
 		shadowLayers:  make(map[string]*ShadowLayer),
@@ -65,10 +68,9 @@ func (dm *DictManager) Initialize() error {
 	userPhrasePath := filepath.Join(dm.dataDir, "user.phrases.yaml")
 	dm.phraseLayer = NewPhraseLayer("phrases", systemPhrasePath, userPhrasePath)
 	if err := dm.phraseLayer.Load(); err != nil {
-		log.Printf("[DictManager] 加载短语配置失败: %v", err)
+		dm.logger.Warn("加载短语配置失败", "error", err)
 	} else {
-		log.Printf("[DictManager] 短语层加载成功: %d 短语, %d 命令",
-			dm.phraseLayer.GetPhraseCount(), dm.phraseLayer.GetCommandCount())
+		dm.logger.Info("短语层加载成功", "phrases", dm.phraseLayer.GetPhraseCount(), "commands", dm.phraseLayer.GetCommandCount())
 	}
 	dm.compositeDict.AddLayer(dm.phraseLayer)
 
@@ -104,9 +106,9 @@ func (dm *DictManager) SwitchSchemaFull(schemaID, shadowFile, userDictFile, temp
 		shadowPath := filepath.Join(dm.dataDir, shadowFile)
 		shadow = NewShadowLayer("shadow_"+schemaID, shadowPath)
 		if err := shadow.Load(); err != nil {
-			log.Printf("[DictManager] 加载 Shadow 规则失败 (%s): %v", schemaID, err)
+			dm.logger.Warn("加载 Shadow 规则失败", "schemaID", schemaID, "error", err)
 		} else {
-			log.Printf("[DictManager] Shadow 层加载成功 (%s): %d 规则", schemaID, shadow.GetRuleCount())
+			dm.logger.Info("Shadow 层加载成功", "schemaID", schemaID, "rules", shadow.GetRuleCount())
 		}
 		dm.shadowLayers[schemaID] = shadow
 	}
@@ -119,9 +121,9 @@ func (dm *DictManager) SwitchSchemaFull(schemaID, shadowFile, userDictFile, temp
 		userDictPath := filepath.Join(dm.dataDir, userDictFile)
 		userDict = NewUserDict("user_"+schemaID, userDictPath)
 		if err := userDict.Load(); err != nil {
-			log.Printf("[DictManager] 加载用户词库失败 (%s): %v", schemaID, err)
+			dm.logger.Warn("加载用户词库失败", "schemaID", schemaID, "error", err)
 		} else {
-			log.Printf("[DictManager] 用户词库加载成功 (%s): %d 词条", schemaID, userDict.EntryCount())
+			dm.logger.Info("用户词库加载成功", "schemaID", schemaID, "entries", userDict.EntryCount())
 		}
 		dm.userDicts[schemaID] = userDict
 	}
@@ -136,11 +138,11 @@ func (dm *DictManager) SwitchSchemaFull(schemaID, shadowFile, userDictFile, temp
 		tempDict, ok := dm.tempDicts[schemaID]
 		if !ok {
 			tempDictPath := filepath.Join(dm.dataDir, tempDictFile)
-			tempDict = NewTempDict("temp_"+schemaID, tempDictPath, tempMaxEntries, tempPromoteCount)
+			tempDict = NewTempDict("temp_"+schemaID, tempDictPath, tempMaxEntries, tempPromoteCount, dm.logger)
 			if err := tempDict.Load(); err != nil {
-				log.Printf("[DictManager] 加载临时词库失败 (%s): %v", schemaID, err)
+				dm.logger.Warn("加载临时词库失败", "schemaID", schemaID, "error", err)
 			} else {
-				log.Printf("[DictManager] 临时词库加载成功 (%s): %d 词条", schemaID, tempDict.GetWordCount())
+				dm.logger.Info("临时词库加载成功", "schemaID", schemaID, "entries", tempDict.GetWordCount())
 			}
 			dm.tempDicts[schemaID] = tempDict
 		}
@@ -152,7 +154,7 @@ func (dm *DictManager) SwitchSchemaFull(schemaID, shadowFile, userDictFile, temp
 	}
 
 	dm.activeSchemaID = schemaID
-	log.Printf("[DictManager] 切换到方案: %s", schemaID)
+	dm.logger.Info("切换到方案", "schemaID", schemaID)
 }
 
 // SetActiveEngine 兼容旧代码的切换方法
@@ -165,7 +167,7 @@ func (dm *DictManager) SetActiveEngine(engineType string) {
 	case "wubi":
 		dm.SwitchSchema("wubi86", "wubi86.shadow.yaml", "wubi86.userwords.txt")
 	default:
-		log.Printf("[DictManager] 未知引擎类型: %s", engineType)
+		dm.logger.Warn("未知引擎类型", "engineType", engineType)
 	}
 }
 
@@ -176,7 +178,7 @@ func (dm *DictManager) RegisterSystemLayer(name string, layer DictLayer) {
 
 	dm.systemLayers[name] = layer
 	dm.compositeDict.AddLayer(layer)
-	log.Printf("[DictManager] 注册系统词库: %s", name)
+	dm.logger.Info("注册系统词库", "name", name)
 }
 
 // UnregisterSystemLayer 取消注册系统词库层
@@ -187,7 +189,7 @@ func (dm *DictManager) UnregisterSystemLayer(name string) {
 	if _, ok := dm.systemLayers[name]; ok {
 		delete(dm.systemLayers, name)
 		dm.compositeDict.RemoveLayer(name)
-		log.Printf("[DictManager] 取消注册系统词库: %s", name)
+		dm.logger.Info("取消注册系统词库", "name", name)
 	}
 }
 

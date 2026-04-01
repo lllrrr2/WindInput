@@ -2,7 +2,7 @@
 package mixed
 
 import (
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -55,10 +55,11 @@ type Engine struct {
 	config       *Config
 	maxCodeLen   int               // 五笔最大码长（通常为4）
 	dictManager  *dict.DictManager // 词库管理器（用于 Shadow 规则访问）
+	logger       *slog.Logger
 }
 
 // NewEngine 创建混输引擎
-func NewEngine(wubiEng *wubi.Engine, pinyinEng *pinyin.Engine, config *Config) *Engine {
+func NewEngine(wubiEng *wubi.Engine, pinyinEng *pinyin.Engine, config *Config, logger *slog.Logger) *Engine {
 	if config == nil {
 		config = DefaultConfig()
 	}
@@ -71,6 +72,7 @@ func NewEngine(wubiEng *wubi.Engine, pinyinEng *pinyin.Engine, config *Config) *
 		pinyinEngine: pinyinEng,
 		config:       config,
 		maxCodeLen:   maxCodeLen,
+		logger:       logger,
 	}
 }
 
@@ -357,8 +359,7 @@ func (e *Engine) convertMixed(input string, maxCandidates int) *ConvertResult {
 		addSourceHints(result.Candidates)
 	}
 
-	log.Printf("[Mixed] input=%s, wubi=%d, pinyin=%d, merged=%d",
-		input, len(wubiCandidates), len(pinyinCandidates), len(merged))
+	e.logger.Debug("convertMixed", "input", input, "wubi", len(wubiCandidates), "pinyin", len(pinyinCandidates), "merged", len(merged))
 
 	return result
 }

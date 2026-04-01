@@ -144,6 +144,7 @@ func GetCommonCharCount() int {
 }
 
 // AddCommonChars 批量添加通用汉字（用于运行时扩展）
+// TODO: 预留给用户自定义常用字功能
 func AddCommonChars(chars string) {
 	InitCommonChars()
 	for _, char := range chars {

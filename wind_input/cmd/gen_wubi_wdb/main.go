@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"log/slog"
 	"path/filepath"
 
 	"github.com/huanfeng/wind_input/internal/dict/dictcache"
@@ -15,7 +16,7 @@ func main() {
 
 	wdbPath := filepath.Join(*outDir, "wubi.wdb")
 
-	if err := dictcache.ConvertCodeTableToWdb(*srcPath, wdbPath); err != nil {
+	if err := dictcache.ConvertCodeTableToWdb(*srcPath, wdbPath, slog.Default()); err != nil {
 		log.Fatalf("生成 wubi.wdb 失败: %v", err)
 	}
 

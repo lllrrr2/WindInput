@@ -3,7 +3,7 @@ package dict
 import (
 	"bufio"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,6 +17,7 @@ import (
 // PinyinDict 拼音专用词库（基于 Trie 索引或 mmap 二进制文件）
 // 支持从 Rime dict.yaml 格式或预编译的 .wdb 二进制格式加载
 type PinyinDict struct {
+	logger     *slog.Logger
 	trie       *Trie // Trie 索引，用于精确和前缀搜索（YAML 模式）
 	abbrevTrie *Trie // 简拼索引（声母首字母 → 词条），用于简拼词组匹配（YAML 模式）
 	entryCount int
@@ -26,8 +27,8 @@ type PinyinDict struct {
 }
 
 // NewPinyinDict 创建拼音词库
-func NewPinyinDict() *PinyinDict {
-	return &PinyinDict{}
+func NewPinyinDict(logger *slog.Logger) *PinyinDict {
+	return &PinyinDict{logger: logger}
 }
 
 // LoadRimeDir 从目录加载 Rime dict.yaml 格式词库
@@ -46,15 +47,15 @@ func (d *PinyinDict) LoadRimeDir(dirPath string) error {
 	for _, name := range files {
 		path := filepath.Join(dirPath, name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			log.Printf("[PinyinDict] 跳过不存在的文件: %s", path)
+			d.logger.Info("跳过不存在的文件", "path", path)
 			continue
 		}
 		count, err := d.loadRimeFile(path)
 		if err != nil {
-			log.Printf("[PinyinDict] 加载 %s 失败: %v", name, err)
+			d.logger.Warn("加载词库文件失败", "name", name, "error", err)
 			continue
 		}
-		log.Printf("[PinyinDict] 加载 %s: %d 条", name, count)
+		d.logger.Info("加载词库文件", "name", name, "count", count)
 		loaded++
 	}
 

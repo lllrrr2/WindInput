@@ -179,28 +179,3 @@ func latticeKey(start, end int, word string) string {
 	b = append(b, ':')
 	return string(b) + word
 }
-
-// LatticeFromCandidates 从候选词列表直接构建简单 Lattice
-func LatticeFromCandidates(input string, syllables []string, candidates []candidate.Candidate, unigram UnigramLookup) *Lattice {
-	n := len(input)
-	lattice := &Lattice{
-		nodes: make([][]LatticeNode, n+1),
-		input: input,
-	}
-
-	for _, cand := range candidates {
-		logProb := calcLogProb(cand, unigram)
-
-		node := LatticeNode{
-			Start:     0,
-			End:       n,
-			Word:      cand.Text,
-			Syllables: syllables,
-			LogProb:   logProb,
-		}
-		lattice.nodes[n] = append(lattice.nodes[n], node)
-		lattice.size++
-	}
-
-	return lattice
-}

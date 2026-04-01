@@ -59,33 +59,3 @@ func ToHalfWidth(s string) string {
 
 	return string(result)
 }
-
-// IsFullWidthChar checks if a rune is a full-width character
-func IsFullWidthChar(r rune) bool {
-	return r == fullWidthSpace || (r >= fullWidthStart && r <= fullWidthStart+(halfWidthEnd-halfWidthStart))
-}
-
-// IsHalfWidthChar checks if a rune is a half-width ASCII character
-func IsHalfWidthChar(r rune) bool {
-	return r == halfWidthSpace || (r >= halfWidthStart && r <= halfWidthEnd)
-}
-
-// ConvertChar converts a single character based on mode
-// fullWidth=true: 半角转全角
-// fullWidth=false: 全角转半角
-func ConvertChar(r rune, fullWidth bool) rune {
-	if fullWidth {
-		if r == halfWidthSpace {
-			return fullWidthSpace
-		} else if r >= halfWidthStart && r <= halfWidthEnd {
-			return r + fullWidthDiff
-		}
-	} else {
-		if r == fullWidthSpace {
-			return halfWidthSpace
-		} else if r >= fullWidthStart && r <= fullWidthStart+(halfWidthEnd-halfWidthStart) {
-			return r - fullWidthDiff
-		}
-	}
-	return r
-}

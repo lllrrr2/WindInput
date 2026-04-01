@@ -182,12 +182,3 @@ func IsEnglishPunct(r rune) bool {
 	_, ok := englishToChinesePunct[r]
 	return ok
 }
-
-// GetChinesePunctuation returns the Chinese punctuation for an English one
-// without state tracking (for simple lookups)
-func GetChinesePunctuation(r rune) (rune, bool) {
-	if chinese, ok := englishToChinesePunct[r]; ok {
-		return chinese, true
-	}
-	return r, false
-}

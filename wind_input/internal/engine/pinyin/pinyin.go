@@ -1,7 +1,7 @@
 package pinyin
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -9,16 +9,6 @@ import (
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin/shuangpin"
 )
-
-// DebugLog 控制是否输出调试日志（每次按键触发的高频信息）
-// 仅在开发调试时开启，生产环境默认关闭
-var DebugLog = false
-
-func logDebug(format string, args ...interface{}) {
-	if DebugLog {
-		log.Printf(format, args...)
-	}
-}
 
 // Config 拼音引擎配置
 type Config struct {
@@ -44,24 +34,26 @@ type Engine struct {
 	dictManager  *dict.DictManager // 词库管理器（用于用户词频学习）
 	scorer       *Scorer           // 统一候选评分器（deprecated，保留供五笔引擎引用）
 	rimeScorer   *RimeScorer       // Rime 风格连续评分器
+	logger       *slog.Logger
 
 	// 双拼支持
 	spConverter *shuangpin.Converter // 双拼转换器（nil 表示全拼模式）
 }
 
 // NewEngine 创建拼音引擎
-func NewEngine(d *dict.CompositeDict) *Engine {
+func NewEngine(d *dict.CompositeDict, logger *slog.Logger) *Engine {
 	return &Engine{
 		dict:         d,
 		syllableTrie: NewSyllableTrie(),
 		config:       &Config{ShowWubiHint: false, FilterMode: "smart"},
 		scorer:       NewScorer(nil, nil),
 		rimeScorer:   NewRimeScorer(nil, nil),
+		logger:       logger,
 	}
 }
 
 // NewEngineWithConfig 创建带配置的拼音引擎
-func NewEngineWithConfig(d *dict.CompositeDict, config *Config) *Engine {
+func NewEngineWithConfig(d *dict.CompositeDict, config *Config, logger *slog.Logger) *Engine {
 	if config == nil {
 		config = &Config{ShowWubiHint: false, FilterMode: "smart"}
 	}
@@ -71,6 +63,7 @@ func NewEngineWithConfig(d *dict.CompositeDict, config *Config) *Engine {
 		config:       config,
 		scorer:       NewScorer(nil, nil),
 		rimeScorer:   NewRimeScorer(nil, nil),
+		logger:       logger,
 	}
 }
 
@@ -95,10 +88,10 @@ func (e *Engine) LoadUnigram(path string) error {
 			e.unigram = bm
 			e.scorer = NewScorer(e.unigram, e.bigram)
 			e.rimeScorer = NewRimeScorer(e.unigram, e.bigram)
-			log.Printf("[PinyinEngine] Unigram 模型(二进制)加载成功: %d 词条", bm.Size())
+			e.logger.Info("Unigram 模型(二进制)加载成功", "count", bm.Size())
 			return nil
 		}
-		log.Printf("[PinyinEngine] 加载二进制 Unigram 失败，fallback 到文本: %v", err)
+		e.logger.Info("加载二进制 Unigram 失败，fallback 到文本", "err", err)
 	}
 
 	// Fallback 到文本格式
@@ -181,16 +174,16 @@ func (e *Engine) LoadWubiTableBinary(wdbPath string) error {
 // ReleaseWubiHint 释放五笔反查资源
 func (e *Engine) ReleaseWubiHint() {
 	e.wubiReverse = nil
-	log.Printf("[PinyinEngine] 五笔反向索引已释放")
+	e.logger.Info("五笔反向索引已释放")
 }
 
 // lookupWubiCode 查找汉字的五笔编码
 func (e *Engine) lookupWubiCode(text string) string {
 	// 懒构建反向索引
 	if e.wubiReverse == nil && e.wubiTable != nil {
-		log.Printf("[PinyinEngine] 懒构建五笔反向索引...")
+		e.logger.Debug("懒构建五笔反向索引")
 		e.wubiReverse = e.wubiTable.BuildReverseIndex()
-		log.Printf("[PinyinEngine] 五笔反向索引构建完成")
+		e.logger.Debug("五笔反向索引构建完成")
 	}
 	if e.wubiReverse == nil {
 		return ""
