@@ -11,6 +11,8 @@ import * as wailsApi from "./api/wails";
 import type { Config, Status, EngineInfo, TSFLogConfig } from "./api/settings";
 import type { ThemeInfo, ThemePreview } from "./api/wails";
 import { getDefaultConfig, getDefaultTSFLogConfig } from "./api/settings";
+import { provideToast } from "./composables/useToast";
+import ToastContainer from "./components/ToastContainer.vue";
 
 import GeneralPage from "./pages/GeneralPage.vue";
 import InputPage from "./pages/InputPage.vue";
@@ -29,6 +31,9 @@ const isWailsEnv = computed(() => {
   );
 });
 
+// 全局 Toast
+const { toasts, toast } = provideToast();
+
 // 状态
 const loading = ref(true);
 const error = ref("");
@@ -38,8 +43,6 @@ const saving = ref(false);
 const addWordParams = ref<AddWordParams | null>(null);
 const showAddWordDialog = ref(false);
 const isStandaloneAddWord = ref(false); // 独立加词窗口模式（无设置主界面）
-const saveMessage = ref("");
-const saveMessageType = ref<"success" | "error">("success");
 const hotkeyConflicts = ref<string[]>([]);
 
 // 数据
@@ -195,59 +198,50 @@ function mergeWithDefaults(cfg: any): Config {
 // 保存配置
 async function saveConfig() {
   if (hotkeyConflicts.value.length > 0) {
-    saveMessageType.value = "error";
-    saveMessage.value = "存在快捷键冲突，请先解决";
-    setTimeout(() => {
-      saveMessage.value = "";
-    }, 3000);
+    toast("存在快捷键冲突，请先解决", "error");
     return;
   }
 
   saving.value = true;
-  saveMessage.value = "";
 
   try {
     if (isWailsEnv.value) {
       await wailsApi.saveConfig(formData.value as any);
       await wailsApi.saveTSFLogConfig(tsfLogConfig.value);
-      saveMessageType.value = "success";
-      saveMessage.value = "保存成功";
+      toast("保存成功");
       config.value = JSON.parse(JSON.stringify(formData.value));
       savedTSFLogConfig.value = JSON.parse(JSON.stringify(tsfLogConfig.value));
     } else {
       const res = await api.updateConfig(formData.value);
       if (res.success && res.data) {
-        saveMessageType.value = "success";
-        saveMessage.value = "保存成功";
+        let msg = "保存成功";
         if (res.data.needReload.length > 0) {
-          saveMessage.value += "（部分设置需要重载生效）";
+          msg += "（部分设置需要重载生效）";
         }
+        toast(msg);
         config.value = JSON.parse(JSON.stringify(formData.value));
       } else {
-        saveMessageType.value = "error";
-        saveMessage.value = res.error || "保存失败";
+        toast(res.error || "保存失败", "error");
       }
     }
   } catch (e: any) {
-    saveMessageType.value = "error";
-    saveMessage.value = e.message || "保存失败";
+    toast(e.message || "保存失败", "error");
   } finally {
     saving.value = false;
-    setTimeout(() => {
-      saveMessage.value = "";
-    }, 3000);
   }
 }
 
 // 检测是否有未保存的修改
 function hasUnsavedChanges(): boolean {
   if (!config.value) return false;
-  const configChanged = JSON.stringify(formData.value) !== JSON.stringify(config.value);
+  const configChanged =
+    JSON.stringify(formData.value) !== JSON.stringify(config.value);
   if (!isWailsEnv.value) return configChanged;
 
   return (
     configChanged ||
-    JSON.stringify(tsfLogConfig.value) !== JSON.stringify(savedTSFLogConfig.value)
+    JSON.stringify(tsfLogConfig.value) !==
+      JSON.stringify(savedTSFLogConfig.value)
   );
 }
 
@@ -279,27 +273,20 @@ async function handleReload() {
   try {
     if (isWailsEnv.value) {
       await wailsApi.reloadConfig();
-      saveMessageType.value = "success";
-      saveMessage.value = "重载成功";
+      toast("重载成功");
       await loadData();
     } else {
       const res = await api.reloadConfig();
       if (res.success) {
-        saveMessageType.value = "success";
-        saveMessage.value = "重载成功";
+        toast("重载成功");
         await loadData();
       } else {
-        saveMessageType.value = "error";
-        saveMessage.value = res.error || "重载失败";
+        toast(res.error || "重载失败", "error");
       }
     }
   } catch (e: any) {
-    saveMessageType.value = "error";
-    saveMessage.value = "重载失败";
+    toast("重载失败", "error");
   }
-  setTimeout(() => {
-    saveMessage.value = "";
-  }, 3000);
 }
 
 // 刷新状态
@@ -387,11 +374,11 @@ async function resetCurrentPageDefaults() {
       break;
   }
 
-  saveMessageType.value = changed ? "success" : "error";
-  saveMessage.value = changed ? "已恢复本页默认设置" : "本页没有可恢复的设置";
-  setTimeout(() => {
-    saveMessage.value = "";
-  }, 2000);
+  toast(
+    changed ? "已恢复本页默认设置" : "本页没有可恢复的设置",
+    changed ? "success" : "error",
+    2000,
+  );
 }
 
 // 主题管理
@@ -507,7 +494,9 @@ onMounted(async () => {
       };
       showAddWordDialog.value = true;
       // 将窗口拉到最前
-      try { Show(); } catch {}
+      try {
+        Show();
+      } catch {}
     });
   }
 });
@@ -515,6 +504,7 @@ onMounted(async () => {
 
 <template>
   <div class="app">
+    <ToastContainer :toasts="toasts" />
     <!-- 加词对话框（模态浮层，可在任何页面上弹出） -->
     <AddWordPage
       v-if="showAddWordDialog"
@@ -552,11 +542,6 @@ onMounted(async () => {
         </button>
       </nav>
       <div class="sidebar-footer">
-        <div class="sidebar-message">
-          <span v-if="saveMessage" :class="['message', saveMessageType]">
-            {{ saveMessage }}
-          </span>
-        </div>
         <div class="sidebar-actions">
           <button class="btn" @click="resetCurrentPageDefaults">
             恢复本页默认

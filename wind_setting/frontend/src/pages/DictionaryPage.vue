@@ -6,7 +6,11 @@
     </div>
 
     <!-- 文件变化提示 -->
-    <div v-if="showFileChangeAlert" class="settings-card warning-card" style="margin-bottom:12px;">
+    <div
+      v-if="showFileChangeAlert"
+      class="settings-card warning-card"
+      style="margin-bottom: 12px"
+    >
       <div class="warning-content">
         <span class="warning-icon">!</span>
         <div class="warning-text">
@@ -19,26 +23,41 @@
             已被修改
           </p>
         </div>
-        <button class="btn btn-sm btn-primary" @click="handleReloadAllFiles">重新加载</button>
-        <button class="btn btn-sm" @click="showFileChangeAlert = false">忽略</button>
+        <button class="btn btn-sm btn-primary" @click="handleReloadAllFiles">
+          重新加载
+        </button>
+        <button class="btn btn-sm" @click="showFileChangeAlert = false">
+          忽略
+        </button>
       </div>
     </div>
 
-    <!-- 消息提示 -->
-    <div v-if="dictMessage" :class="['dict-message', dictMessageType]">{{ dictMessage }}</div>
+    <!-- 消息提示已迁移至全局 Toast -->
 
     <!-- 子标签页 -->
     <div class="sub-tabs">
-      <button :class="['sub-tab', { active: dictSubTab === 'phrases' }]" @click="switchSubTab('phrases')">
+      <button
+        :class="['sub-tab', { active: dictSubTab === 'phrases' }]"
+        @click="switchSubTab('phrases')"
+      >
         快捷短语 ({{ phraseCount }})
       </button>
-      <button :class="['sub-tab', { active: dictSubTab === 'userdict' }]" @click="switchSubTab('userdict')">
+      <button
+        :class="['sub-tab', { active: dictSubTab === 'userdict' }]"
+        @click="switchSubTab('userdict')"
+      >
         用户词库 ({{ totalWordCount }})
       </button>
-      <button :class="['sub-tab', { active: dictSubTab === 'temp' }]" @click="switchSubTab('temp')">
+      <button
+        :class="['sub-tab', { active: dictSubTab === 'temp' }]"
+        @click="switchSubTab('temp')"
+      >
         临时词库 ({{ totalTempCount }})
       </button>
-      <button :class="['sub-tab', { active: dictSubTab === 'shadow' }]" @click="switchSubTab('shadow')">
+      <button
+        :class="['sub-tab', { active: dictSubTab === 'shadow' }]"
+        @click="switchSubTab('shadow')"
+      >
         候选调整 ({{ totalShadowCount }})
       </button>
     </div>
@@ -80,7 +99,7 @@
         </div>
 
         <!-- 右侧：内容面板 -->
-        <div class="dict-main-panel" style="position:relative;">
+        <div class="dict-main-panel" style="position: relative">
           <!-- loading 遮罩 -->
           <div v-if="dictLoading" class="content-loading-overlay">
             <div class="spinner"></div>
@@ -88,23 +107,49 @@
 
           <!-- 工具栏 -->
           <div class="dict-toolbar">
-            <label class="toolbar-checkbox-wrap" v-if="phraseCategory === 'user'">
-              <input type="checkbox" :checked="allPhraseSelected" @change="toggleAllPhrases" />
+            <label
+              class="toolbar-checkbox-wrap"
+              v-if="phraseCategory === 'user'"
+            >
+              <input
+                type="checkbox"
+                :checked="allPhraseSelected"
+                @change="toggleAllPhrases"
+              />
               <span>全选</span>
             </label>
-            <button v-if="phraseCategory === 'user'" class="btn btn-primary btn-sm" @click="openAddPhraseDialog">+ 添加</button>
+            <button
+              v-if="phraseCategory === 'user'"
+              class="btn btn-primary btn-sm"
+              @click="openAddPhraseDialog"
+            >
+              + 添加
+            </button>
             <button
               v-if="phraseCategory === 'user'"
               class="btn btn-sm btn-danger-outline"
               :disabled="selectedPhraseKeys.size === 0"
               @click="handleBatchRemovePhrases"
-            >删除{{ selectedPhraseKeys.size > 0 ? ` (${selectedPhraseKeys.size})` : '' }}</button>
-            <span v-if="phraseCategory === 'system'" class="toolbar-readonly-hint">系统短语（只读）</span>
+            >
+              删除{{
+                selectedPhraseKeys.size > 0
+                  ? ` (${selectedPhraseKeys.size})`
+                  : ""
+              }}
+            </button>
+            <span
+              v-if="phraseCategory === 'system'"
+              class="toolbar-readonly-hint"
+              >系统短语（只读）</span
+            >
           </div>
 
           <!-- 用户短语列表 -->
           <div v-if="phraseCategory === 'user'" class="dict-list-wrapper">
-            <div v-if="phrases.length > 0" class="dict-list dict-list-scrollable">
+            <div
+              v-if="phrases.length > 0"
+              class="dict-list dict-list-scrollable"
+            >
               <div
                 class="dict-list-item"
                 v-for="(item, idx) in phrases"
@@ -120,13 +165,31 @@
                 <div class="dict-item-main">
                   <span class="dict-item-code">{{ item.code }}</span>
                   <span class="dict-item-text">{{ item.text }}</span>
-                  <span v-if="item.text.startsWith('$[') && item.text.endsWith(']')" class="tag-mapping">映射</span>
-                  <span v-else-if="item.text.includes('$')" class="tag-dynamic">动态</span>
+                  <span
+                    v-if="item.text.startsWith('$[') && item.text.endsWith(']')"
+                    class="tag-mapping"
+                    >映射</span
+                  >
+                  <span v-else-if="item.text.includes('$')" class="tag-dynamic"
+                    >动态</span
+                  >
                   <span class="dict-item-weight">{{ item.position }}</span>
                 </div>
                 <div class="dict-item-actions">
-                  <button class="btn-icon" @click="openEditPhraseDialog(item)" title="编辑">✎</button>
-                  <button class="btn-icon btn-delete" @click="handleRemovePhrase(item)" title="删除">&times;</button>
+                  <button
+                    class="btn-icon"
+                    @click="openEditPhraseDialog(item)"
+                    title="编辑"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    class="btn-icon btn-delete"
+                    @click="handleRemovePhrase(item)"
+                    title="删除"
+                  >
+                    &times;
+                  </button>
                 </div>
               </div>
             </div>
@@ -135,7 +198,10 @@
 
           <!-- 系统短语列表 -->
           <div v-else class="dict-list-wrapper">
-            <div v-if="systemPhrases.length > 0" class="dict-list dict-list-scrollable">
+            <div
+              v-if="systemPhrases.length > 0"
+              class="dict-list dict-list-scrollable"
+            >
               <div
                 class="dict-list-item"
                 v-for="(item, idx) in systemPhrases"
@@ -143,18 +209,38 @@
                 :class="{ 'item-disabled': item.disabled }"
               >
                 <label class="item-switch-mini" @click.stop>
-                  <input type="checkbox" :checked="!item.disabled" @change="handleToggleSystemPhrase(item)" />
+                  <input
+                    type="checkbox"
+                    :checked="!item.disabled"
+                    @change="handleToggleSystemPhrase(item)"
+                  />
                 </label>
                 <div class="dict-item-main">
                   <span class="dict-item-code">{{ item.code }}</span>
-                  <span class="dict-item-text" :class="{ 'text-disabled': item.disabled }">{{ item.text }}</span>
-                  <span v-if="item.text.startsWith('$[') && item.text.endsWith(']')" class="tag-mapping">映射</span>
-                  <span v-else-if="item.text.includes('$')" class="tag-dynamic">动态</span>
+                  <span
+                    class="dict-item-text"
+                    :class="{ 'text-disabled': item.disabled }"
+                    >{{ item.text }}</span
+                  >
+                  <span
+                    v-if="item.text.startsWith('$[') && item.text.endsWith(']')"
+                    class="tag-mapping"
+                    >映射</span
+                  >
+                  <span v-else-if="item.text.includes('$')" class="tag-dynamic"
+                    >动态</span
+                  >
                   <span class="dict-item-weight">{{ item.position }}</span>
                   <span class="tag-system">系统</span>
                 </div>
                 <div class="dict-item-actions">
-                  <button class="btn-icon" @click="openEditSystemPhraseDialog(item)" title="编辑位置">✎</button>
+                  <button
+                    class="btn-icon"
+                    @click="openEditSystemPhraseDialog(item)"
+                    title="编辑位置"
+                  >
+                    ✎
+                  </button>
                 </div>
               </div>
             </div>
@@ -171,11 +257,16 @@
           <div
             v-for="schema in schemaList"
             :key="schema.schema_id"
-            :class="['schema-item', { active: selectedSchemaID === schema.schema_id }]"
+            :class="[
+              'schema-item',
+              { active: selectedSchemaID === schema.schema_id },
+            ]"
             @click="handleSelectSchema(schema.schema_id)"
           >
             <div class="schema-item-info">
-              <span class="schema-item-label">{{ schema.icon_label || schema.schema_name.charAt(0) }}</span>
+              <span class="schema-item-label">{{
+                schema.icon_label || schema.schema_name.charAt(0)
+              }}</span>
               <span class="schema-item-name">{{ schema.schema_name }}</span>
             </div>
             <span class="schema-item-count">{{ schema.word_count }}</span>
@@ -183,7 +274,7 @@
         </div>
 
         <!-- 右侧：词库内容 -->
-        <div class="dict-main-panel" style="position:relative;">
+        <div class="dict-main-panel" style="position: relative">
           <!-- loading 遮罩 -->
           <div v-if="dictLoading" class="content-loading-overlay">
             <div class="spinner"></div>
@@ -192,15 +283,25 @@
           <!-- 工具栏 -->
           <div class="dict-toolbar">
             <label class="toolbar-checkbox-wrap">
-              <input type="checkbox" :checked="allWordSelected" @change="toggleAllWords" />
+              <input
+                type="checkbox"
+                :checked="allWordSelected"
+                @change="toggleAllWords"
+              />
               <span>全选</span>
             </label>
-            <button class="btn btn-primary btn-sm" @click="openAddWordDialog">+ 添加</button>
+            <button class="btn btn-primary btn-sm" @click="openAddWordDialog">
+              + 添加
+            </button>
             <button
               class="btn btn-sm btn-danger-outline"
               :disabled="selectedWordKeys.size === 0"
               @click="handleBatchRemoveWords"
-            >删除{{ selectedWordKeys.size > 0 ? ` (${selectedWordKeys.size})` : '' }}</button>
+            >
+              删除{{
+                selectedWordKeys.size > 0 ? ` (${selectedWordKeys.size})` : ""
+              }}
+            </button>
             <div class="toolbar-spacer"></div>
             <input
               type="text"
@@ -208,11 +309,30 @@
               class="input input-sm toolbar-search"
               placeholder="搜索..."
             />
-            <div class="toolbar-more" @click.stop="showWordMenu = !showWordMenu">
+            <div
+              class="toolbar-more"
+              @click.stop="showWordMenu = !showWordMenu"
+            >
               <button class="btn btn-sm">...</button>
               <div v-if="showWordMenu" class="toolbar-dropdown">
-                <div class="dropdown-item" @click="handleImportUserDict(); showWordMenu = false;">导入词库</div>
-                <div class="dropdown-item" @click="handleExportUserDict(); showWordMenu = false;">导出词库</div>
+                <div
+                  class="dropdown-item"
+                  @click="
+                    handleImportUserDict();
+                    showWordMenu = false;
+                  "
+                >
+                  导入词库
+                </div>
+                <div
+                  class="dropdown-item"
+                  @click="
+                    handleExportUserDict();
+                    showWordMenu = false;
+                  "
+                >
+                  导出词库
+                </div>
               </div>
             </div>
           </div>
@@ -231,13 +351,22 @@
                 <tr>
                   <th></th>
                   <th @click="toggleSort('code')" class="sortable-th">
-                    编码 <span class="sort-icon">{{ sortKey === 'code' ? (sortAsc ? '▲' : '▼') : '⇅' }}</span>
+                    编码
+                    <span class="sort-icon">{{
+                      sortKey === "code" ? (sortAsc ? "▲" : "▼") : "⇅"
+                    }}</span>
                   </th>
                   <th @click="toggleSort('text')" class="sortable-th">
-                    词条 <span class="sort-icon">{{ sortKey === 'text' ? (sortAsc ? '▲' : '▼') : '⇅' }}</span>
+                    词条
+                    <span class="sort-icon">{{
+                      sortKey === "text" ? (sortAsc ? "▲" : "▼") : "⇅"
+                    }}</span>
                   </th>
                   <th @click="toggleSort('weight')" class="sortable-th">
-                    权重 <span class="sort-icon">{{ sortKey === 'weight' ? (sortAsc ? '▲' : '▼') : '⇅' }}</span>
+                    权重
+                    <span class="sort-icon">{{
+                      sortKey === "weight" ? (sortAsc ? "▲" : "▼") : "⇅"
+                    }}</span>
                   </th>
                   <th>操作</th>
                 </tr>
@@ -256,17 +385,27 @@
                       @change="toggleWordSelect(item)"
                     />
                   </td>
-                  <td><span class="dict-item-code">{{ item.code }}</span></td>
+                  <td>
+                    <span class="dict-item-code">{{ item.code }}</span>
+                  </td>
                   <td>{{ item.text }}</td>
                   <td class="td-weight">{{ item.weight || 0 }}</td>
                   <td>
-                    <button class="btn-icon btn-delete" @click="handleRemoveUserWord(item)" title="删除">&times;</button>
+                    <button
+                      class="btn-icon btn-delete"
+                      @click="handleRemoveUserWord(item)"
+                      title="删除"
+                    >
+                      &times;
+                    </button>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div v-else-if="wordSearchQuery" class="dict-empty">未找到匹配词条</div>
+          <div v-else-if="wordSearchQuery" class="dict-empty">
+            未找到匹配词条
+          </div>
           <div v-else class="dict-empty">暂无用户词条</div>
         </div>
       </div>
@@ -279,11 +418,16 @@
           <div
             v-for="schema in schemaList"
             :key="schema.schema_id"
-            :class="['schema-item', { active: selectedSchemaID === schema.schema_id }]"
+            :class="[
+              'schema-item',
+              { active: selectedSchemaID === schema.schema_id },
+            ]"
             @click="handleSelectSchema(schema.schema_id)"
           >
             <div class="schema-item-info">
-              <span class="schema-item-label">{{ schema.icon_label || schema.schema_name.charAt(0) }}</span>
+              <span class="schema-item-label">{{
+                schema.icon_label || schema.schema_name.charAt(0)
+              }}</span>
               <span class="schema-item-name">{{ schema.schema_name }}</span>
             </div>
             <span class="schema-item-count">{{ schema.shadow_count }}</span>
@@ -291,7 +435,7 @@
         </div>
 
         <!-- 右侧：规则内容 -->
-        <div class="dict-main-panel" style="position:relative;">
+        <div class="dict-main-panel" style="position: relative">
           <!-- loading 遮罩 -->
           <div v-if="dictLoading" class="content-loading-overlay">
             <div class="spinner"></div>
@@ -299,18 +443,33 @@
 
           <div class="dict-toolbar">
             <label class="toolbar-checkbox-wrap">
-              <input type="checkbox" :checked="allShadowSelected" @change="toggleAllShadows" />
+              <input
+                type="checkbox"
+                :checked="allShadowSelected"
+                @change="toggleAllShadows"
+              />
               <span>全选</span>
             </label>
-            <button class="btn btn-primary btn-sm" @click="openShadowDialog()">+ 添加</button>
+            <button class="btn btn-primary btn-sm" @click="openShadowDialog()">
+              + 添加
+            </button>
             <button
               class="btn btn-sm btn-danger-outline"
               :disabled="selectedShadowKeys.size === 0"
               @click="handleBatchRemoveShadows"
-            >删除{{ selectedShadowKeys.size > 0 ? ` (${selectedShadowKeys.size})` : '' }}</button>
+            >
+              删除{{
+                selectedShadowKeys.size > 0
+                  ? ` (${selectedShadowKeys.size})`
+                  : ""
+              }}
+            </button>
           </div>
 
-          <div v-if="shadowRules.length > 0" class="dict-list dict-list-scrollable">
+          <div
+            v-if="shadowRules.length > 0"
+            class="dict-list dict-list-scrollable"
+          >
             <div
               class="dict-list-item"
               v-for="(item, idx) in shadowRules"
@@ -326,12 +485,28 @@
               <div class="dict-item-main">
                 <span class="dict-item-code">{{ item.code }}</span>
                 <span class="dict-item-text">{{ item.word }}</span>
-                <span class="dict-item-tag" :class="'tag-' + item.type">{{ getShadowActionLabel(item.type) }}</span>
-                <span class="dict-item-weight" v-if="item.type === 'pin'">位置: {{ item.position }}</span>
+                <span class="dict-item-tag" :class="'tag-' + item.type">{{
+                  getShadowActionLabel(item.type)
+                }}</span>
+                <span class="dict-item-weight" v-if="item.type === 'pin'"
+                  >位置: {{ item.position }}</span
+                >
               </div>
               <div class="dict-item-actions">
-                <button class="btn-icon" @click="openShadowDialog(item)" title="编辑">✎</button>
-                <button class="btn-icon btn-delete" @click="handleRemoveShadowRule(item)" title="删除">&times;</button>
+                <button
+                  class="btn-icon"
+                  @click="openShadowDialog(item)"
+                  title="编辑"
+                >
+                  ✎
+                </button>
+                <button
+                  class="btn-icon btn-delete"
+                  @click="handleRemoveShadowRule(item)"
+                  title="删除"
+                >
+                  &times;
+                </button>
               </div>
             </div>
           </div>
@@ -347,11 +522,16 @@
           <div
             v-for="schema in schemaList"
             :key="schema.schema_id"
-            :class="['schema-item', { active: selectedSchemaID === schema.schema_id }]"
+            :class="[
+              'schema-item',
+              { active: selectedSchemaID === schema.schema_id },
+            ]"
             @click="handleSelectSchema(schema.schema_id)"
           >
             <div class="schema-item-info">
-              <span class="schema-item-label">{{ schema.icon_label || schema.schema_name.charAt(0) }}</span>
+              <span class="schema-item-label">{{
+                schema.icon_label || schema.schema_name.charAt(0)
+              }}</span>
               <span class="schema-item-name">{{ schema.schema_name }}</span>
             </div>
             <span class="schema-item-count">{{ schema.temp_word_count }}</span>
@@ -359,7 +539,7 @@
         </div>
 
         <!-- 右侧：临时词库内容 -->
-        <div class="dict-main-panel" style="position:relative;">
+        <div class="dict-main-panel" style="position: relative">
           <!-- loading 遮罩 -->
           <div v-if="dictLoading" class="content-loading-overlay">
             <div class="spinner"></div>
@@ -367,25 +547,53 @@
 
           <div class="dict-toolbar">
             <label class="toolbar-checkbox-wrap">
-              <input type="checkbox" :checked="allTempSelected" @change="toggleAllTemps" />
+              <input
+                type="checkbox"
+                :checked="allTempSelected"
+                @change="toggleAllTemps"
+              />
               <span>全选</span>
             </label>
-            <button class="btn btn-primary btn-sm" @click="handlePromoteAllTemp" :disabled="tempDict.length === 0">全部转正</button>
+            <button
+              class="btn btn-primary btn-sm"
+              @click="handlePromoteAllTemp"
+              :disabled="tempDict.length === 0"
+            >
+              全部转正
+            </button>
             <button
               class="btn btn-sm btn-danger-outline"
               :disabled="selectedTempKeys.size === 0"
               @click="handleBatchRemoveTemps"
-            >删除{{ selectedTempKeys.size > 0 ? ` (${selectedTempKeys.size})` : '' }}</button>
+            >
+              删除{{
+                selectedTempKeys.size > 0 ? ` (${selectedTempKeys.size})` : ""
+              }}
+            </button>
             <div class="toolbar-spacer"></div>
-            <div class="toolbar-more" @click.stop="showTempMenu = !showTempMenu">
+            <div
+              class="toolbar-more"
+              @click.stop="showTempMenu = !showTempMenu"
+            >
               <button class="btn btn-sm">...</button>
               <div v-if="showTempMenu" class="toolbar-dropdown">
-                <div class="dropdown-item" @click="handleClearTempDict(); showTempMenu = false;">清空临时词库</div>
+                <div
+                  class="dropdown-item"
+                  @click="
+                    handleClearTempDict();
+                    showTempMenu = false;
+                  "
+                >
+                  清空临时词库
+                </div>
               </div>
             </div>
           </div>
 
-          <div v-if="tempDict.length > 0" class="dict-list dict-list-scrollable">
+          <div
+            v-if="tempDict.length > 0"
+            class="dict-list dict-list-scrollable"
+          >
             <div
               class="dict-list-item"
               v-for="(item, idx) in tempDict"
@@ -405,8 +613,20 @@
                 <span class="dict-item-weight">×{{ item.count }}</span>
               </div>
               <div class="dict-item-actions">
-                <button class="btn btn-sm" @click="handlePromoteTempWord(item)" title="转为永久词条">转正</button>
-                <button class="btn-icon btn-delete" @click="handleRemoveTempWord(item)" title="删除">&times;</button>
+                <button
+                  class="btn btn-sm"
+                  @click="handlePromoteTempWord(item)"
+                  title="转为永久词条"
+                >
+                  转正
+                </button>
+                <button
+                  class="btn-icon btn-delete"
+                  @click="handleRemoveTempWord(item)"
+                  title="删除"
+                >
+                  &times;
+                </button>
               </div>
             </div>
           </div>
@@ -419,30 +639,59 @@
     </template>
 
     <!-- ========== 添加/编辑短语对话框 ========== -->
-    <div v-if="addPhraseDialogVisible" class="dialog-overlay" @click.self="addPhraseDialogVisible = false">
+    <div
+      v-if="addPhraseDialogVisible"
+      class="dialog-overlay"
+      @click.self="addPhraseDialogVisible = false"
+    >
       <div class="dialog-box">
-        <div class="dialog-title">{{ editingPhrase ? '编辑短语' : '添加短语' }}</div>
+        <div class="dialog-title">
+          {{ editingPhrase ? "编辑短语" : "添加短语" }}
+        </div>
         <div class="form-row">
           <label>编码</label>
-          <input type="text" v-model="newPhrase.code" class="input" placeholder="如: dz" />
+          <input
+            type="text"
+            v-model="newPhrase.code"
+            class="input"
+            placeholder="如: dz"
+          />
         </div>
         <div class="form-row">
           <label>文本</label>
-          <input type="text" v-model="newPhrase.text" class="input" placeholder="如: 我的地址是xxx 或 $Y-$MM-$DD" />
+          <input
+            type="text"
+            v-model="newPhrase.text"
+            class="input"
+            placeholder="如: 我的地址是xxx 或 $Y-$MM-$DD"
+          />
         </div>
         <div class="form-row">
           <label>位置</label>
-          <input type="number" v-model.number="newPhrase.position" class="input input-sm" min="1" />
+          <input
+            type="number"
+            v-model.number="newPhrase.position"
+            class="input input-sm"
+            min="1"
+          />
         </div>
         <div class="dialog-actions">
-          <button class="btn btn-sm" @click="addPhraseDialogVisible = false">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleSavePhrase">{{ editingPhrase ? '保存' : '添加' }}</button>
+          <button class="btn btn-sm" @click="addPhraseDialogVisible = false">
+            取消
+          </button>
+          <button class="btn btn-primary btn-sm" @click="handleSavePhrase">
+            {{ editingPhrase ? "保存" : "添加" }}
+          </button>
         </div>
       </div>
     </div>
 
     <!-- ========== 编辑系统短语对话框 ========== -->
-    <div v-if="sysEditDialogVisible" class="dialog-overlay" @click.self="sysEditDialogVisible = false">
+    <div
+      v-if="sysEditDialogVisible"
+      class="dialog-overlay"
+      @click.self="sysEditDialogVisible = false"
+    >
       <div class="dialog-box">
         <div class="dialog-title">编辑系统短语</div>
         <div class="form-row">
@@ -455,13 +704,31 @@
         </div>
         <div class="form-row">
           <label>位置</label>
-          <input type="number" v-model.number="sysEditForm.position" class="input input-sm" min="1" />
+          <input
+            type="number"
+            v-model.number="sysEditForm.position"
+            class="input input-sm"
+            min="1"
+          />
         </div>
         <div class="dialog-actions">
-          <button class="btn btn-sm" @click="handleResetSystemPhrase" v-if="sysEditForm.hasOverride">恢复默认</button>
+          <button
+            class="btn btn-sm"
+            @click="handleResetSystemPhrase"
+            v-if="sysEditForm.hasOverride"
+          >
+            恢复默认
+          </button>
           <div class="toolbar-spacer"></div>
-          <button class="btn btn-sm" @click="sysEditDialogVisible = false">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleSaveSystemPhrase">保存</button>
+          <button class="btn btn-sm" @click="sysEditDialogVisible = false">
+            取消
+          </button>
+          <button
+            class="btn btn-primary btn-sm"
+            @click="handleSaveSystemPhrase"
+          >
+            保存
+          </button>
         </div>
       </div>
     </div>
@@ -474,16 +741,34 @@
     />
 
     <!-- ========== Shadow 规则对话框 ========== -->
-    <div v-if="shadowDialogVisible" class="dialog-overlay" @click.self="shadowDialogVisible = false">
+    <div
+      v-if="shadowDialogVisible"
+      class="dialog-overlay"
+      @click.self="shadowDialogVisible = false"
+    >
       <div class="dialog-box">
-        <div class="dialog-title">{{ shadowDialogEditing ? '编辑规则' : '添加规则' }}</div>
+        <div class="dialog-title">
+          {{ shadowDialogEditing ? "编辑规则" : "添加规则" }}
+        </div>
         <div class="form-row">
           <label>编码</label>
-          <input type="text" v-model="shadowForm.code" class="input" placeholder="如: sf" :disabled="shadowDialogEditing" />
+          <input
+            type="text"
+            v-model="shadowForm.code"
+            class="input"
+            placeholder="如: sf"
+            :disabled="shadowDialogEditing"
+          />
         </div>
         <div class="form-row">
           <label>词条</label>
-          <input type="text" v-model="shadowForm.word" class="input" placeholder="如: 村" :disabled="shadowDialogEditing" />
+          <input
+            type="text"
+            v-model="shadowForm.word"
+            class="input"
+            placeholder="如: 村"
+            :disabled="shadowDialogEditing"
+          />
         </div>
         <div class="form-row">
           <label>操作</label>
@@ -494,11 +779,21 @@
         </div>
         <div class="form-row" v-if="shadowForm.action === 'pin'">
           <label>目标位置</label>
-          <input type="number" v-model.number="shadowForm.position" class="input input-sm" min="0" placeholder="0=首位" />
+          <input
+            type="number"
+            v-model.number="shadowForm.position"
+            class="input input-sm"
+            min="0"
+            placeholder="0=首位"
+          />
         </div>
         <div class="dialog-actions">
-          <button class="btn btn-sm" @click="shadowDialogVisible = false">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleSaveShadowRule">{{ shadowDialogEditing ? '保存' : '添加' }}</button>
+          <button class="btn btn-sm" @click="shadowDialogVisible = false">
+            取消
+          </button>
+          <button class="btn btn-primary btn-sm" @click="handleSaveShadowRule">
+            {{ shadowDialogEditing ? "保存" : "添加" }}
+          </button>
         </div>
       </div>
     </div>
@@ -508,6 +803,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import * as wailsApi from "../api/wails";
+import { useToast } from "../composables/useToast";
 import AddWordPage from "./AddWordPage.vue";
 import type {
   PhraseItem,
@@ -522,39 +818,57 @@ const props = defineProps<{
   isWailsEnv: boolean;
 }>();
 
+// ===== 全局 Toast =====
+const { toast } = useToast();
+
 // ===== 通用状态 =====
 const dictSubTab = ref<"phrases" | "userdict" | "shadow" | "temp">("phrases");
 const dictLoading = ref(false);
-const dictMessage = ref("");
-const dictMessageType = ref<"success" | "error">("success");
 
 // ===== 方案列表 =====
 const schemaList = ref<SchemaDictStatsItem[]>([]);
 const selectedSchemaID = ref("");
 
-const totalWordCount = computed(() => schemaList.value.reduce((sum, s) => sum + s.word_count, 0));
-const totalShadowCount = computed(() => schemaList.value.reduce((sum, s) => sum + s.shadow_count, 0));
-const totalTempCount = computed(() => schemaList.value.reduce((sum, s) => sum + (s.temp_word_count || 0), 0));
+const totalWordCount = computed(() =>
+  schemaList.value.reduce((sum, s) => sum + s.word_count, 0),
+);
+const totalShadowCount = computed(() =>
+  schemaList.value.reduce((sum, s) => sum + s.shadow_count, 0),
+);
+const totalTempCount = computed(() =>
+  schemaList.value.reduce((sum, s) => sum + (s.temp_word_count || 0), 0),
+);
 
 // ===== 短语 =====
 const phraseCategory = ref<"user" | "system">("user");
 const phrases = ref<PhraseItem[]>([]);
 const systemPhrases = ref<PhraseItem[]>([]);
-const phraseCount = computed(() => phrases.value.length + systemPhrases.value.length);
+const phraseCount = computed(
+  () => phrases.value.length + systemPhrases.value.length,
+);
 const addPhraseDialogVisible = ref(false);
 const newPhrase = ref({ code: "", text: "", position: 1 });
 const editingPhrase = ref<PhraseItem | null>(null); // 非null时为编辑模式
 
 // 系统短语编辑对话框
 const sysEditDialogVisible = ref(false);
-const sysEditForm = ref({ code: "", text: "", position: 1, hasOverride: false });
+const sysEditForm = ref({
+  code: "",
+  text: "",
+  position: 1,
+  hasOverride: false,
+});
 
 // 短语多选
 const selectedPhraseKeys = ref(new Set<string>());
 const allPhraseSelected = computed(
-  () => phrases.value.length > 0 && phrases.value.every((p) => selectedPhraseKeys.value.has(phraseKey(p)))
+  () =>
+    phrases.value.length > 0 &&
+    phrases.value.every((p) => selectedPhraseKeys.value.has(phraseKey(p))),
 );
-function phraseKey(item: PhraseItem) { return `${item.code}||${item.text}`; }
+function phraseKey(item: PhraseItem) {
+  return `${item.code}||${item.text}`;
+}
 function togglePhraseSelect(item: PhraseItem) {
   const k = phraseKey(item);
   if (selectedPhraseKeys.value.has(k)) selectedPhraseKeys.value.delete(k);
@@ -580,7 +894,10 @@ const filteredUserDict = computed(() => {
   let list = userDict.value;
   if (wordSearchQuery.value.trim()) {
     const q = wordSearchQuery.value.trim().toLowerCase();
-    list = list.filter((w) => w.code.toLowerCase().includes(q) || w.text.toLowerCase().includes(q));
+    list = list.filter(
+      (w) =>
+        w.code.toLowerCase().includes(q) || w.text.toLowerCase().includes(q),
+    );
   }
   return [...list].sort((a, b) => {
     const ka = sortKey.value;
@@ -597,16 +914,27 @@ const filteredUserDict = computed(() => {
 
 function toggleSort(key: "code" | "text" | "weight") {
   if (sortKey.value === key) sortAsc.value = !sortAsc.value;
-  else { sortKey.value = key; sortAsc.value = true; }
+  else {
+    sortKey.value = key;
+    sortAsc.value = true;
+  }
 }
 
 // 词条多选
 const selectedWordKeys = ref(new Set<string>());
-const uniqueFilteredWordKeys = computed(() => new Set(filteredUserDict.value.map(wordKey)));
-const allWordSelected = computed(
-  () => uniqueFilteredWordKeys.value.size > 0 && [...uniqueFilteredWordKeys.value].every((k) => selectedWordKeys.value.has(k))
+const uniqueFilteredWordKeys = computed(
+  () => new Set(filteredUserDict.value.map(wordKey)),
 );
-function wordKey(item: UserWordItem) { return `${item.code}||${item.text}`; }
+const allWordSelected = computed(
+  () =>
+    uniqueFilteredWordKeys.value.size > 0 &&
+    [...uniqueFilteredWordKeys.value].every((k) =>
+      selectedWordKeys.value.has(k),
+    ),
+);
+function wordKey(item: UserWordItem) {
+  return `${item.code}||${item.text}`;
+}
 function toggleWordSelect(item: UserWordItem) {
   const k = wordKey(item);
   if (selectedWordKeys.value.has(k)) selectedWordKeys.value.delete(k);
@@ -627,9 +955,13 @@ const tempDict = ref<TempWordItem[]>([]);
 // 临时词库多选
 const selectedTempKeys = ref(new Set<string>());
 const allTempSelected = computed(
-  () => tempDict.value.length > 0 && tempDict.value.every((t) => selectedTempKeys.value.has(tempKey(t)))
+  () =>
+    tempDict.value.length > 0 &&
+    tempDict.value.every((t) => selectedTempKeys.value.has(tempKey(t))),
 );
-function tempKey(item: TempWordItem) { return `${item.code}||${item.text}`; }
+function tempKey(item: TempWordItem) {
+  return `${item.code}||${item.text}`;
+}
 function toggleTempSelect(item: TempWordItem) {
   const k = tempKey(item);
   if (selectedTempKeys.value.has(k)) selectedTempKeys.value.delete(k);
@@ -657,9 +989,13 @@ const shadowForm = ref({ code: "", word: "", action: "pin", position: 0 });
 // Shadow 多选
 const selectedShadowKeys = ref(new Set<string>());
 const allShadowSelected = computed(
-  () => shadowRules.value.length > 0 && shadowRules.value.every((s) => selectedShadowKeys.value.has(shadowKey(s)))
+  () =>
+    shadowRules.value.length > 0 &&
+    shadowRules.value.every((s) => selectedShadowKeys.value.has(shadowKey(s))),
 );
-function shadowKey(item: ShadowRuleItem) { return `${item.code}||${item.word}`; }
+function shadowKey(item: ShadowRuleItem) {
+  return `${item.code}||${item.word}`;
+}
 function toggleShadowSelect(item: ShadowRuleItem) {
   const k = shadowKey(item);
   if (selectedShadowKeys.value.has(k)) selectedShadowKeys.value.delete(k);
@@ -680,9 +1016,7 @@ const showFileChangeAlert = ref(false);
 
 // ===== 工具函数 =====
 function showDictMessage(msg: string, type: "success" | "error") {
-  dictMessage.value = msg;
-  dictMessageType.value = type;
-  setTimeout(() => { dictMessage.value = ""; }, 3000);
+  toast(msg, type);
 }
 
 function getShadowActionLabel(type: string): string {
@@ -796,7 +1130,11 @@ function openAddPhraseDialog() {
 
 function openEditPhraseDialog(item: PhraseItem) {
   editingPhrase.value = item;
-  newPhrase.value = { code: item.code, text: item.text, position: item.position };
+  newPhrase.value = {
+    code: item.code,
+    text: item.text,
+    position: item.position,
+  };
   addPhraseDialogVisible.value = true;
 }
 
@@ -808,12 +1146,19 @@ async function handleSavePhrase() {
   try {
     if (editingPhrase.value) {
       await wailsApi.updatePhrase(
-        editingPhrase.value.code, editingPhrase.value.text,
-        newPhrase.value.code, newPhrase.value.text, newPhrase.value.position
+        editingPhrase.value.code,
+        editingPhrase.value.text,
+        newPhrase.value.code,
+        newPhrase.value.text,
+        newPhrase.value.position,
       );
       showDictMessage("修改成功", "success");
     } else {
-      await wailsApi.addPhrase(newPhrase.value.code, newPhrase.value.text, newPhrase.value.position);
+      await wailsApi.addPhrase(
+        newPhrase.value.code,
+        newPhrase.value.text,
+        newPhrase.value.position,
+      );
       showDictMessage("添加成功", "success");
     }
     addPhraseDialogVisible.value = false;
@@ -837,7 +1182,12 @@ function openEditSystemPhraseDialog(item: PhraseItem) {
 
 async function handleToggleSystemPhrase(item: PhraseItem) {
   try {
-    await wailsApi.overrideSystemPhrase(item.code, item.text, item.position, !item.disabled);
+    await wailsApi.overrideSystemPhrase(
+      item.code,
+      item.text,
+      item.position,
+      !item.disabled,
+    );
     await loadPhraseData();
   } catch (e: unknown) {
     showDictMessage((e as Error).message || "操作失败", "error");
@@ -847,8 +1197,10 @@ async function handleToggleSystemPhrase(item: PhraseItem) {
 async function handleSaveSystemPhrase() {
   try {
     await wailsApi.overrideSystemPhrase(
-      sysEditForm.value.code, sysEditForm.value.text,
-      sysEditForm.value.position, false
+      sysEditForm.value.code,
+      sysEditForm.value.text,
+      sysEditForm.value.position,
+      false,
     );
     showDictMessage("已保存系统短语覆盖", "success");
     sysEditDialogVisible.value = false;
@@ -860,7 +1212,10 @@ async function handleSaveSystemPhrase() {
 
 async function handleResetSystemPhrase() {
   try {
-    await wailsApi.removeSystemPhraseOverride(sysEditForm.value.code, sysEditForm.value.text);
+    await wailsApi.removeSystemPhraseOverride(
+      sysEditForm.value.code,
+      sysEditForm.value.text,
+    );
     showDictMessage("已恢复为系统默认", "success");
     sysEditDialogVisible.value = false;
     await loadPhraseData();
@@ -884,8 +1239,11 @@ async function handleRemovePhrase(item: PhraseItem) {
 
 async function handleBatchRemovePhrases() {
   if (selectedPhraseKeys.value.size === 0) return;
-  if (!confirm(`确定删除选中的 ${selectedPhraseKeys.value.size} 条短语吗？`)) return;
-  const toDelete = phrases.value.filter((p) => selectedPhraseKeys.value.has(phraseKey(p)));
+  if (!confirm(`确定删除选中的 ${selectedPhraseKeys.value.size} 条短语吗？`))
+    return;
+  const toDelete = phrases.value.filter((p) =>
+    selectedPhraseKeys.value.has(phraseKey(p)),
+  );
   try {
     for (const item of toDelete) {
       await wailsApi.removePhrase(item.code, item.text);
@@ -913,7 +1271,11 @@ async function handleAddWordDialogClose() {
 async function handleRemoveUserWord(item: UserWordItem) {
   if (!confirm(`确定删除词条 "${item.text}" 吗？`)) return;
   try {
-    await wailsApi.removeUserWordForSchema(selectedSchemaID.value, item.code, item.text);
+    await wailsApi.removeUserWordForSchema(
+      selectedSchemaID.value,
+      item.code,
+      item.text,
+    );
     selectedWordKeys.value.delete(wordKey(item));
     selectedWordKeys.value = new Set(selectedWordKeys.value);
     showDictMessage("删除成功", "success");
@@ -926,7 +1288,8 @@ async function handleRemoveUserWord(item: UserWordItem) {
 
 async function handleBatchRemoveWords() {
   if (selectedWordKeys.value.size === 0) return;
-  if (!confirm(`确定删除选中的 ${selectedWordKeys.value.size} 条词条吗？`)) return;
+  if (!confirm(`确定删除选中的 ${selectedWordKeys.value.size} 条词条吗？`))
+    return;
 
   // 按 key 去重，避免重复条目导致多次删除同一词
   const seen = new Set<string>();
@@ -943,7 +1306,11 @@ async function handleBatchRemoveWords() {
   let failed = 0;
   for (const item of toDelete) {
     try {
-      await wailsApi.removeUserWordForSchema(selectedSchemaID.value, item.code, item.text);
+      await wailsApi.removeUserWordForSchema(
+        selectedSchemaID.value,
+        item.code,
+        item.text,
+      );
       deleted++;
     } catch {
       failed++;
@@ -962,9 +1329,14 @@ async function handleBatchRemoveWords() {
 async function handleImportUserDict() {
   dictLoading.value = true;
   try {
-    const result = await wailsApi.importUserDictForSchema(selectedSchemaID.value);
+    const result = await wailsApi.importUserDictForSchema(
+      selectedSchemaID.value,
+    );
     if (result.cancelled) return;
-    showDictMessage(`导入成功，新增 ${result.count} 条，共 ${result.total} 条`, "success");
+    showDictMessage(
+      `导入成功，新增 ${result.count} 条，共 ${result.total} 条`,
+      "success",
+    );
     await loadSchemaData();
     await loadSchemaList();
   } catch (e: unknown) {
@@ -977,7 +1349,9 @@ async function handleImportUserDict() {
 async function handleExportUserDict() {
   dictLoading.value = true;
   try {
-    const result = await wailsApi.exportUserDictForSchema(selectedSchemaID.value);
+    const result = await wailsApi.exportUserDictForSchema(
+      selectedSchemaID.value,
+    );
     if (result.cancelled) return;
     showDictMessage(`导出成功，共 ${result.count} 条`, "success");
   } catch (e: unknown) {
@@ -990,7 +1364,11 @@ async function handleExportUserDict() {
 // ===== 临时词库操作 =====
 async function handlePromoteTempWord(item: TempWordItem) {
   try {
-    await wailsApi.promoteTempWordForSchema(selectedSchemaID.value, item.code, item.text);
+    await wailsApi.promoteTempWordForSchema(
+      selectedSchemaID.value,
+      item.code,
+      item.text,
+    );
     showDictMessage(`已将 "${item.text}" 转为永久词条`, "success");
     await loadSchemaData();
     await loadSchemaList();
@@ -1002,7 +1380,9 @@ async function handlePromoteTempWord(item: TempWordItem) {
 async function handlePromoteAllTemp() {
   if (!confirm("确定将所有临时词条转为永久词条吗？")) return;
   try {
-    const count = await wailsApi.promoteAllTempWordsForSchema(selectedSchemaID.value);
+    const count = await wailsApi.promoteAllTempWordsForSchema(
+      selectedSchemaID.value,
+    );
     showDictMessage(`已转正 ${count} 条词条`, "success");
     await loadSchemaData();
     await loadSchemaList();
@@ -1025,11 +1405,16 @@ async function handleClearTempDict() {
 
 async function handleBatchRemoveTemps() {
   if (selectedTempKeys.value.size === 0) return;
-  if (!confirm(`确定删除选中的 ${selectedTempKeys.value.size} 条临时词条吗？`)) return;
+  if (!confirm(`确定删除选中的 ${selectedTempKeys.value.size} 条临时词条吗？`))
+    return;
   try {
     for (const key of selectedTempKeys.value) {
       const [code, text] = key.split("||");
-      await wailsApi.removeTempWordForSchema(selectedSchemaID.value, code, text);
+      await wailsApi.removeTempWordForSchema(
+        selectedSchemaID.value,
+        code,
+        text,
+      );
     }
     selectedTempKeys.value = new Set();
     showDictMessage("批量删除成功", "success");
@@ -1043,7 +1428,11 @@ async function handleBatchRemoveTemps() {
 async function handleRemoveTempWord(item: TempWordItem) {
   if (!confirm(`确定删除临时词条 "${item.text}" 吗？`)) return;
   try {
-    await wailsApi.removeTempWordForSchema(selectedSchemaID.value, item.code, item.text);
+    await wailsApi.removeTempWordForSchema(
+      selectedSchemaID.value,
+      item.code,
+      item.text,
+    );
     showDictMessage("删除成功", "success");
     await loadSchemaData();
     await loadSchemaList();
@@ -1056,7 +1445,12 @@ async function handleRemoveTempWord(item: TempWordItem) {
 function openShadowDialog(item?: ShadowRuleItem) {
   if (item) {
     shadowDialogEditing.value = true;
-    shadowForm.value = { code: item.code, word: item.word, action: item.type, position: item.position || 0 };
+    shadowForm.value = {
+      code: item.code,
+      word: item.word,
+      action: item.type,
+      position: item.position || 0,
+    };
   } else {
     shadowDialogEditing.value = false;
     shadowForm.value = { code: "", word: "", action: "pin", position: 0 };
@@ -1071,14 +1465,30 @@ async function handleSaveShadowRule() {
   }
   try {
     if (shadowDialogEditing.value) {
-      await wailsApi.removeShadowRuleForSchema(selectedSchemaID.value, shadowForm.value.code, shadowForm.value.word);
+      await wailsApi.removeShadowRuleForSchema(
+        selectedSchemaID.value,
+        shadowForm.value.code,
+        shadowForm.value.word,
+      );
     }
     if (shadowForm.value.action === "pin") {
-      await wailsApi.pinShadowWordForSchema(selectedSchemaID.value, shadowForm.value.code, shadowForm.value.word, shadowForm.value.position);
+      await wailsApi.pinShadowWordForSchema(
+        selectedSchemaID.value,
+        shadowForm.value.code,
+        shadowForm.value.word,
+        shadowForm.value.position,
+      );
     } else {
-      await wailsApi.deleteShadowWordForSchema(selectedSchemaID.value, shadowForm.value.code, shadowForm.value.word);
+      await wailsApi.deleteShadowWordForSchema(
+        selectedSchemaID.value,
+        shadowForm.value.code,
+        shadowForm.value.word,
+      );
     }
-    showDictMessage(shadowDialogEditing.value ? "保存成功" : "添加成功", "success");
+    showDictMessage(
+      shadowDialogEditing.value ? "保存成功" : "添加成功",
+      "success",
+    );
     shadowDialogVisible.value = false;
     await loadSchemaData();
     await loadSchemaList();
@@ -1090,7 +1500,11 @@ async function handleSaveShadowRule() {
 async function handleRemoveShadowRule(item: ShadowRuleItem) {
   if (!confirm(`确定删除规则 "${item.word}" 吗？`)) return;
   try {
-    await wailsApi.removeShadowRuleForSchema(selectedSchemaID.value, item.code, item.word);
+    await wailsApi.removeShadowRuleForSchema(
+      selectedSchemaID.value,
+      item.code,
+      item.word,
+    );
     selectedShadowKeys.value.delete(shadowKey(item));
     selectedShadowKeys.value = new Set(selectedShadowKeys.value);
     showDictMessage("删除成功", "success");
@@ -1103,11 +1517,18 @@ async function handleRemoveShadowRule(item: ShadowRuleItem) {
 
 async function handleBatchRemoveShadows() {
   if (selectedShadowKeys.value.size === 0) return;
-  if (!confirm(`确定删除选中的 ${selectedShadowKeys.value.size} 条规则吗？`)) return;
-  const toDelete = shadowRules.value.filter((s) => selectedShadowKeys.value.has(shadowKey(s)));
+  if (!confirm(`确定删除选中的 ${selectedShadowKeys.value.size} 条规则吗？`))
+    return;
+  const toDelete = shadowRules.value.filter((s) =>
+    selectedShadowKeys.value.has(shadowKey(s)),
+  );
   try {
     for (const item of toDelete) {
-      await wailsApi.removeShadowRuleForSchema(selectedSchemaID.value, item.code, item.word);
+      await wailsApi.removeShadowRuleForSchema(
+        selectedSchemaID.value,
+        item.code,
+        item.word,
+      );
     }
     selectedShadowKeys.value = new Set();
     showDictMessage(`已删除 ${toDelete.length} 条规则`, "success");
@@ -1156,22 +1577,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.dict-message {
-  padding: 10px 16px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-.dict-message.success {
-  background: #dcfce7;
-  color: #166534;
-}
-.dict-message.error {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
 /* ===== 左右分栏布局 ===== */
 .dict-split-layout {
   display: flex;
@@ -1208,8 +1613,13 @@ onUnmounted(() => {
   transition: all 0.15s;
   margin-bottom: 2px;
 }
-.schema-item:hover { background: #e5e7eb; }
-.schema-item.active { background: #2563eb; color: #fff; }
+.schema-item:hover {
+  background: #e5e7eb;
+}
+.schema-item.active {
+  background: #2563eb;
+  color: #fff;
+}
 .schema-item-info {
   display: flex;
   align-items: center;
@@ -1244,7 +1654,9 @@ onUnmounted(() => {
   color: #9ca3af;
   flex-shrink: 0;
 }
-.schema-item.active .schema-item-count { color: rgba(255, 255, 255, 0.7); }
+.schema-item.active .schema-item-count {
+  color: rgba(255, 255, 255, 0.7);
+}
 
 /* 右侧主面板 */
 .dict-main-panel {
@@ -1276,8 +1688,12 @@ onUnmounted(() => {
   flex-shrink: 0;
   flex-wrap: wrap;
 }
-.toolbar-spacer { flex: 1; }
-.toolbar-search { width: 120px !important; }
+.toolbar-spacer {
+  flex: 1;
+}
+.toolbar-search {
+  width: 120px !important;
+}
 .toolbar-more {
   position: relative;
   display: inline-block;
@@ -1290,7 +1706,7 @@ onUnmounted(() => {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   min-width: 120px;
   z-index: 20;
   overflow: hidden;
@@ -1372,9 +1788,15 @@ onUnmounted(() => {
   border-bottom: 1px solid #f3f4f6;
   transition: background 0.15s;
 }
-.dict-list-item:last-child { border-bottom: none; }
-.dict-list-item:hover { background: #f9fafb; }
-.dict-list-item.selected { background: #eff6ff; }
+.dict-list-item:last-child {
+  border-bottom: none;
+}
+.dict-list-item:hover {
+  background: #f9fafb;
+}
+.dict-list-item.selected {
+  background: #eff6ff;
+}
 
 .item-checkbox {
   width: 15px;
@@ -1417,8 +1839,14 @@ onUnmounted(() => {
   color: #3730a3;
   flex-shrink: 0;
 }
-.dict-item-tag.tag-pin { background: #dcfce7; color: #166534; }
-.dict-item-tag.tag-delete { background: #fee2e2; color: #991b1b; }
+.dict-item-tag.tag-pin {
+  background: #dcfce7;
+  color: #166534;
+}
+.dict-item-tag.tag-delete {
+  background: #fee2e2;
+  color: #991b1b;
+}
 .dict-item-weight {
   font-size: 12px;
   color: #9ca3af;
@@ -1485,10 +1913,18 @@ onUnmounted(() => {
   font-size: 13px;
   table-layout: fixed;
 }
-.dict-table col.col-check { width: 32px; }
-.dict-table col.col-code { width: 100px; }
-.dict-table col.col-weight { width: 60px; }
-.dict-table col.col-action { width: 50px; }
+.dict-table col.col-check {
+  width: 32px;
+}
+.dict-table col.col-code {
+  width: 100px;
+}
+.dict-table col.col-weight {
+  width: 60px;
+}
+.dict-table col.col-action {
+  width: 50px;
+}
 .dict-table thead {
   position: sticky;
   top: 0;
@@ -1506,7 +1942,9 @@ onUnmounted(() => {
   cursor: pointer;
   user-select: none;
 }
-.sortable-th:hover { color: #374151; }
+.sortable-th:hover {
+  color: #374151;
+}
 .sort-icon {
   font-size: 11px;
   margin-left: 4px;
@@ -1518,11 +1956,22 @@ onUnmounted(() => {
   color: #1f2937;
   background: #fff;
 }
-.dict-table tr:last-child td { border-bottom: none; }
-.dict-table tbody tr:hover td { background: #f9fafb; }
-.dict-table tbody tr.selected td { background: #eff6ff; }
-.dict-table tbody tr { cursor: default; }
-.td-weight { color: #9ca3af; font-size: 12px; }
+.dict-table tr:last-child td {
+  border-bottom: none;
+}
+.dict-table tbody tr:hover td {
+  background: #f9fafb;
+}
+.dict-table tbody tr.selected td {
+  background: #eff6ff;
+}
+.dict-table tbody tr {
+  cursor: default;
+}
+.td-weight {
+  color: #9ca3af;
+  font-size: 12px;
+}
 
 /* ===== 空状态 ===== */
 .dict-empty {
