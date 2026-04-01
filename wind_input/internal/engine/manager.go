@@ -858,6 +858,23 @@ func (m *Manager) GetEncoderRules() []schema.EncoderRule {
 	return s.Encoder.Rules
 }
 
+// GetEncoderMaxWordLength 获取当前方案的最大造词长度（0 表示无限制）
+func (m *Manager) GetEncoderMaxWordLength() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.schemaManager == nil {
+		return 0
+	}
+
+	s := m.schemaManager.GetSchema(m.currentID)
+	if s == nil || s.Encoder == nil {
+		return 0
+	}
+
+	return s.Encoder.MaxWordLength
+}
+
 // GetReverseIndex 获取当前码表的反向索引（字 → 编码列表）
 // 首次调用时构建并缓存，切换方案后自动重建
 func (m *Manager) GetReverseIndex() map[string][]string {

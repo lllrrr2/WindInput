@@ -17,6 +17,17 @@ const (
 // 设置非空的 inputBuffer 让 C++ 侧知道 IME 处于 composition 状态，从而转发所有按键
 const addWordCompositionPlaceholder = "\x00"
 
+// getAddWordMaxLen 获取加词最大字数（受 encoder 配置限制）
+func (c *Coordinator) getAddWordMaxLen() int {
+	maxLen := 20 // 默认上限
+	if c.engineMgr != nil {
+		if encoderMax := c.engineMgr.GetEncoderMaxWordLength(); encoderMax > 0 {
+			maxLen = encoderMax
+		}
+	}
+	return maxLen
+}
+
 // enterAddWordMode 进入加词模式
 func (c *Coordinator) enterAddWordMode() *bridge.KeyEventResult {
 	if c.hasPendingInput() {
@@ -24,7 +35,8 @@ func (c *Coordinator) enterAddWordMode() *bridge.KeyEventResult {
 		c.hideUI()
 	}
 
-	chars := c.inputHistory.GetRecentChars(20, 0)
+	maxLen := c.getAddWordMaxLen()
+	chars := c.inputHistory.GetRecentChars(maxLen, 0)
 
 	c.addWordActive = true
 	c.addWordChars = chars
@@ -72,12 +84,16 @@ func (c *Coordinator) adjustAddWordLength(delta int) *bridge.KeyEventResult {
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 	}
 
+	maxLen := c.getAddWordMaxLen()
 	newLen := c.addWordLen + delta
 	if newLen < addWordMinLen {
 		newLen = addWordMinLen
 	}
 	if newLen > len(c.addWordChars) {
 		newLen = len(c.addWordChars)
+	}
+	if newLen > maxLen {
+		newLen = maxLen
 	}
 
 	if newLen != c.addWordLen {

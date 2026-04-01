@@ -376,6 +376,7 @@
                   v-for="(item, idx) in filteredUserDict"
                   :key="idx"
                   :class="{ selected: selectedWordKeys.has(wordKey(item)) }"
+                  @dblclick="openEditWordDialog(item)"
                 >
                   <td>
                     <input
@@ -736,6 +737,8 @@
     <!-- ========== 添加/编辑词条对话框 ========== -->
     <AddWordPage
       v-if="addWordDialogVisible"
+      :initialText="editWordText"
+      :initialCode="editWordCode"
       :initialSchema="selectedSchemaID"
       @close="handleAddWordDialogClose"
     />
@@ -1257,13 +1260,26 @@ async function handleBatchRemovePhrases() {
 }
 
 // ===== 用户词库操作 =====
+const editWordText = ref("");
+const editWordCode = ref("");
+
 function openAddWordDialog() {
+  editWordText.value = "";
+  editWordCode.value = "";
+  addWordDialogVisible.value = true;
+}
+
+function openEditWordDialog(item: UserWordItem) {
+  editWordText.value = item.text;
+  editWordCode.value = item.code;
   addWordDialogVisible.value = true;
 }
 
 async function handleAddWordDialogClose() {
   addWordDialogVisible.value = false;
-  // 重新加载数据以反映新增的词条
+  editWordText.value = "";
+  editWordCode.value = "";
+  // 重新加载数据以反映新增/修改的词条
   await loadSchemaData();
   await loadSchemaList();
 }
@@ -1686,13 +1702,17 @@ onUnmounted(() => {
   gap: 8px;
   margin-bottom: 12px;
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .toolbar-spacer {
   flex: 1;
+  min-width: 4px;
 }
 .toolbar-search {
-  width: 120px !important;
+  width: 100px !important;
+  min-width: 60px;
+  flex-shrink: 1;
 }
 .toolbar-more {
   position: relative;
