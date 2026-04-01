@@ -136,9 +136,9 @@ func (c *Coordinator) confirmAddWord() *bridge.KeyEventResult {
 	}
 
 	if err := userDict.Add(code, word, addWordMaxWeight); err != nil {
-		c.logger.Warn("addword: failed to add word", "word", word, "code", code, "error", err)
+		c.logger.Warn("addword: failed to add word", "error", err)
 	} else {
-		c.logger.Info("addword: word added successfully", "word", word, "code", code)
+		c.logger.Info("addword: word added successfully", "wordLen", len([]rune(word)), "codeLen", len(code))
 	}
 
 	c.exitAddWordMode()

@@ -161,12 +161,7 @@ func (s *Server) readMessage(handle windows.Handle) (*Request, error) {
 
 	s.logger.Info("Read message content", "bytesRead", bytesRead, "expected", messageLen)
 
-	// 显示原始 JSON（前200字节）
-	jsonPreview := string(buffer)
-	if len(jsonPreview) > 200 {
-		jsonPreview = jsonPreview[:200] + "..."
-	}
-	s.logger.Info("Received JSON", "content", jsonPreview)
+	s.logger.Debug("Received JSON", "size", len(buffer))
 
 	// 解析 JSON
 	var request Request
@@ -175,7 +170,7 @@ func (s *Server) readMessage(handle windows.Handle) (*Request, error) {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	s.logger.Info("Parsed request", "type", request.Type, "input", request.Data.Input)
+	s.logger.Info("Parsed request", "type", request.Type, "inputLen", len(request.Data.Input))
 
 	return &request, nil
 }
