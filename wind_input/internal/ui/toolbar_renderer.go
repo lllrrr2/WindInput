@@ -112,10 +112,11 @@ func (r *ToolbarRenderer) Render(state ToolbarState) *image.RGBA {
 	r.drawModeButton(dc, modeBtnX, modeBtnY, modeBtnW, modeBtnH, state, scale, colors)
 	x += buttonW
 
-	// Full-width button background
+	// Full-width button background + symbol
 	widthBtnX, widthBtnY := x+padding, padding
 	widthBtnW, widthBtnH := buttonW-padding*2, float64(height)-padding*2
 	r.drawWidthButton(dc, widthBtnX, widthBtnY, widthBtnW, widthBtnH, state.FullWidth, scale, colors)
+	r.drawWidthSymbol(dc, widthBtnX, widthBtnY, widthBtnW, widthBtnH, state.FullWidth, scale, colors)
 	x += buttonW
 
 	// Punctuation button background
@@ -135,7 +136,11 @@ func (r *ToolbarRenderer) Render(state ToolbarState) *image.RGBA {
 	// Mode button text
 	var modeText string
 	if state.ChineseMode {
-		modeText = "中"
+		if state.ModeLabel != "" {
+			modeText = state.ModeLabel
+		} else {
+			modeText = "中"
+		}
 	} else if state.CapsLock {
 		modeText = "A"
 	} else {
@@ -144,31 +149,33 @@ func (r *ToolbarRenderer) Render(state ToolbarState) *image.RGBA {
 	tw := td.MeasureString(modeText, fontSize)
 	td.DrawString(modeText, modeBtnX+modeBtnW/2-tw/2, modeBtnY+modeBtnH/2+fontSize*0.35, fontSize, colors.ModeTextColor)
 
-	// Width button text
-	var widthText string
-	var widthTextColor color.Color
-	if state.FullWidth {
-		widthText = "全"
-		widthTextColor = colors.FullWidthOnColor
-	} else {
-		widthText = "半"
-		widthTextColor = colors.FullWidthOffColor
-	}
-	tw = td.MeasureString(widthText, fontSize)
-	td.DrawString(widthText, widthBtnX+widthBtnW/2-tw/2, widthBtnY+widthBtnH/2+fontSize*0.35, fontSize, widthTextColor)
+	// Width button: symbol drawn in Phase 1, no text needed here
 
-	// Punct button text
-	var punctText string
-	var punctTextColor color.Color
+	// Punct button text: draw left and right symbols separately
+	// 。is full-width so its glyph is visually offset; compensate with manual nudge
+	punctFontSize := 13.0 * scale
+	punctTextColor := colors.PunctEnglishColor
+	punctY := punctBtnY + punctBtnH/2 + punctFontSize*0.35
+	leftAnchor := punctBtnX + punctBtnW*0.33  // visual center for left symbol
+	rightAnchor := punctBtnX + punctBtnW*0.72 // visual center for right symbol
 	if state.ChinesePunct {
-		punctText = "\uFF0C" // Chinese comma ，
-		punctTextColor = colors.PunctChineseColor
+		// 。(U+3002) is full-width: nudge right to compensate left-biased glyph
+		periodText := "\u3002"
+		lwP := td.MeasureString(periodText, punctFontSize)
+		nudge := 2.0 * scale
+		td.DrawString(periodText, leftAnchor-lwP/2+nudge, punctY, punctFontSize, punctTextColor)
+		// ，(U+FF0C) full-width comma
+		commaText := "\uFF0C"
+		rwP := td.MeasureString(commaText, punctFontSize)
+		td.DrawString(commaText, rightAnchor-rwP/2+nudge, punctY, punctFontSize, punctTextColor)
 	} else {
-		punctText = ","
-		punctTextColor = colors.PunctEnglishColor
+		dotText := "."
+		lwP := td.MeasureString(dotText, punctFontSize)
+		td.DrawString(dotText, leftAnchor-lwP/2, punctY, punctFontSize, punctTextColor)
+		commaText := ","
+		rwP := td.MeasureString(commaText, punctFontSize)
+		td.DrawString(commaText, rightAnchor-rwP/2, punctY, punctFontSize, punctTextColor)
 	}
-	tw = td.MeasureString(punctText, fontSize)
-	td.DrawString(punctText, punctBtnX+punctBtnW/2-tw/2, punctBtnY+punctBtnH/2+fontSize*0.35, fontSize, punctTextColor)
 
 	td.EndDraw()
 	return img
@@ -207,25 +214,42 @@ func (r *ToolbarRenderer) drawModeButton(dc *gg.Context, x, y, w, h float64, sta
 	dc.Fill()
 }
 
-// drawWidthButton draws the full/half width button background (text drawn separately in Phase 2)
+// drawWidthButton draws the full/half width button background (no colored bg, same as off state)
 func (r *ToolbarRenderer) drawWidthButton(dc *gg.Context, x, y, w, h float64, fullWidth bool, scale float64, colors *theme.ResolvedToolbarColors) {
-	if fullWidth {
-		dc.SetColor(colors.FullWidthOnBgColor)
-	} else {
-		dc.SetColor(colors.FullWidthOffBgColor)
-	}
+	dc.SetColor(colors.FullWidthOffBgColor)
 	radius := 4.0 * scale
 	dc.DrawRoundedRectangle(x, y, w, h, radius)
 	dc.Fill()
 }
 
-// drawPunctButton draws the punctuation button background (text drawn separately in Phase 2)
-func (r *ToolbarRenderer) drawPunctButton(dc *gg.Context, x, y, w, h float64, chinesePunct bool, scale float64, colors *theme.ResolvedToolbarColors) {
-	if chinesePunct {
-		dc.SetColor(colors.PunctChineseBgColor)
+// drawWidthSymbol draws the full-width/half-width symbol on the width button
+func (r *ToolbarRenderer) drawWidthSymbol(dc *gg.Context, x, y, w, h float64, fullWidth bool, scale float64, colors *theme.ResolvedToolbarColors) {
+	cx := x + w/2
+	cy := y + h/2
+	radius := 6.5 * scale
+
+	if fullWidth {
+		// Solid circle ● for full-width
+		dc.SetColor(colors.FullWidthOffColor)
+		dc.DrawCircle(cx, cy, radius)
+		dc.Fill()
 	} else {
-		dc.SetColor(colors.PunctEnglishBgColor)
+		// Crescent moon with opening towards upper-left for half-width
+		dc.SetColor(colors.FullWidthOffColor)
+		dc.DrawCircle(cx, cy, radius)
+		dc.Fill()
+
+		// Cut out upper-left portion to create crescent shape
+		offset := radius * 0.5
+		dc.SetColor(colors.FullWidthOffBgColor)
+		dc.DrawCircle(cx-offset, cy-offset, radius*0.95)
+		dc.Fill()
 	}
+}
+
+// drawPunctButton draws the punctuation button background (no colored bg, same as off state)
+func (r *ToolbarRenderer) drawPunctButton(dc *gg.Context, x, y, w, h float64, chinesePunct bool, scale float64, colors *theme.ResolvedToolbarColors) {
+	dc.SetColor(colors.PunctEnglishBgColor)
 	radius := 4.0 * scale
 	dc.DrawRoundedRectangle(x, y, w, h, radius)
 	dc.Fill()
