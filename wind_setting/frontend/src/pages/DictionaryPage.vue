@@ -247,7 +247,6 @@
                   v-for="(item, idx) in filteredUserDict"
                   :key="idx"
                   :class="{ selected: selectedWordKeys.has(wordKey(item)) }"
-                  @dblclick="openEditWordDialog(item)"
                 >
                   <td>
                     <input
@@ -468,27 +467,11 @@
     </div>
 
     <!-- ========== 添加/编辑词条对话框 ========== -->
-    <div v-if="addWordDialogVisible" class="dialog-overlay" @click.self="addWordDialogVisible = false">
-      <div class="dialog-box">
-        <div class="dialog-title">{{ editingWord ? '编辑词条' : '添加词条' }}</div>
-        <div class="form-row">
-          <label>编码</label>
-          <input type="text" v-model="newWord.code" class="input" placeholder="如: nihao" :disabled="!!editingWord" />
-        </div>
-        <div class="form-row">
-          <label>词条</label>
-          <input type="text" v-model="newWord.text" class="input" placeholder="如: 你好" :disabled="!!editingWord" />
-        </div>
-        <div class="form-row">
-          <label>权重</label>
-          <input type="number" v-model.number="newWord.weight" class="input input-sm" />
-        </div>
-        <div class="dialog-actions">
-          <button class="btn btn-sm" @click="addWordDialogVisible = false">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleAddUserWord">{{ editingWord ? '保存' : '添加' }}</button>
-        </div>
-      </div>
-    </div>
+    <AddWordPage
+      v-if="addWordDialogVisible"
+      :initialSchema="selectedSchemaID"
+      @close="handleAddWordDialogClose"
+    />
 
     <!-- ========== Shadow 规则对话框 ========== -->
     <div v-if="shadowDialogVisible" class="dialog-overlay" @click.self="shadowDialogVisible = false">
@@ -525,6 +508,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import * as wailsApi from "../api/wails";
+import AddWordPage from "./AddWordPage.vue";
 import type {
   PhraseItem,
   UserWordItem,
@@ -588,8 +572,6 @@ function toggleAllPhrases() {
 // ===== 用户词库 =====
 const userDict = ref<UserWordItem[]>([]);
 const addWordDialogVisible = ref(false);
-const editingWord = ref<UserWordItem | null>(null);
-const newWord = ref({ code: "", text: "", weight: 0 });
 const wordSearchQuery = ref("");
 const sortKey = ref<"code" | "text" | "weight">("code");
 const sortAsc = ref(true);
@@ -620,8 +602,9 @@ function toggleSort(key: "code" | "text" | "weight") {
 
 // 词条多选
 const selectedWordKeys = ref(new Set<string>());
+const uniqueFilteredWordKeys = computed(() => new Set(filteredUserDict.value.map(wordKey)));
 const allWordSelected = computed(
-  () => filteredUserDict.value.length > 0 && filteredUserDict.value.every((w) => selectedWordKeys.value.has(wordKey(w)))
+  () => uniqueFilteredWordKeys.value.size > 0 && [...uniqueFilteredWordKeys.value].every((k) => selectedWordKeys.value.has(k))
 );
 function wordKey(item: UserWordItem) { return `${item.code}||${item.text}`; }
 function toggleWordSelect(item: UserWordItem) {
@@ -917,38 +900,14 @@ async function handleBatchRemovePhrases() {
 
 // ===== 用户词库操作 =====
 function openAddWordDialog() {
-  editingWord.value = null;
-  newWord.value = { code: "", text: "", weight: 0 };
   addWordDialogVisible.value = true;
 }
 
-function openEditWordDialog(item: UserWordItem) {
-  editingWord.value = item;
-  newWord.value = { code: item.code, text: item.text, weight: item.weight };
-  addWordDialogVisible.value = true;
-}
-
-async function handleAddUserWord() {
-  if (!newWord.value.code || !newWord.value.text) {
-    showDictMessage("请填写编码和词条", "error");
-    return;
-  }
-  try {
-    if (editingWord.value) {
-      // 编辑：删除旧的再添加新的（weight 可能更新）
-      await wailsApi.removeUserWordForSchema(selectedSchemaID.value, editingWord.value.code, editingWord.value.text);
-      await wailsApi.addUserWordForSchema(selectedSchemaID.value, newWord.value.code, newWord.value.text, newWord.value.weight);
-      showDictMessage("保存成功", "success");
-    } else {
-      await wailsApi.addUserWordForSchema(selectedSchemaID.value, newWord.value.code, newWord.value.text, newWord.value.weight);
-      showDictMessage("添加成功", "success");
-    }
-    addWordDialogVisible.value = false;
-    await loadSchemaData();
-    await loadSchemaList();
-  } catch (e: unknown) {
-    showDictMessage((e as Error).message || "操作失败", "error");
-  }
+async function handleAddWordDialogClose() {
+  addWordDialogVisible.value = false;
+  // 重新加载数据以反映新增的词条
+  await loadSchemaData();
+  await loadSchemaList();
 }
 
 async function handleRemoveUserWord(item: UserWordItem) {
@@ -968,18 +927,36 @@ async function handleRemoveUserWord(item: UserWordItem) {
 async function handleBatchRemoveWords() {
   if (selectedWordKeys.value.size === 0) return;
   if (!confirm(`确定删除选中的 ${selectedWordKeys.value.size} 条词条吗？`)) return;
-  const toDelete = userDict.value.filter((w) => selectedWordKeys.value.has(wordKey(w)));
-  try {
-    for (const item of toDelete) {
-      await wailsApi.removeUserWordForSchema(selectedSchemaID.value, item.code, item.text);
+
+  // 按 key 去重，避免重复条目导致多次删除同一词
+  const seen = new Set<string>();
+  const toDelete: { code: string; text: string }[] = [];
+  for (const item of userDict.value) {
+    const k = wordKey(item);
+    if (selectedWordKeys.value.has(k) && !seen.has(k)) {
+      seen.add(k);
+      toDelete.push({ code: item.code, text: item.text });
     }
-    selectedWordKeys.value = new Set();
-    showDictMessage(`已删除 ${toDelete.length} 条词条`, "success");
-    await loadSchemaData();
-    await loadSchemaList();
-  } catch (e: unknown) {
-    showDictMessage((e as Error).message || "批量删除失败", "error");
   }
+
+  let deleted = 0;
+  let failed = 0;
+  for (const item of toDelete) {
+    try {
+      await wailsApi.removeUserWordForSchema(selectedSchemaID.value, item.code, item.text);
+      deleted++;
+    } catch {
+      failed++;
+    }
+  }
+  selectedWordKeys.value = new Set();
+  if (failed > 0) {
+    showDictMessage(`已删除 ${deleted} 条，${failed} 条失败`, "error");
+  } else {
+    showDictMessage(`已删除 ${deleted} 条词条`, "success");
+  }
+  await loadSchemaData();
+  await loadSchemaList();
 }
 
 async function handleImportUserDict() {
