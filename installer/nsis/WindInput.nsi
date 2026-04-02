@@ -356,8 +356,7 @@ install_cleanup_bak_end:
   ; --- Step 6b: Schema files (input method configurations) ---
   DetailPrint "正在复制输入方案配置..."
   SetOutPath "$INSTDIR\data\schemas"
-  File "${BUILD_DIR}\data\schemas\wubi86.schema.yaml"
-  File "${BUILD_DIR}\data\schemas\pinyin.schema.yaml"
+  File "${BUILD_DIR}\data\schemas\*.schema.yaml"
 
   ; --- Step 6c: Default config and theme files ---
   DetailPrint "正在复制配置和主题文件..."
