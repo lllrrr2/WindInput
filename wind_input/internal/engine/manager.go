@@ -248,7 +248,10 @@ func (m *Manager) loadSchemaEngineLocked(schemaID string) error {
 		return fmt.Errorf("方案 %q 不存在", schemaID)
 	}
 
-	bundle, err := schema.CreateEngineFromSchema(s, m.exeDir, m.dictManager, m.logger)
+	resolver := func(id string) *schema.Schema {
+		return m.schemaManager.GetSchema(id)
+	}
+	bundle, err := schema.CreateEngineFromSchema(s, m.exeDir, m.dictManager, m.logger, resolver)
 	if err != nil {
 		return fmt.Errorf("创建方案 %q 引擎失败: %w", schemaID, err)
 	}
@@ -855,11 +858,15 @@ func (m *Manager) GetEncoderRules() []schema.EncoderRule {
 	}
 
 	s := m.schemaManager.GetSchema(m.currentID)
-	if s == nil || s.Encoder == nil {
+	if s == nil {
 		return nil
 	}
 
-	return s.Encoder.Rules
+	encoder := m.resolveEncoder(s)
+	if encoder == nil {
+		return nil
+	}
+	return encoder.Rules
 }
 
 // GetEncoderMaxWordLength 获取当前方案的最大造词长度（0 表示无限制）
@@ -872,11 +879,29 @@ func (m *Manager) GetEncoderMaxWordLength() int {
 	}
 
 	s := m.schemaManager.GetSchema(m.currentID)
-	if s == nil || s.Encoder == nil {
+	if s == nil {
 		return 0
 	}
 
-	return s.Encoder.MaxWordLength
+	encoder := m.resolveEncoder(s)
+	if encoder == nil {
+		return 0
+	}
+	return encoder.MaxWordLength
+}
+
+// resolveEncoder 解析编码规则：混输方案自身没有定义时从主方案继承
+func (m *Manager) resolveEncoder(s *schema.Schema) *schema.EncoderSpec {
+	if s.Encoder != nil {
+		return s.Encoder
+	}
+	// 混输方案：从 primary_schema 继承
+	if s.Engine.Mixed != nil && s.Engine.Mixed.PrimarySchema != "" && m.schemaManager != nil {
+		if primary := m.schemaManager.GetSchema(s.Engine.Mixed.PrimarySchema); primary != nil {
+			return primary.Encoder
+		}
+	}
+	return nil
 }
 
 // GetReverseIndex 获取当前码表的反向索引（字 → 编码列表）

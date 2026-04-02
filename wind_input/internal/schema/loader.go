@@ -98,7 +98,10 @@ func validateSchema(s *Schema, path string) error {
 	if s.Engine.Type != EngineTypeCodeTable && s.Engine.Type != EngineTypePinyin && s.Engine.Type != EngineTypeMixed {
 		return fmt.Errorf("方案 %s: engine.type 不支持的值 %q（仅支持 codetable/pinyin/mixed）", s.Schema.ID, s.Engine.Type)
 	}
-	if len(s.Dicts) == 0 {
+	// 混输方案引用其他方案时允许不定义 dictionaries
+	hasMixedRef := s.Engine.Type == EngineTypeMixed && s.Engine.Mixed != nil &&
+		(s.Engine.Mixed.PrimarySchema != "" || s.Engine.Mixed.SecondarySchema != "")
+	if len(s.Dicts) == 0 && !hasMixedRef {
 		return fmt.Errorf("方案 %s: dictionaries 不能为空", s.Schema.ID)
 	}
 	for i, d := range s.Dicts {

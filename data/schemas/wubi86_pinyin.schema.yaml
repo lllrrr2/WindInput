@@ -8,67 +8,26 @@ schema:
 
 engine:
   type: mixed
-  codetable:
-    max_code_length: 4
-    auto_commit_unique: false
-    clear_on_empty_max: false
-    top_code_commit: true
-    punct_commit: true
-    show_code_hint: true
-    single_code_input: false
-    candidate_sort_mode: frequency
-  pinyin:
-    scheme: full
-    show_code_hint: true
-    use_smart_compose: true
-    candidate_order: smart
   mixed:
+    primary_schema: wubi86
+    secondary_schema: pinyin
     min_pinyin_length: 2
     codetable_weight_boost: 10000000
     show_source_hint: true
   filter_mode: smart
 
-dictionaries:
-  - id: wubi86_main
-    path: "dict/wubi86/wubi86_jidian.dict.yaml"
-    type: rime_codetable
-    default: true
-    weight_spec:
-      median: 10
-      max: 890
-      min: 5
-      mode: linear
-  - id: pinyin_main
-    path: "dict/pinyin/rime_ice.dict.yaml"
-    type: rime_pinyin
-    weight_spec:
-      median: 200
-      max: 19260817
-      mode: log
-  - id: codetable_reverse
-    path: "dict/wubi86/wubi86_jidian.dict.yaml"
-    type: rime_codetable
-    role: reverse_lookup
-
+# 用户数据独立（不与主方案共享）
 user_data:
   shadow_file: "wubi86_pinyin.shadow.yaml"
   user_dict_file: "wubi86_pinyin.userwords.txt"
   user_freq_file: "wubi86_pinyin.userfreq.txt"
   temp_dict_file: "wubi86_pinyin.tempdict.txt"
 
-encoder:
-  max_word_length: 10
-  rules:
-    - length_equal: 2
-      formula: "AaAbBaBb"
-    - length_equal: 3
-      formula: "AaBaCaCb"
-    - length_in_range: [4, 10]
-      formula: "AaBaCaZa"
+# 编码规则从主方案继承，此处可省略
+# 如需覆盖可显式定义 encoder 区块
 
 learning:
   mode: frequency
-  unigram_path: "dict/pinyin/unigram.txt"
   protect_top_n: 3
   temp_max_entries: 5000
   temp_promote_count: 3

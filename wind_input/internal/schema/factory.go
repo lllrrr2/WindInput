@@ -24,15 +24,18 @@ type EngineBundle struct {
 	Engine   interface{} // *pinyin.Engine 或 *codetable.Engine 或 *mixed.Engine
 }
 
+// SchemaResolver 方案解析器，用于混输引擎查找被引用的方案
+type SchemaResolver func(schemaID string) *Schema
+
 // CreateEngineFromSchema 根据 Schema 创建引擎实例并加载词库
-func CreateEngineFromSchema(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
+func CreateEngineFromSchema(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger, resolver SchemaResolver) (*EngineBundle, error) {
 	switch s.Engine.Type {
 	case EngineTypeCodeTable:
 		return createCodeTableEngine(s, exeDir, dm, logger)
 	case EngineTypePinyin:
 		return createPinyinEngine(s, exeDir, dm, logger)
 	case EngineTypeMixed:
-		return createMixedEngine(s, exeDir, dm, logger)
+		return createMixedEngine(s, exeDir, dm, logger, resolver)
 	default:
 		return nil, fmt.Errorf("不支持的引擎类型: %s", s.Engine.Type)
 	}
@@ -518,7 +521,7 @@ func resolvePath(exeDir, path string) string {
 // createMixedEngine 创建混输引擎（五笔+拼音并行查询）
 // 五笔引擎使用 DictManager 的主 CompositeDict（含 codetable-system 层），
 // 拼音引擎使用独立的 CompositeDict（含 pinyin-system 层），避免交叉污染。
-func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
+func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger, resolver SchemaResolver) (*EngineBundle, error) {
 	// === 1. 读取混输配置 ===
 	mixedSpec := s.Engine.Mixed
 	if mixedSpec == nil {
@@ -529,8 +532,31 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		}
 	}
 
+	// === 解析引用方案 ===
+	var primarySchema *Schema
+	var secondarySchema *Schema
+
+	if mixedSpec.PrimarySchema != "" && resolver != nil {
+		primarySchema = resolver(mixedSpec.PrimarySchema)
+		if primarySchema == nil {
+			return nil, fmt.Errorf("混输：主方案 %q 不存在", mixedSpec.PrimarySchema)
+		}
+		logger.Info("混输：引用主方案", "primary", mixedSpec.PrimarySchema)
+	}
+	if mixedSpec.SecondarySchema != "" && resolver != nil {
+		secondarySchema = resolver(mixedSpec.SecondarySchema)
+		if secondarySchema == nil {
+			return nil, fmt.Errorf("混输：拼音方案 %q 不存在", mixedSpec.SecondarySchema)
+		}
+		logger.Info("混输：引用拼音方案", "secondary", mixedSpec.SecondarySchema)
+	}
+
 	// === 2. 创建五笔引擎 ===
+	// 优先使用混输方案自身的码表配置，其次从主方案继承
 	codeTableSpec := s.Engine.CodeTable
+	if codeTableSpec == nil && primarySchema != nil {
+		codeTableSpec = primarySchema.Engine.CodeTable
+	}
 	if codeTableSpec == nil {
 		codeTableSpec = &CodeTableSpec{
 			MaxCodeLength:     4,
@@ -573,7 +599,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 
 	codetableEngine := codetable.NewEngine(codetableConfig, logger)
 
-	// 加载码表（从 dictionaries 中查找默认词库）
+	// 加载码表（优先从混输方案的 Dicts 查找，其次从主方案）
 	var codetableDictSpec *DictSpec
 	for i := range s.Dicts {
 		if s.Dicts[i].Default {
@@ -581,16 +607,29 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 			break
 		}
 	}
+	if codetableDictSpec == nil && primarySchema != nil {
+		for i := range primarySchema.Dicts {
+			if primarySchema.Dicts[i].Default {
+				codetableDictSpec = &primarySchema.Dicts[i]
+				break
+			}
+		}
+	}
+	// wdb 缓存 key：引用主方案时使用主方案 ID，共享缓存
+	codetableCacheID := s.Schema.ID
+	if primarySchema != nil {
+		codetableCacheID = primarySchema.Schema.ID
+	}
 	if codetableDictSpec != nil {
 		srcPath := resolvePath(exeDir, codetableDictSpec.Path)
 		var codetableNorm *dict.WeightNormalizer
 		if codetableDictSpec.WeightSpec != nil {
 			codetableNorm = codetableDictSpec.WeightSpec.NewWeightNormalizer()
 		}
-		if err := loadCodetable(codetableEngine, srcPath, codetableDictSpec.Type, s.Schema.ID, logger, codetableNorm); err != nil {
+		if err := loadCodetable(codetableEngine, srcPath, codetableDictSpec.Type, codetableCacheID, logger, codetableNorm); err != nil {
 			return nil, fmt.Errorf("混输：加载码表失败: %w", err)
 		}
-		logger.Info("混输：码表加载成功", "schemaID", s.Schema.ID, "entryCount", codetableEngine.GetEntryCount())
+		logger.Info("混输：码表加载成功", "schemaID", s.Schema.ID, "cacheID", codetableCacheID, "entryCount", codetableEngine.GetEntryCount())
 	}
 
 	// 注册码表到 DictManager 的主 CompositeDict
@@ -605,7 +644,11 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 	}
 
 	// === 3. 创建拼音引擎（使用独立的 CompositeDict）===
+	// 优先使用混输方案自身的拼音配置，其次从拼音方案继承
 	pinyinSpec := s.Engine.Pinyin
+	if pinyinSpec == nil && secondarySchema != nil {
+		pinyinSpec = secondarySchema.Engine.Pinyin
+	}
 	if pinyinSpec == nil {
 		pinyinSpec = &PinyinSpec{
 			Scheme:          "full",
@@ -641,13 +684,21 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		}
 	}
 
-	// 加载拼音词库
+	// 加载拼音词库（优先从混输方案查找，其次从拼音方案）
 	pinyinDict := dict.NewPinyinDict(logger)
 	var pinyinDictSpec *DictSpec
 	for i := range s.Dicts {
 		if s.Dicts[i].Type == "rime_pinyin" {
 			pinyinDictSpec = &s.Dicts[i]
 			break
+		}
+	}
+	if pinyinDictSpec == nil && secondarySchema != nil {
+		for i := range secondarySchema.Dicts {
+			if secondarySchema.Dicts[i].Type == "rime_pinyin" {
+				pinyinDictSpec = &secondarySchema.Dicts[i]
+				break
+			}
 		}
 	}
 	if pinyinDictSpec != nil {
@@ -686,19 +737,29 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		}
 	}
 
-	// 加载 Unigram 语言模型
-	if s.Learning.UnigramPath != "" {
-		unigramTxtPath := resolvePath(exeDir, s.Learning.UnigramPath)
+	// 加载 Unigram 语言模型（优先从混输方案，其次从拼音方案继承）
+	unigramPath := s.Learning.UnigramPath
+	if unigramPath == "" && secondarySchema != nil {
+		unigramPath = secondarySchema.Learning.UnigramPath
+	}
+	if unigramPath != "" {
+		unigramTxtPath := resolvePath(exeDir, unigramPath)
 		if err := loadUnigramModel(pinyinEngine, unigramTxtPath, logger); err != nil {
 			logger.Warn("混输：加载 Unigram 模型失败", "err", err)
 		}
 	}
 
-	// 加载反查词库
+	// 加载反查词库（优先从混输方案，其次从主方案，再从拼音方案）
 	reverseDicts := s.GetDictsByRole(DictRoleReverseLookup)
+	if len(reverseDicts) == 0 && primarySchema != nil {
+		reverseDicts = primarySchema.GetDictsByRole(DictRoleReverseLookup)
+	}
+	if len(reverseDicts) == 0 && secondarySchema != nil {
+		reverseDicts = secondarySchema.GetDictsByRole(DictRoleReverseLookup)
+	}
 	for _, rd := range reverseDicts {
 		rdPath := resolvePath(exeDir, rd.Path)
-		if err := loadCodetableForPinyin(pinyinEngine, rdPath, rd.Type, s.Schema.ID, logger); err != nil {
+		if err := loadCodetableForPinyin(pinyinEngine, rdPath, rd.Type, codetableCacheID, logger); err != nil {
 			logger.Warn("混输：加载反查码表失败", "err", err)
 		}
 	}
