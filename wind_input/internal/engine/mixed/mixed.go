@@ -144,9 +144,27 @@ func (e *Engine) HandleEmptyCode(input string) (shouldClear bool, toEnglish bool
 }
 
 // HandleTopCode 处理顶码
-// 混输模式下禁用码表顶字：超过 maxCodeLen 的输入统一由 ConvertEx 降级为拼音查询，
-// 而非触发码表顶字上屏（用户可能在输入拼音，如 "buyao" → "不要"）。
+// 混输模式下根据拼音解析质量智能决定是否触发顶码：
+//   - 拼音能解析出完整音节（如 "buyao"）→ 不触发顶码，走 ConvertEx 的混合查询
+//   - 拼音无法解析为完整音节（纯声母如 "sfght"）→ 触发码表顶码
 func (e *Engine) HandleTopCode(input string) (commitText string, newInput string, shouldCommit bool) {
+	if len(input) <= e.maxCodeLen {
+		return "", input, false
+	}
+
+	// 检查拼音引擎能否解析出完整音节
+	if e.pinyinEngine != nil {
+		pinyinResult := e.pinyinEngine.ConvertEx(input, 1)
+		if pinyinResult.HasFullSyllable {
+			// 拼音能解析 → 不触发顶码，交给 ConvertEx 处理
+			return "", input, false
+		}
+	}
+
+	// 拼音无法解析（纯声母）→ 委托码表引擎处理顶码
+	if e.codetableEngine != nil {
+		return e.codetableEngine.HandleTopCode(input)
+	}
 	return "", input, false
 }
 
@@ -156,7 +174,7 @@ func (e *Engine) HandleTopCode(input string) (commitText string, newInput string
 // 根据输入长度选择查询策略：
 //   - 1码：仅查码表
 //   - 2~maxCodeLen码：并行查码表+拼音，码表优先
-//   - >maxCodeLen码：降级为纯拼音
+//   - >maxCodeLen码：码表用前 maxCodeLen 码查询 + 拼音用完整输入查询
 func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	result := &ConvertResult{}
 
@@ -170,8 +188,8 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	// === 策略分支 ===
 
 	if inputLen > e.maxCodeLen {
-		// 超过最大码长：降级为纯拼音
-		return e.convertPinyinFallback(input, maxCandidates)
+		// 超过最大码长：码表取前 maxCodeLen 码 + 拼音取完整输入
+		return e.convertMixedOverflow(input, maxCandidates)
 	}
 
 	if inputLen < e.config.MinPinyinLength {
@@ -216,40 +234,99 @@ func (e *Engine) convertCodetableOnly(input string, maxCandidates int) *ConvertR
 	}
 }
 
-// convertPinyinFallback 降级为纯拼音查询（输入超过最大码长时）
-func (e *Engine) convertPinyinFallback(input string, maxCandidates int) *ConvertResult {
-	if e.pinyinEngine == nil {
-		return &ConvertResult{IsEmpty: true}
+// convertMixedOverflow 超过最大码长时的混合查询
+// 码表用前 maxCodeLen 码查询（顶码候选），拼音用完整输入查询，合并竞争。
+// 如果拼音有完整音节匹配，标记为拼音降级模式以显示拼音预编辑区。
+func (e *Engine) convertMixedOverflow(input string, maxCandidates int) *ConvertResult {
+	var codetableCandidates []candidate.Candidate
+	var pinyinCandidates []candidate.Candidate
+	var pinyinResult *pinyin.PinyinConvertResult
+
+	var wg sync.WaitGroup
+
+	// 码表引擎：用前 maxCodeLen 码查询
+	if e.codetableEngine != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			prefix := input[:e.maxCodeLen]
+			codetableResult := e.codetableEngine.ConvertEx(prefix, maxCandidates)
+			codetableCandidates = codetableResult.Candidates
+		}()
 	}
 
-	pinyinResult := e.pinyinEngine.ConvertEx(input, maxCandidates)
-
-	// 标记来源
-	for i := range pinyinResult.Candidates {
-		pinyinResult.Candidates[i].Source = candidate.SourcePinyin
+	// 拼音引擎：用完整输入查询
+	if e.pinyinEngine != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pinyinResult = e.pinyinEngine.ConvertEx(input, maxCandidates)
+			pinyinCandidates = pinyinResult.Candidates
+		}()
 	}
 
-	candidates := pinyinResult.Candidates
+	wg.Wait()
 
-	// 应用 Shadow 规则（置顶/删除）
-	if e.dictManager != nil {
-		if shadowLayer := e.dictManager.GetShadowLayer(); shadowLayer != nil {
-			rules := shadowLayer.GetShadowRules(input)
-			candidates = dict.ApplyShadowPins(candidates, rules)
+	// 码表候选提权（与 convertMixed 相同的策略）
+	codetablePrefixBoost := e.config.CodetableWeightBoost * CodetablePrefixBoostRatio / 10
+	for i := range codetableCandidates {
+		codetableCandidates[i].Source = candidate.SourceCodetable
+		if codetableCandidates[i].Code == input[:e.maxCodeLen] {
+			codetableCandidates[i].Weight += e.config.CodetableWeightBoost
+		} else {
+			codetableCandidates[i].Weight += codetablePrefixBoost
 		}
 	}
 
+	// 拼音候选标记来源
+	for i := range pinyinCandidates {
+		pinyinCandidates[i].Source = candidate.SourcePinyin
+	}
+
+	// 合并
+	merged := make([]candidate.Candidate, 0, len(codetableCandidates)+len(pinyinCandidates))
+	merged = append(merged, codetableCandidates...)
+	merged = append(merged, pinyinCandidates...)
+
+	sort.Slice(merged, func(i, j int) bool {
+		return candidate.Better(merged[i], merged[j])
+	})
+	merged = dedupByText(merged)
+
+	// 应用 Shadow 规则
+	if e.dictManager != nil {
+		if shadowLayer := e.dictManager.GetShadowLayer(); shadowLayer != nil {
+			rules := shadowLayer.GetShadowRules(input)
+			merged = dict.ApplyShadowPins(merged, rules)
+		}
+	}
+
+	if maxCandidates > 0 && len(merged) > maxCandidates {
+		merged = merged[:maxCandidates]
+	}
+
 	result := &ConvertResult{
-		Candidates:       candidates,
-		IsEmpty:          pinyinResult.IsEmpty,
-		IsPinyinFallback: true,
-		PreeditDisplay:   pinyinResult.PreeditDisplay,
+		Candidates: merged,
+		IsEmpty:    len(merged) == 0,
 	}
-	if pinyinResult.Composition != nil {
-		result.CompletedSyllables = pinyinResult.Composition.CompletedSyllables
-		result.PartialSyllable = pinyinResult.Composition.PartialSyllable
-		result.HasPartial = pinyinResult.Composition.HasPartial()
+
+	// 如果拼音有完整音节，标记为拼音降级模式（预编辑区显示拼音分词）
+	if pinyinResult != nil && pinyinResult.HasFullSyllable {
+		result.IsPinyinFallback = true
+		result.PreeditDisplay = pinyinResult.PreeditDisplay
+		if pinyinResult.Composition != nil {
+			result.CompletedSyllables = pinyinResult.Composition.CompletedSyllables
+			result.PartialSyllable = pinyinResult.Composition.PartialSyllable
+			result.HasPartial = pinyinResult.Composition.HasPartial()
+		}
 	}
+
+	if e.config.ShowSourceHint {
+		addSourceHints(result.Candidates)
+	}
+
+	e.logger.Debug("convertMixedOverflow", "input", input, "codetable", len(codetableCandidates), "pinyin", len(pinyinCandidates), "merged", len(merged), "isPinyinFallback", result.IsPinyinFallback)
+
 	return result
 }
 

@@ -40,6 +40,7 @@ func newRealMixedEngine(t *testing.T) *Engine {
 		FilterMode:      "smart",
 		UseSmartCompose: true,
 		ShowCodeHint:    true,
+		SkipAbbrev:      true, // 混输模式默认关闭简拼
 	}, nil)
 	if err := pinyinEngine.LoadUnigram(filepath.Join(dictRoot, "pinyin", "unigram.txt")); err != nil {
 		t.Fatalf("load unigram: %v", err)

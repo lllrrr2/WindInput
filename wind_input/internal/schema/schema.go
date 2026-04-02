@@ -43,9 +43,10 @@ type EngineSpec struct {
 
 // MixedSpec 混输引擎配置
 type MixedSpec struct {
-	MinPinyinLength      int  `yaml:"min_pinyin_length"`      // 拼音最小触发长度，默认2
-	CodetableWeightBoost int  `yaml:"codetable_weight_boost"` // 码表权重提升值，默认10000000
-	ShowSourceHint       bool `yaml:"show_source_hint"`       // 是否在候选提示中显示来源标记
+	MinPinyinLength      int   `yaml:"min_pinyin_length"`      // 拼音最小触发长度，默认2
+	CodetableWeightBoost int   `yaml:"codetable_weight_boost"` // 码表权重提升值，默认10000000
+	ShowSourceHint       bool  `yaml:"show_source_hint"`       // 是否在候选提示中显示来源标记
+	EnableAbbrevMatch    *bool `yaml:"enable_abbrev_match"`    // 混输模式下是否启用简拼匹配（默认 false）
 }
 
 // CodeTableSpec 码表引擎配置

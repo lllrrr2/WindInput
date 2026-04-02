@@ -436,7 +436,8 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 	// ── 步骤 6：简拼/混合简拼词组匹配 ──
 	// 纯简拼：bzd → allSyllables=["b","z","d"] → abbrev="bzd"
 	// 混合简拼：nizm → allSyllables=["ni","z","m"] → abbrev="nzm"
-	if len(allSyllables) >= 2 {
+	// 混输模式下可通过 SkipAbbrev 关闭简拼匹配以减少噪声
+	if len(allSyllables) >= 2 && !(e.config != nil && e.config.SkipAbbrev) {
 		var abbrevBuilder strings.Builder
 		for _, s := range allSyllables {
 			abbrevBuilder.WriteByte(s[0])

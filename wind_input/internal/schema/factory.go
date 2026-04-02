@@ -614,10 +614,16 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		}
 	}
 
+	// 混输模式下默认关闭简拼匹配（减少噪声），用户可通过 enable_abbrev_match 开启
+	skipAbbrev := true
+	if mixedSpec.EnableAbbrevMatch != nil && *mixedSpec.EnableAbbrevMatch {
+		skipAbbrev = false
+	}
 	pinyinConfig := &pinyin.Config{
 		ShowCodeHint: pinyinSpec.ShowCodeHint,
 		FilterMode:   s.Engine.FilterMode,
 		SkipShadow:   true, // 混输模式：Shadow 由 MixedEngine 合并后统一应用
+		SkipAbbrev:   skipAbbrev,
 	}
 
 	// 模糊音配置

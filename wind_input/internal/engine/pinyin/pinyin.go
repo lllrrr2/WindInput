@@ -20,6 +20,7 @@ type Config struct {
 	EnableUserFreq  bool         // 启用用户词频学习（默认 false，关闭词频文件生成）
 	FrequencyOnly   bool         // 仅调频模式：不创建新词，只调整已有词条权重
 	SkipShadow      bool         // 跳过 Shadow 规则应用（混输模式下由外层统一应用）
+	SkipAbbrev      bool         // 跳过简拼匹配（混输模式下减少噪声）
 }
 
 // Engine 拼音引擎

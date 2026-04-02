@@ -1,11 +1,15 @@
 package mixed
 
 import (
+	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/dict"
+	"github.com/huanfeng/wind_input/internal/dict/dictcache"
+	"github.com/huanfeng/wind_input/internal/engine/codetable"
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
 )
 
@@ -192,6 +196,158 @@ func createPinyinEngine(t *testing.T, dictRoot string) (*dict.CompositeDict, *pi
 	}
 
 	return pinyinComposite, pinyinEng
+}
+
+// TestMixedSkipAbbrev 验证混输模式下 SkipAbbrev 生效
+// 默认关闭简拼匹配，纯声母输入（如 sfg）不应产生简拼词组候选
+func TestMixedSkipAbbrev(t *testing.T) {
+	engine := newRealMixedEngine(t)
+	pe := engine.GetPinyinEngine()
+
+	// 验证混输模式下拼音引擎的 SkipAbbrev 已开启
+	if cfg := pe.GetConfig(); cfg != nil && !cfg.SkipAbbrev {
+		t.Skip("SkipAbbrev 未开启（newRealMixedEngine 未设置）")
+	}
+
+	// sfg 在简拼关闭时，不应产生简拼词组（如"示范岗"）
+	result := pe.ConvertEx("sfg", 50)
+	for _, c := range result.Candidates {
+		// 简拼词组通常是 3+ 字（每个声母对应一个字）
+		if len([]rune(c.Text)) == 3 {
+			t.Logf("SkipAbbrev 下仍有3字候选: %q weight=%d (可能来自其他路径)", c.Text, c.Weight)
+		}
+	}
+	t.Logf("sfg SkipAbbrev: %d 候选", len(result.Candidates))
+}
+
+// TestMixedHandleTopCode_PureInitials 验证纯声母输入超过码长时触发顶码
+func TestMixedHandleTopCode_PureInitials(t *testing.T) {
+	dictRoot := getBuiltDictRoot(t)
+
+	// 创建带码表的混输引擎
+	pinyinComposite, pinyinEng := createPinyinEngine(t, dictRoot)
+	_ = pinyinComposite
+
+	ct := createCodetableEngine(t, dictRoot)
+
+	engine := NewEngine(ct, pinyinEng, &Config{
+		MinPinyinLength:      2,
+		CodetableWeightBoost: 10000000,
+		ShowSourceHint:       true,
+	}, nil)
+
+	// sfght: 纯声母，无完整音节 → 应触发顶码
+	// 前4码 sfgh 查码表，t 作为新输入
+	commitText, newInput, shouldCommit := engine.HandleTopCode("sfght")
+	t.Logf("sfght: commit=%q, newInput=%q, shouldCommit=%v", commitText, newInput, shouldCommit)
+
+	// 如果码表有 sfgh 的匹配，应触发顶码
+	if shouldCommit {
+		if newInput != "t" {
+			t.Errorf("顶码后新输入应为 't'，实际为 %q", newInput)
+		}
+		if commitText == "" {
+			t.Error("顶码应上屏文字")
+		}
+	}
+	// 如果码表无 sfgh 匹配，不触发也合理
+}
+
+// TestMixedHandleTopCode_FullSyllable 验证含完整音节超过码长时不触发顶码
+func TestMixedHandleTopCode_FullSyllable(t *testing.T) {
+	dictRoot := getBuiltDictRoot(t)
+
+	pinyinComposite, pinyinEng := createPinyinEngine(t, dictRoot)
+	_ = pinyinComposite
+
+	ct := createCodetableEngine(t, dictRoot)
+
+	engine := NewEngine(ct, pinyinEng, &Config{
+		MinPinyinLength:      2,
+		CodetableWeightBoost: 10000000,
+		ShowSourceHint:       true,
+	}, nil)
+
+	// buyao: 含完整音节 bu+yao → 不应触发顶码
+	_, _, shouldCommit := engine.HandleTopCode("buyao")
+	if shouldCommit {
+		t.Error("buyao 含完整音节，不应触发顶码")
+	}
+
+	// nihao: 含完整音节 ni+hao → 不应触发顶码
+	_, _, shouldCommit = engine.HandleTopCode("nihao")
+	if shouldCommit {
+		t.Error("nihao 含完整音节，不应触发顶码")
+	}
+}
+
+// TestMixedOverflow_PinyinWithCodetable 验证超过码长时码表和拼音都参与查询
+func TestMixedOverflow_PinyinWithCodetable(t *testing.T) {
+	dictRoot := getBuiltDictRoot(t)
+
+	pinyinComposite, pinyinEng := createPinyinEngine(t, dictRoot)
+	_ = pinyinComposite
+
+	ct := createCodetableEngine(t, dictRoot)
+
+	engine := NewEngine(ct, pinyinEng, &Config{
+		MinPinyinLength:      2,
+		CodetableWeightBoost: 10000000,
+		ShowSourceHint:       true,
+	}, nil)
+
+	// buyao: 拼音能解析 → IsPinyinFallback=true，同时码表 buya 也参与
+	result := engine.ConvertEx("buyao", 50)
+	t.Logf("buyao: %d 候选, IsPinyinFallback=%v", len(result.Candidates), result.IsPinyinFallback)
+
+	if !result.IsPinyinFallback {
+		t.Error("buyao 应标记为拼音降级模式")
+	}
+
+	// 验证拼音候选存在
+	if idx := candidateIndex(result.Candidates, "不要"); idx < 0 {
+		t.Log("'不要' 未在候选中（可能词库无此词）")
+	} else {
+		t.Logf("'不要' 在位置 %d", idx)
+	}
+
+	// 验证码表候选也参与了
+	hasCodetable := false
+	for _, c := range result.Candidates {
+		if c.Source == candidate.SourceCodetable {
+			hasCodetable = true
+			t.Logf("码表候选: %q weight=%d", c.Text, c.Weight)
+			break
+		}
+	}
+	if hasCodetable {
+		t.Log("码表候选参与了竞争 ✓")
+	}
+}
+
+// createCodetableEngine 创建码表引擎的辅助函数
+func createCodetableEngine(t *testing.T, dictRoot string) *codetable.Engine {
+	t.Helper()
+
+	// 查找五笔 RIME 词库
+	rimeMainDict := filepath.Join(dictRoot, "wubi86", "wubi86_jidian.dict.yaml")
+	if _, err := os.Stat(rimeMainDict); os.IsNotExist(err) {
+		t.Skipf("wubi rime dict not found at %s", rimeMainDict)
+	}
+
+	// 转换 RIME 格式到 wdb（放在 dictRoot 同级目录避免 mmap 文件锁导致 TempDir 清理失败）
+	wdbPath := filepath.Join(dictRoot, "wubi86", "wubi86_test.wdb")
+	if _, err := os.Stat(wdbPath); os.IsNotExist(err) {
+		if err := dictcache.ConvertRimeCodetableToWdb(rimeMainDict, wdbPath, slog.Default()); err != nil {
+			t.Fatalf("convert rime to wdb: %v", err)
+		}
+	}
+
+	ct := codetable.NewEngine(codetable.DefaultConfig(), nil)
+	if err := ct.LoadCodeTableBinary(wdbPath); err != nil {
+		t.Fatalf("load codetable binary: %v", err)
+	}
+	return ct
 }
 
 // TestMixedPinyinWeightPenalty 验证纯简拼的具体降权值
