@@ -27,6 +27,7 @@ type Config struct {
 	MinPinyinLength      int  // 拼音最小触发长度，默认2
 	CodetableWeightBoost int  // 码表候选权重提升基线，默认10000000
 	ShowSourceHint       bool // 是否在 Hint 中标记来源
+	PinyinOnlyOverflow   bool // 超过最大码长时仅查拼音（不查码表前缀），默认 true
 }
 
 // DefaultConfig 返回默认配置
@@ -35,6 +36,7 @@ func DefaultConfig() *Config {
 		MinPinyinLength:      2,
 		CodetableWeightBoost: 10000000,
 		ShowSourceHint:       true,
+		PinyinOnlyOverflow:   true,
 	}
 }
 
@@ -188,6 +190,10 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	// === 策略分支 ===
 
 	if inputLen > e.maxCodeLen {
+		if e.config.PinyinOnlyOverflow {
+			// 超过最大码长：仅查拼音（主流混输行为）
+			return e.convertPinyinOnly(input, maxCandidates)
+		}
 		// 超过最大码长：码表取前 maxCodeLen 码 + 拼音取完整输入
 		return e.convertMixedOverflow(input, maxCandidates)
 	}
@@ -232,6 +238,41 @@ func (e *Engine) convertCodetableOnly(input string, maxCandidates int) *ConvertR
 		ShouldClear:  codetableResult.ShouldClear,
 		ToEnglish:    codetableResult.ToEnglish,
 	}
+}
+
+// convertPinyinOnly 超过最大码长时仅查拼音（主流混输行为）
+func (e *Engine) convertPinyinOnly(input string, maxCandidates int) *ConvertResult {
+	if e.pinyinEngine == nil {
+		return &ConvertResult{IsEmpty: true}
+	}
+
+	pinyinResult := e.pinyinEngine.ConvertEx(input, maxCandidates)
+
+	for i := range pinyinResult.Candidates {
+		pinyinResult.Candidates[i].Source = candidate.SourcePinyin
+	}
+
+	candidates := pinyinResult.Candidates
+
+	if e.dictManager != nil {
+		if shadowLayer := e.dictManager.GetShadowLayer(); shadowLayer != nil {
+			rules := shadowLayer.GetShadowRules(input)
+			candidates = dict.ApplyShadowPins(candidates, rules)
+		}
+	}
+
+	result := &ConvertResult{
+		Candidates:       candidates,
+		IsEmpty:          pinyinResult.IsEmpty,
+		IsPinyinFallback: true,
+		PreeditDisplay:   pinyinResult.PreeditDisplay,
+	}
+	if pinyinResult.Composition != nil {
+		result.CompletedSyllables = pinyinResult.Composition.CompletedSyllables
+		result.PartialSyllable = pinyinResult.Composition.PartialSyllable
+		result.HasPartial = pinyinResult.Composition.HasPartial()
+	}
+	return result
 }
 
 // convertMixedOverflow 超过最大码长时的混合查询

@@ -799,10 +799,15 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 	}
 
 	// === 4. 创建混输引擎 ===
+	pinyinOnlyOverflow := true // 默认超过码长仅查拼音
+	if mixedSpec.PinyinOnlyOverflow != nil {
+		pinyinOnlyOverflow = *mixedSpec.PinyinOnlyOverflow
+	}
 	mixedConfig := &mixed.Config{
 		MinPinyinLength:      mixedSpec.MinPinyinLength,
 		CodetableWeightBoost: mixedSpec.CodetableWeightBoost,
 		ShowSourceHint:       mixedSpec.ShowSourceHint,
+		PinyinOnlyOverflow:   pinyinOnlyOverflow,
 	}
 	if mixedConfig.MinPinyinLength <= 0 {
 		mixedConfig.MinPinyinLength = 2

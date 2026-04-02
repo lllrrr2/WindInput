@@ -49,6 +49,7 @@ type MixedSpec struct {
 	CodetableWeightBoost int    `yaml:"codetable_weight_boost"` // 码表权重提升值，默认10000000
 	ShowSourceHint       bool   `yaml:"show_source_hint"`       // 是否在候选提示中显示来源标记
 	EnableAbbrevMatch    *bool  `yaml:"enable_abbrev_match"`    // 混输模式下是否启用简拼匹配（默认 false）
+	PinyinOnlyOverflow   *bool  `yaml:"pinyin_only_overflow"`   // 超过最大码长时仅查拼音（默认 true）
 }
 
 // TempPinyinSpec 码表方案的临时拼音配置
