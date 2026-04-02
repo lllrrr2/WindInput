@@ -309,6 +309,13 @@ function getMixedConfig(schemaID: string) {
   return cfg.engine.mixed;
 }
 
+// 临时拼音配置
+function getTempPinyinConfig(schemaID: string) {
+  const ct = getCodetableConfig(schemaID);
+  if (!ct.temp_pinyin) ct.temp_pinyin = { enabled: true };
+  return ct.temp_pinyin;
+}
+
 // 学习配置
 function getLearningConfig(schemaID: string) {
   const cfg = schemaConfigs.value[schemaID];
@@ -679,6 +686,58 @@ onUnmounted(() => {
               </select>
             </div>
           </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label>候选去重</label>
+              <p class="setting-hint">合并相同文字的多个候选词</p>
+            </div>
+            <div class="setting-control">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  v-model="getCodetableConfig(schemaID).dedup_candidates"
+                  @change="onSchemaConfigChange(schemaID)"
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label>单字不调频</label>
+              <p class="setting-hint">
+                防止高频单字打乱码表顺序（仅对词频学习模式生效）
+              </p>
+            </div>
+            <div class="setting-control">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  v-model="getCodetableConfig(schemaID).skip_single_char_freq"
+                  @change="onSchemaConfigChange(schemaID)"
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label>临时拼音</label>
+              <p class="setting-hint">
+                通过触发键临时切换拼音输入，用于查找不会打的字
+              </p>
+            </div>
+            <div class="setting-control">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  v-model="getTempPinyinConfig(schemaID).enabled"
+                  @change="onSchemaConfigChange(schemaID)"
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
         </template>
 
         <!-- 拼音类型 -->
@@ -962,6 +1021,24 @@ onUnmounted(() => {
                 <input
                   type="checkbox"
                   v-model="getMixedConfig(schemaID).show_source_hint"
+                  @change="onSchemaConfigChange(schemaID)"
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <label>简拼匹配</label>
+              <p class="setting-hint">
+                允许输入声母缩写查找拼音候选（如 bg 匹配"不过"）
+              </p>
+            </div>
+            <div class="setting-control">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  v-model="getMixedConfig(schemaID).enable_abbrev_match"
                   @change="onSchemaConfigChange(schemaID)"
                 />
                 <span class="slider"></span>
