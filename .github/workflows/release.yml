@@ -130,6 +130,32 @@ jobs:
             $body = "Initial release.`n"
           }
 
+          # Prepend release notes: header (common) + version note (optional)
+          $prefix = ""
+
+          # 1) Common header
+          $headerFile = "docs/release-notes/header.md"
+          if (Test-Path $headerFile) {
+            $prefix += [System.IO.File]::ReadAllText($headerFile, [System.Text.UTF8Encoding]::new($false)).TrimEnd() + "`n`n"
+            Write-Host "Included common header: $headerFile"
+          }
+
+          # 2) Version-specific note (try v0.1.0-alpha.md then 0.1.0-alpha.md)
+          $tag = "${{ github.ref_name }}"
+          $noteFile = "docs/release-notes/$tag.md"
+          if (-not (Test-Path $noteFile)) {
+            $noteFile = "docs/release-notes/$($tag.TrimStart('v')).md"
+          }
+          if (Test-Path $noteFile) {
+            $prefix += [System.IO.File]::ReadAllText($noteFile, [System.Text.UTF8Encoding]::new($false)).TrimEnd() + "`n`n"
+            Write-Host "Included version note: $noteFile"
+          }
+
+          # Combine: prefix + separator + changelog
+          if ($prefix) {
+            $body = $prefix + "---`n`n## 变更日志`n`n" + $body
+          }
+
           [System.IO.File]::WriteAllText("release_notes.md", $body, [System.Text.UTF8Encoding]::new($false))
           Write-Host "Release notes generated ($($commits.Count) commits)"
 
