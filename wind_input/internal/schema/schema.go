@@ -51,18 +51,25 @@ type MixedSpec struct {
 	EnableAbbrevMatch    *bool  `yaml:"enable_abbrev_match"`    // 混输模式下是否启用简拼匹配（默认 false）
 }
 
+// TempPinyinSpec 码表方案的临时拼音配置
+type TempPinyinSpec struct {
+	Enabled bool   `yaml:"enabled"`          // 是否开启临时拼音
+	Schema  string `yaml:"schema,omitempty"` // 使用的拼音方案ID（默认 "pinyin"）
+}
+
 // CodeTableSpec 码表引擎配置
 type CodeTableSpec struct {
-	MaxCodeLength      int    `yaml:"max_code_length"`
-	AutoCommitUnique   bool   `yaml:"auto_commit_unique"`
-	ClearOnEmptyMax    bool   `yaml:"clear_on_empty_max"`
-	TopCodeCommit      bool   `yaml:"top_code_commit"`
-	PunctCommit        bool   `yaml:"punct_commit"`
-	ShowCodeHint       bool   `yaml:"show_code_hint"`
-	SingleCodeInput    bool   `yaml:"single_code_input"`
-	CandidateSortMode  string `yaml:"candidate_sort_mode"`
-	DedupCandidates    *bool  `yaml:"dedup_candidates,omitempty"`
-	SkipSingleCharFreq *bool  `yaml:"skip_single_char_freq"` // 单字不自动调频（指针以区分未设置和 false）
+	MaxCodeLength      int             `yaml:"max_code_length"`
+	AutoCommitUnique   bool            `yaml:"auto_commit_unique"`
+	ClearOnEmptyMax    bool            `yaml:"clear_on_empty_max"`
+	TopCodeCommit      bool            `yaml:"top_code_commit"`
+	PunctCommit        bool            `yaml:"punct_commit"`
+	ShowCodeHint       bool            `yaml:"show_code_hint"`
+	SingleCodeInput    bool            `yaml:"single_code_input"`
+	CandidateSortMode  string          `yaml:"candidate_sort_mode"`
+	DedupCandidates    *bool           `yaml:"dedup_candidates,omitempty"`
+	SkipSingleCharFreq *bool           `yaml:"skip_single_char_freq"` // 单字不自动调频（指针以区分未设置和 false）
+	TempPinyin         *TempPinyinSpec `yaml:"temp_pinyin,omitempty"` // 临时拼音配置
 }
 
 // PinyinSpec 拼音引擎配置

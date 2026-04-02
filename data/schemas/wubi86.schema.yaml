@@ -17,6 +17,9 @@ engine:
     show_code_hint: true
     single_code_input: false
     candidate_sort_mode: frequency
+    temp_pinyin:
+      enabled: true
+      schema: pinyin
   filter_mode: smart
 
 dictionaries:

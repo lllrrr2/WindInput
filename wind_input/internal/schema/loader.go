@@ -112,10 +112,11 @@ func validateSchema(s *Schema, path string) error {
 			return fmt.Errorf("方案 %s: dictionaries[%d].type 不能为空", s.Schema.ID, i)
 		}
 	}
-	if s.UserData.ShadowFile == "" {
+	// 引用式混输方案允许省略 user_data（从引用方案继承）
+	if s.UserData.ShadowFile == "" && !hasMixedRef {
 		return fmt.Errorf("方案 %s: user_data.shadow_file 不能为空", s.Schema.ID)
 	}
-	if s.UserData.UserDictFile == "" {
+	if s.UserData.UserDictFile == "" && !hasMixedRef {
 		return fmt.Errorf("方案 %s: user_data.user_dict_file 不能为空", s.Schema.ID)
 	}
 	if s.Learning.Mode == "" {

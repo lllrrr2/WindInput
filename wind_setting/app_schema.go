@@ -234,3 +234,131 @@ func getExeDir() string {
 	}
 	return filepath.Dir(exe)
 }
+
+// SchemaReference 方案引用关系
+type SchemaReference struct {
+	PrimarySchema    string   `json:"primary_schema,omitempty"`     // 引用的主形码方案
+	SecondarySchema  string   `json:"secondary_schema,omitempty"`   // 引用的拼音方案
+	TempPinyinSchema string   `json:"temp_pinyin_schema,omitempty"` // 临时拼音引用的方案
+	ReferencedBy     []string `json:"referenced_by,omitempty"`      // 被哪些方案引用
+}
+
+// GetSchemaReferences 获取所有方案的引用关系
+// 返回 map[schemaID]SchemaReference
+func (a *App) GetSchemaReferences() (map[string]SchemaReference, error) {
+	// 加载所有方案
+	allSchemas, err := a.GetAvailableSchemas()
+	if err != nil {
+		return nil, err
+	}
+
+	refs := make(map[string]SchemaReference)
+	// 初始化每个方案的引用信息
+	for _, s := range allSchemas {
+		refs[s.ID] = SchemaReference{}
+	}
+
+	// 扫描所有方案的配置文件，查找引用关系
+	for _, s := range allSchemas {
+		if s.EngineType != "mixed" {
+			continue
+		}
+		cfg, err := a.GetSchemaConfig(s.ID)
+		if err != nil {
+			continue
+		}
+		if cfg.Engine.Mixed == nil {
+			continue
+		}
+
+		primaryID, _ := cfg.Engine.Mixed["primary_schema"].(string)
+		secondaryID, _ := cfg.Engine.Mixed["secondary_schema"].(string)
+
+		if primaryID == "" && secondaryID == "" {
+			continue
+		}
+
+		// 设置混输方案的引用信息
+		ref := refs[s.ID]
+		ref.PrimarySchema = primaryID
+		ref.SecondarySchema = secondaryID
+		refs[s.ID] = ref
+
+		// 设置被引用方案的反向引用
+		if primaryID != "" {
+			pRef := refs[primaryID]
+			pRef.ReferencedBy = append(pRef.ReferencedBy, s.ID)
+			refs[primaryID] = pRef
+		}
+		if secondaryID != "" {
+			sRef := refs[secondaryID]
+			sRef.ReferencedBy = append(sRef.ReferencedBy, s.ID)
+			refs[secondaryID] = sRef
+		}
+	}
+
+	// 检查 codetable 方案的临时拼音引用
+	for _, s := range allSchemas {
+		if s.EngineType != "codetable" {
+			continue
+		}
+		cfg, err := a.GetSchemaConfig(s.ID)
+		if err != nil {
+			continue
+		}
+		if cfg.Engine.CodeTable == nil {
+			continue
+		}
+		if tp, ok := cfg.Engine.CodeTable["temp_pinyin"].(map[string]interface{}); ok {
+			if tpSchema, ok := tp["schema"].(string); ok && tpSchema != "" {
+				ref := refs[s.ID]
+				ref.TempPinyinSchema = tpSchema
+				refs[s.ID] = ref
+
+				// 反向引用
+				tpRef := refs[tpSchema]
+				tpRef.ReferencedBy = append(tpRef.ReferencedBy, s.ID)
+				refs[tpSchema] = tpRef
+			}
+		}
+	}
+
+	return refs, nil
+}
+
+// GetReferencedSchemaIDs 获取所有被混输方案引用的方案ID
+// 返回那些不在 available 列表中但被引用的方案ID
+func (a *App) GetReferencedSchemaIDs() ([]string, error) {
+	refs, err := a.GetSchemaReferences()
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取当前 available 列表
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	availableSet := make(map[string]bool)
+	for _, id := range cfg.Schema.Available {
+		availableSet[id] = true
+	}
+
+	// 找出被引用但不在 available 中的方案
+	var result []string
+	for _, ref := range refs {
+		if ref.PrimarySchema != "" && !availableSet[ref.PrimarySchema] {
+			result = append(result, ref.PrimarySchema)
+			availableSet[ref.PrimarySchema] = true // 去重
+		}
+		if ref.SecondarySchema != "" && !availableSet[ref.SecondarySchema] {
+			result = append(result, ref.SecondarySchema)
+			availableSet[ref.SecondarySchema] = true
+		}
+		if ref.TempPinyinSchema != "" && !availableSet[ref.TempPinyinSchema] {
+			result = append(result, ref.TempPinyinSchema)
+			availableSet[ref.TempPinyinSchema] = true
+		}
+	}
+	return result, nil
+}

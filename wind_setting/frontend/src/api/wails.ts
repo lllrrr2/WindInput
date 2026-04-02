@@ -41,6 +41,24 @@ export async function switchActiveSchema(schemaID: string): Promise<void> {
   return App.SwitchActiveSchema(schemaID);
 }
 
+// 方案引用关系
+export interface SchemaReference {
+  primary_schema?: string;
+  secondary_schema?: string;
+  temp_pinyin_schema?: string;
+  referenced_by?: string[];
+}
+
+export async function getSchemaReferences(): Promise<
+  Record<string, SchemaReference>
+> {
+  return App.GetSchemaReferences() as any;
+}
+
+export async function getReferencedSchemaIDs(): Promise<string[]> {
+  return App.GetReferencedSchemaIDs() as any;
+}
+
 // 词库统计类型
 export interface DictStats {
   word_count: number;

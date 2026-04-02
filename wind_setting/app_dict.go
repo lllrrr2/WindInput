@@ -692,10 +692,18 @@ func (a *App) GetEnabledSchemasWithDictStats() ([]SchemaDictStats, error) {
 		schemaMap[s.ID] = s
 	}
 
+	// 获取引用关系，用于过滤引用式混输方案（其用户数据继承自主方案）
+	refs, _ := a.GetSchemaReferences()
+
 	var result []SchemaDictStats
 	for _, schemaID := range cfg.Schema.Available {
 		info, ok := schemaMap[schemaID]
 		if !ok {
+			continue
+		}
+
+		// 引用式混输方案的用户数据与主方案共享，不在词库管理中重复显示
+		if ref, ok := refs[schemaID]; ok && (ref.PrimarySchema != "" || ref.SecondarySchema != "") {
 			continue
 		}
 
@@ -717,6 +725,37 @@ func (a *App) GetEnabledSchemasWithDictStats() ([]SchemaDictStats, error) {
 			stats.TempWordCount = td.GetWordCount()
 		}
 
+		result = append(result, stats)
+	}
+
+	// 添加被引用但未启用的方案（如混输引用的 pinyin 方案有独立的 userfreq）
+	addedIDs := make(map[string]bool)
+	for _, s := range result {
+		addedIDs[s.SchemaID] = true
+	}
+	refIDs, _ := a.GetReferencedSchemaIDs()
+	for _, refID := range refIDs {
+		if addedIDs[refID] {
+			continue
+		}
+		info, ok := schemaMap[refID]
+		if !ok {
+			continue
+		}
+		stats := SchemaDictStats{
+			SchemaID:   refID,
+			SchemaName: info.Name,
+			IconLabel:  info.IconLabel,
+		}
+		if ud, err := a.getOrCreateSchemaUserDictEditor(refID); err == nil {
+			stats.WordCount = ud.GetWordCount()
+		}
+		if sd, err := a.getOrCreateSchemaShadowEditor(refID); err == nil {
+			stats.ShadowCount = sd.GetRuleCount()
+		}
+		if td, err := a.getOrCreateSchemaTempDictEditor(refID); err == nil {
+			stats.TempWordCount = td.GetWordCount()
+		}
 		result = append(result, stats)
 	}
 

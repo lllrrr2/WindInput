@@ -17,6 +17,10 @@ func (c *Coordinator) isTempPinyinTrigger(key string, keyCode int) bool {
 	if c.engineMgr == nil || !c.engineMgr.IsCurrentEngineType(schema.EngineTypeCodeTable) {
 		return false
 	}
+	// 检查当前码表方案是否开启了临时拼音
+	if !c.engineMgr.IsTempPinyinEnabled() {
+		return false
+	}
 	// 仅输入缓冲区为空时触发
 	if len(c.inputBuffer) > 0 {
 		return false

@@ -791,7 +791,17 @@ func (m *Manager) savePinyinUserFreqsLocked(schemaID string, pinyinEngine *pinyi
 }
 
 // findPinyinSchemaID 查找拼音方案 ID（需要持有读锁或写锁）
+// 优先从当前码表方案的 temp_pinyin.schema 配置获取，回退到遍历方案列表。
 func (m *Manager) findPinyinSchemaID() string {
+	if m.schemaManager != nil && m.currentID != "" {
+		currentSchema := m.schemaManager.GetSchema(m.currentID)
+		if currentSchema != nil && currentSchema.Engine.CodeTable != nil &&
+			currentSchema.Engine.CodeTable.TempPinyin != nil &&
+			currentSchema.Engine.CodeTable.TempPinyin.Schema != "" {
+			return currentSchema.Engine.CodeTable.TempPinyin.Schema
+		}
+	}
+	// 回退：遍历方案查找拼音类型
 	if m.schemaManager != nil {
 		for _, s := range m.schemaManager.ListSchemas() {
 			sch := m.schemaManager.GetSchema(s.ID)
@@ -801,6 +811,24 @@ func (m *Manager) findPinyinSchemaID() string {
 		}
 	}
 	return "pinyin"
+}
+
+// IsTempPinyinEnabled 检查当前码表方案是否开启了临时拼音
+func (m *Manager) IsTempPinyinEnabled() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.schemaManager == nil || m.currentID == "" {
+		return false
+	}
+	currentSchema := m.schemaManager.GetSchema(m.currentID)
+	if currentSchema == nil || currentSchema.Engine.CodeTable == nil {
+		return false
+	}
+	tp := currentSchema.Engine.CodeTable.TempPinyin
+	if tp == nil {
+		return true // 默认开启（向后兼容）
+	}
+	return tp.Enabled
 }
 
 // findPinyinSchemaIDLocked 查找拼音方案 ID（调用方已持有读锁）

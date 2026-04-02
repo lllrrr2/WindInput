@@ -2,7 +2,11 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import type { Config, EngineInfo } from "../api/settings";
 import * as wailsApi from "../api/wails";
-import type { SchemaConfig, SchemaInfo } from "../api/wails";
+import type {
+  SchemaConfig,
+  SchemaInfo,
+  SchemaReference,
+} from "../api/wails";
 
 const props = defineProps<{
   formData: Config;
@@ -30,6 +34,11 @@ const addDropdownRef = ref<HTMLElement | null>(null);
 // 模糊音对话框
 const showFuzzyDialog = ref(false);
 const fuzzyEditSchemaID = ref("");
+
+// 方案引用关系
+const schemaReferences = ref<Record<string, SchemaReference>>({});
+// 仅通过引用显示的方案ID（不在 available 列表中）
+const referencedOnlyIDs = ref<string[]>([]);
 
 // 当前活跃方案 ID
 const activeSchemaID = computed(() => props.formData.schema?.active || "");
@@ -89,6 +98,22 @@ async function loadAllSchemas() {
     for (const id of enabledSchemaIDs.value) {
       await loadSchemaConfig(id);
     }
+
+    // 加载方案引用关系
+    try {
+      schemaReferences.value = await wailsApi.getSchemaReferences();
+      // 加载被引用但未启用的方案配置（仅加载配置，不加入管理列表）
+      const refIDs = await wailsApi.getReferencedSchemaIDs();
+      referencedOnlyIDs.value = [];
+      for (const id of refIDs) {
+        if (!schemaConfigs.value[id]) {
+          await loadSchemaConfig(id);
+        }
+        referencedOnlyIDs.value.push(id);
+      }
+    } catch (e) {
+      console.warn("加载方案引用关系失败", e);
+    }
   } catch (e) {
     console.error("加载方案列表失败", e);
   } finally {
@@ -126,6 +151,7 @@ function enableSchema(schemaID: string) {
   loadSchemaConfig(schemaID);
   props.formData.schema.available = [...enabledSchemaIDs.value];
   showAddDropdown.value = false;
+  refreshSchemaReferences();
 }
 
 // 禁用方案
@@ -138,6 +164,50 @@ function disableSchema(schemaID: string) {
     delete schemaConfigs.value[schemaID];
   }
   props.formData.schema.available = [...enabledSchemaIDs.value];
+  refreshSchemaReferences();
+}
+
+// 刷新方案引用关系（启用/禁用方案后需要重新计算）
+async function refreshSchemaReferences() {
+  // 根据当前启用列表和已加载的引用关系，本地计算被引用方案
+  const enabled = new Set(enabledSchemaIDs.value);
+  const newRefOnly: string[] = [];
+
+  for (const id of enabled) {
+    const ref = schemaReferences.value[id];
+    if (!ref) continue;
+    if (ref.primary_schema && !enabled.has(ref.primary_schema)) {
+      if (!newRefOnly.includes(ref.primary_schema)) {
+        newRefOnly.push(ref.primary_schema);
+      }
+    }
+    if (ref.secondary_schema && !enabled.has(ref.secondary_schema)) {
+      if (!newRefOnly.includes(ref.secondary_schema)) {
+        newRefOnly.push(ref.secondary_schema);
+      }
+    }
+    if (ref.temp_pinyin_schema && !enabled.has(ref.temp_pinyin_schema)) {
+      if (!newRefOnly.includes(ref.temp_pinyin_schema)) {
+        newRefOnly.push(ref.temp_pinyin_schema);
+      }
+    }
+  }
+
+  // 清理不再被引用的方案配置
+  for (const id of referencedOnlyIDs.value) {
+    if (!newRefOnly.includes(id) && !enabled.has(id)) {
+      delete schemaConfigs.value[id];
+    }
+  }
+
+  // 加载新增的引用方案配置
+  for (const id of newRefOnly) {
+    if (!schemaConfigs.value[id]) {
+      await loadSchemaConfig(id);
+    }
+  }
+
+  referencedOnlyIDs.value = newRefOnly;
 }
 
 // 设为当前方案
@@ -168,6 +238,52 @@ function getSchemaInfo(schemaID: string): SchemaInfo | undefined {
 function getEngineType(schemaID: string): string {
   return schemaConfigs.value[schemaID]?.engine?.type || "";
 }
+
+// 判断方案是否为引用式混输
+function isMixedWithRef(schemaID: string): boolean {
+  const ref = schemaReferences.value[schemaID];
+  return !!(ref && (ref.primary_schema || ref.secondary_schema));
+}
+
+// 获取方案的引用信息文案
+function getReferenceNote(schemaID: string): string {
+  const ref = schemaReferences.value[schemaID];
+  if (!ref) return "";
+  const parts: string[] = [];
+  if (ref.primary_schema)
+    parts.push(`码表: ${getSchemaDisplayName(ref.primary_schema)}`);
+  if (ref.secondary_schema)
+    parts.push(`拼音: ${getSchemaDisplayName(ref.secondary_schema)}`);
+  return parts.join(", ");
+}
+
+// 获取方案被引用信息（区分引用类型）
+function getReferencedByNote(schemaID: string): string {
+  const ref = schemaReferences.value[schemaID];
+  if (!ref?.referenced_by?.length) return "";
+  const parts: string[] = [];
+  for (const refByID of ref.referenced_by) {
+    const refBy = schemaReferences.value[refByID];
+    if (refBy?.primary_schema === schemaID || refBy?.secondary_schema === schemaID) {
+      parts.push(`${getSchemaDisplayName(refByID)}(混输)`);
+    } else if (refBy?.temp_pinyin_schema === schemaID) {
+      parts.push(`${getSchemaDisplayName(refByID)}(临时拼音)`);
+    } else {
+      parts.push(getSchemaDisplayName(refByID));
+    }
+  }
+  return parts.join(", ");
+}
+
+// 判断方案是否仅通过引用显示（未在 available 中）
+function isReferencedOnly(schemaID: string): boolean {
+  return referencedOnlyIDs.value.includes(schemaID);
+}
+
+// 所有需要显示配置卡片的方案（启用 + 被引用）
+const allConfigSchemaIDs = computed(() => {
+  return [...enabledSchemaIDs.value, ...referencedOnlyIDs.value];
+});
 
 // 码表配置
 function getCodetableConfig(schemaID: string) {
@@ -326,11 +442,9 @@ onUnmounted(() => {
               <div class="schema-add-option-main">
                 <span class="schema-add-option-name">{{ schema.name }}</span>
                 <span class="schema-add-option-type">{{
-                  schema.engine_type === "codetable"
-                    ? "码表"
-                    : schema.engine_type === "pinyin"
-                      ? "拼音"
-                      : schema.engine_type
+                  { codetable: "码表", pinyin: "拼音", mixed: "混输" }[
+                    schema.engine_type
+                  ] || schema.engine_type
                 }}</span>
               </div>
               <div v-if="schema.description" class="schema-add-option-desc">
@@ -428,7 +542,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 各方案配置 Card -->
-    <template v-for="schemaID in enabledSchemaIDs" :key="'cfg-' + schemaID">
+    <template v-for="schemaID in allConfigSchemaIDs" :key="'cfg-' + schemaID">
       <div v-if="schemaConfigs[schemaID]" class="settings-card">
         <div class="card-title">
           <span>{{ getSchemaDisplayName(schemaID) }}</span>
@@ -437,6 +551,18 @@ onUnmounted(() => {
             class="theme-badge active"
             style="margin-left: 8px"
             >当前</span
+          >
+          <span
+            v-if="isReferencedOnly(schemaID)"
+            class="theme-badge"
+            style="margin-left: 8px; background: var(--warning-bg, #fff3e0); color: var(--warning, #e65100)"
+            >仅被引用</span
+          >
+          <span
+            v-if="getReferencedByNote(schemaID)"
+            class="theme-badge"
+            style="margin-left: 8px; background: var(--accent-bg, #e8f0fe); color: var(--accent-text, #1a73e8)"
+            >被 {{ getReferencedByNote(schemaID) }} 引用</span
           >
         </div>
 
@@ -660,8 +786,18 @@ onUnmounted(() => {
           </div>
         </template>
 
-        <!-- 混输类型（五笔配置 + 拼音配置 + 混输专属配置） -->
+        <!-- 混输类型 -->
         <template v-if="getEngineType(schemaID) === 'mixed'">
+          <!-- 引用式混输：显示引用提示，不显示码表/拼音配置 -->
+          <div v-if="isMixedWithRef(schemaID)" class="setting-item" style="background: var(--bg-secondary, #f5f5f5); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;">
+            <div class="setting-info" style="flex: 1;">
+              <label style="font-weight: 500;">引用方案</label>
+              <p class="setting-hint">{{ getReferenceNote(schemaID) }}。如需修改码表或拼音配置，请在对应方案中设置。</p>
+            </div>
+          </div>
+
+          <!-- 非引用式混输：显示完整的码表和拼音配置 -->
+          <template v-if="!isMixedWithRef(schemaID)">
           <!-- 码表配置区 -->
           <div class="setting-section-title">码表设置</div>
           <div class="setting-item">
@@ -777,7 +913,10 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- 混输专属配置区 -->
+          </template>
+          <!-- /非引用式混输配置 -->
+
+          <!-- 混输专属配置区（引用式和非引用式都显示） -->
           <div class="setting-section-title">混输设置</div>
           <div class="setting-item">
             <div class="setting-info">

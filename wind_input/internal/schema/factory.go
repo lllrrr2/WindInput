@@ -551,7 +551,26 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		logger.Info("混输：引用拼音方案", "secondary", mixedSpec.SecondarySchema)
 	}
 
-	// === 2. 创建五笔引擎 ===
+	// === 继承用户数据路径 ===
+	// 引用式混输方案的用户数据跟随主方案，不再独立维护
+	if primarySchema != nil {
+		if s.UserData.ShadowFile == "" {
+			s.UserData.ShadowFile = primarySchema.UserData.ShadowFile
+		}
+		if s.UserData.UserDictFile == "" {
+			s.UserData.UserDictFile = primarySchema.UserData.UserDictFile
+		}
+		if s.UserData.TempDictFile == "" && primarySchema.UserData.TempDictFile != "" {
+			s.UserData.TempDictFile = primarySchema.UserData.TempDictFile
+		}
+	}
+	if secondarySchema != nil {
+		if s.UserData.UserFreqFile == "" && secondarySchema.UserData.UserFreqFile != "" {
+			s.UserData.UserFreqFile = secondarySchema.UserData.UserFreqFile
+		}
+	}
+
+	// === 2. 创建码表引擎 ===
 	// 优先使用混输方案自身的码表配置，其次从主方案继承
 	codeTableSpec := s.Engine.CodeTable
 	if codeTableSpec == nil && primarySchema != nil {

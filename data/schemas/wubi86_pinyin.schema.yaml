@@ -16,15 +16,9 @@ engine:
     show_source_hint: true
   filter_mode: smart
 
-# 用户数据独立（不与主方案共享）
-user_data:
-  shadow_file: "wubi86_pinyin.shadow.yaml"
-  user_dict_file: "wubi86_pinyin.userwords.txt"
-  user_freq_file: "wubi86_pinyin.userfreq.txt"
-  temp_dict_file: "wubi86_pinyin.tempdict.txt"
-
-# 编码规则从主方案继承，此处可省略
-# 如需覆盖可显式定义 encoder 区块
+# 用户数据从引用方案继承：
+#   shadow/userdict → 主方案 (wubi86)
+#   userfreq → 拼音方案 (pinyin)
 
 learning:
   mode: frequency
