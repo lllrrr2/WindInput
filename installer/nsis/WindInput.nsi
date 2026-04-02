@@ -44,7 +44,7 @@ Var RANDOM_SUFFIX
 !error "Missing file: ${BUILD_DIR}\data\dict\pinyin\cn_dicts\8105.dict.yaml. Run build_all.ps1 first."
 !endif
 
-Name "${APP_NAME}"
+Name "${APP_NAME} ${APP_VERSION}"
 OutFile "${OUTPUT_DIR}\WindInput-${APP_VERSION}-Setup.exe"
 InstallDir "$PROGRAMFILES64\${APP_DIRNAME}"
 InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
@@ -66,15 +66,30 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) WindInput Project"
 !define MUI_ICON "..\..\wind_tsf\res\wind_input.ico"
 !define MUI_UNICON "..\..\wind_tsf\res\wind_input.ico"
 
+; --- 安装欢迎页 ---
+!define MUI_WELCOMEPAGE_TITLE "欢迎安装 ${APP_NAME} ${APP_VERSION}"
+!define MUI_WELCOMEPAGE_TEXT "安装向导将引导您完成 ${APP_NAME} ${APP_VERSION} 的安装。$\r$\n$\r$\n建议在安装前关闭所有正在运行的应用程序，以便安装程序更新相关文件。$\r$\n$\r$\n点击「下一步」继续。"
+
+; --- 安装完成页 ---
+!define MUI_FINISHPAGE_TITLE "${APP_NAME} ${APP_VERSION} 安装完成"
+!define MUI_FINISHPAGE_TEXT "${APP_NAME} ${APP_VERSION} 已成功安装到您的计算机。$\r$\n$\r$\n点击「完成」关闭安装向导。"
+
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_REBOOTLATER_DEFAULT
 !insertmacro MUI_PAGE_FINISH
 
+; --- 卸载欢迎页 ---
+!define MUI_WELCOMEPAGE_TITLE "卸载 ${APP_NAME} ${APP_VERSION}"
+!define MUI_WELCOMEPAGE_TEXT "此向导将引导您卸载 ${APP_NAME} ${APP_VERSION}。$\r$\n$\r$\n卸载前请确保 ${APP_NAME} 未在运行中。$\r$\n$\r$\n点击「下一步」继续。"
+
 !insertmacro MUI_UNPAGE_WELCOME
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
+; --- 卸载完成页 ---
+!define MUI_FINISHPAGE_TITLE "${APP_NAME} ${APP_VERSION} 卸载完成"
+!define MUI_FINISHPAGE_TEXT "${APP_NAME} ${APP_VERSION} 已从您的计算机中移除。$\r$\n$\r$\n点击「完成」关闭卸载向导。"
 !define MUI_FINISHPAGE_REBOOTLATER_DEFAULT
 !insertmacro MUI_UNPAGE_FINISH
 
@@ -351,8 +366,6 @@ install_cleanup_bak_end:
   File "${BUILD_DIR}\data\system.phrases.yaml"
   SetOutPath "$INSTDIR\data\themes\default"
   File "${BUILD_DIR}\data\themes\default\theme.yaml"
-  SetOutPath "$INSTDIR\data\themes\dark"
-  File /nonfatal "${BUILD_DIR}\data\themes\dark\theme.yaml"
   SetOutPath "$INSTDIR\data\themes\msime"
   File "${BUILD_DIR}\data\themes\msime\theme.yaml"
   SetOutPath "$INSTDIR"
