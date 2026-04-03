@@ -16,9 +16,9 @@ import (
 )
 
 func main() {
-	dictDir := flag.String("dict", "dict/pinyin", "Rime 词库目录（包含 8105.dict.yaml 和 base.dict.yaml）")
-	unigramFile := flag.String("unigram", "dict/pinyin/unigram.txt", "Unigram 频次文件")
-	outDir := flag.String("out", "dict/pinyin", "输出目录")
+	dictDir := flag.String("dict", "schemas/pinyin", "Rime 词库目录（包含 8105.dict.yaml 和 base.dict.yaml）")
+	unigramFile := flag.String("unigram", "schemas/pinyin/unigram.txt", "Unigram 频次文件")
+	outDir := flag.String("out", "schemas/pinyin", "输出目录")
 	flag.Parse()
 
 	// 生成 pinyin.wdb

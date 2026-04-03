@@ -11,14 +11,16 @@ import (
 
 // 获取测试用的词库路径
 func getTestDictPath(t *testing.T) string {
-	// 尝试多个可能的路径
+	// 尝试多个可能的路径（词库位于 schemas/wubi86/ 目录下）
 	paths := []string{
-		"../../../../build/dict/wubi86/wubi86.txt", // 从 wind_input/internal/engine/codetable 到 build
-		"../../../build/dict/wubi86/wubi86.txt",
-		"../../build/dict/wubi86/wubi86.txt",
-		"../build/dict/wubi86/wubi86.txt",
+		"../../../../build/data/schemas/wubi86/wubi86.txt", // 从 wind_input/internal/engine/codetable 到 build
+		"../../../build/data/schemas/wubi86/wubi86.txt",
+		"../../build/data/schemas/wubi86/wubi86.txt",
+		"../build/data/schemas/wubi86/wubi86.txt",
+		"build/data/schemas/wubi86/wubi86.txt",
+		// 兼容旧路径
+		"../../../../build/dict/wubi86/wubi86.txt",
 		"build/dict/wubi86/wubi86.txt",
-		"dict/wubi86/wubi86.txt",
 	}
 
 	for _, p := range paths {
@@ -38,9 +40,9 @@ func getTestDictPath(t *testing.T) string {
 // initCommonCharsForTest 为测试初始化通用汉字表
 func initCommonCharsForTest(dictPath string) {
 	// 从词库路径推断 common_chars.txt 路径
-	// dictPath: .../build/dict/wubi86/wubi86.txt
-	// commonPath: .../build/dict/common_chars.txt
-	baseDir := filepath.Dir(filepath.Dir(dictPath)) // 获取 .../build/dict
+	// dictPath: .../build/data/schemas/wubi86/wubi86.txt
+	// commonPath: .../build/data/schemas/common_chars.txt
+	baseDir := filepath.Dir(filepath.Dir(dictPath)) // 获取 .../schemas
 	commonPath := filepath.Join(baseDir, "common_chars.txt")
 
 	// 重置并重新初始化

@@ -19,7 +19,7 @@ engine:
 
 dictionaries:
   - id: pinyin_main
-    path: "dict/pinyin/rime_ice.dict.yaml"
+    path: "pinyin/rime_ice.dict.yaml"
     type: rime_pinyin
     default: true
     weight_spec:
@@ -27,7 +27,7 @@ dictionaries:
       max: 19260817
       mode: log
   - id: codetable_reverse
-    path: "dict/wubi86/wubi86_jidian.dict.yaml"
+    path: "wubi86/wubi86_jidian.dict.yaml"
     type: rime_codetable
     role: reverse_lookup
 
@@ -39,6 +39,6 @@ user_data:
 
 learning:
   mode: manual
-  unigram_path: "dict/pinyin/unigram.txt"
+  unigram_path: "pinyin/unigram.txt"
   temp_max_entries: 5000
   temp_promote_count: 3

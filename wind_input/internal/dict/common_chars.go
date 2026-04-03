@@ -16,7 +16,7 @@ import (
 var (
 	commonCharMap  = make(map[rune]bool)
 	commonCharOnce sync.Once
-	commonCharFile = "data/dict/common_chars.txt" // 通用汉字表文件路径
+	commonCharFile = "data/schemas/common_chars.txt" // 通用汉字表文件路径
 )
 
 // 内置的一级常用字（3500字的核心部分，约2500字）

@@ -218,7 +218,7 @@ func main() {
 	dataRoot := config.GetDataDir(exeDir)
 
 	// Initialize common chars table for filtering
-	commonCharsPath := filepath.Join(dataRoot, "dict", "common_chars.txt")
+	commonCharsPath := filepath.Join(dataRoot, "schemas", "common_chars.txt")
 	dict.InitCommonCharsWithPath(commonCharsPath)
 	logger.Info("Common chars table initialized", "path", commonCharsPath, "count", dict.GetCommonCharCount())
 

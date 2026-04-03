@@ -39,9 +39,9 @@ Var RANDOM_SUFFIX
 !error "Missing file: ${BUILD_DIR}\wind_setting.exe. Run build_all.ps1 -WailsMode release first."
 !endif
 
-!if /FileExists "${BUILD_DIR}\data\dict\pinyin\cn_dicts\8105.dict.yaml"
+!if /FileExists "${BUILD_DIR}\data\schemas\pinyin\cn_dicts\8105.dict.yaml"
 !else
-!error "Missing file: ${BUILD_DIR}\data\dict\pinyin\cn_dicts\8105.dict.yaml. Run build_all.ps1 first."
+!error "Missing file: ${BUILD_DIR}\data\schemas\pinyin\cn_dicts\8105.dict.yaml. Run build_all.ps1 first."
 !endif
 
 Name "${APP_NAME} ${APP_VERSION}"
@@ -339,24 +339,22 @@ install_cleanup_bak_end:
 
   ; --- Step 6: Dictionary files ---
   DetailPrint "正在复制词库文件..."
-  SetOutPath "$INSTDIR\data\dict"
-  File "${BUILD_DIR}\data\dict\common_chars.txt"
-  SetOutPath "$INSTDIR\data\dict\pinyin"
-  File "${BUILD_DIR}\data\dict\pinyin\rime_ice.dict.yaml"
-  File /nonfatal "${BUILD_DIR}\data\dict\pinyin\unigram.txt"
-  SetOutPath "$INSTDIR\data\dict\pinyin\cn_dicts"
-  File "${BUILD_DIR}\data\dict\pinyin\cn_dicts\8105.dict.yaml"
-  File "${BUILD_DIR}\data\dict\pinyin\cn_dicts\base.dict.yaml"
-  SetOutPath "$INSTDIR\data\dict\wubi86"
-  File "${BUILD_DIR}\data\dict\wubi86\wubi86_jidian.dict.yaml"
-  File /nonfatal "${BUILD_DIR}\data\dict\wubi86\wubi86_jidian_extra.dict.yaml"
-  File /nonfatal "${BUILD_DIR}\data\dict\wubi86\wubi86_jidian_extra_district.dict.yaml"
-  File /nonfatal "${BUILD_DIR}\data\dict\wubi86\wubi86_jidian_user.dict.yaml"
-
-  ; --- Step 6b: Schema files (input method configurations) ---
-  DetailPrint "正在复制输入方案配置..."
+  ; --- Step 6b: Schema files and dictionaries ---
+  DetailPrint "正在复制输入方案和词库..."
   SetOutPath "$INSTDIR\data\schemas"
   File "${BUILD_DIR}\data\schemas\*.schema.yaml"
+  File "${BUILD_DIR}\data\schemas\common_chars.txt"
+  SetOutPath "$INSTDIR\data\schemas\pinyin"
+  File "${BUILD_DIR}\data\schemas\pinyin\rime_ice.dict.yaml"
+  File /nonfatal "${BUILD_DIR}\data\schemas\pinyin\unigram.txt"
+  SetOutPath "$INSTDIR\data\schemas\pinyin\cn_dicts"
+  File "${BUILD_DIR}\data\schemas\pinyin\cn_dicts\8105.dict.yaml"
+  File "${BUILD_DIR}\data\schemas\pinyin\cn_dicts\base.dict.yaml"
+  SetOutPath "$INSTDIR\data\schemas\wubi86"
+  File "${BUILD_DIR}\data\schemas\wubi86\wubi86_jidian.dict.yaml"
+  File /nonfatal "${BUILD_DIR}\data\schemas\wubi86\wubi86_jidian_extra.dict.yaml"
+  File /nonfatal "${BUILD_DIR}\data\schemas\wubi86\wubi86_jidian_extra_district.dict.yaml"
+  File /nonfatal "${BUILD_DIR}\data\schemas\wubi86\wubi86_jidian_user.dict.yaml"
 
   ; --- Step 6c: Default config and theme files ---
   DetailPrint "正在复制配置和主题文件..."

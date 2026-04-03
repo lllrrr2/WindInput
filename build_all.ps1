@@ -297,16 +297,20 @@ Download-RemoteFile $RimeWubiUrl "wubi86_jidian_extra_district.dict.yaml" $RimeW
 Download-RemoteFile $RimeWubiUrl "wubi86_jidian_user.dict.yaml" $RimeWubiDir "用户词库模板"
 Write-Host ""
 
-# [5/6] 准备词库文件
-Write-Host "[5/6] 准备词库文件..."
+# [5/6] 准备词库和方案文件
+Write-Host "[5/6] 准备词库和方案文件..."
 $DataDir = Join-Path $BuildDir "data"
 if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
-$pinyinDir = Join-Path $DataDir "dict\pinyin"
-$wubiDir = Join-Path $DataDir "dict\wubi86"
+
+# 词库统一放在 schemas/<方案名>/ 目录下
+$schemasDir = Join-Path $DataDir "schemas"
+if (-not (Test-Path $schemasDir)) { New-Item -ItemType Directory -Path $schemasDir -Force | Out-Null }
+$pinyinDir = Join-Path $schemasDir "pinyin"
+$wubiDir = Join-Path $schemasDir "wubi86"
 if (-not (Test-Path $pinyinDir)) { New-Item -ItemType Directory -Path $pinyinDir -Force | Out-Null }
 if (-not (Test-Path $wubiDir)) { New-Item -ItemType Directory -Path $wubiDir -Force | Out-Null }
 
-# 复制拼音词库（保持原始目录结构）
+# 复制拼音词库
 $pinyinCnDictsDir = Join-Path $pinyinDir "cn_dicts"
 if (-not (Test-Path $pinyinCnDictsDir)) { New-Item -ItemType Directory -Path $pinyinCnDictsDir -Force | Out-Null }
 
@@ -380,17 +384,15 @@ if ($wubiCopied -gt 0) {
 }
 
 # 复制常用字表
-$commonChars = Join-Path $ScriptDir "data\dict\common_chars.txt"
+$commonChars = Join-Path $ScriptDir "data\schemas\common_chars.txt"
 if (Test-Path $commonChars) {
-    Copy-Item -Path $commonChars -Destination (Join-Path $DataDir "dict\common_chars.txt") -Force
+    Copy-Item -Path $commonChars -Destination (Join-Path $schemasDir "common_chars.txt") -Force
     Write-Host "  - 已复制常用字表"
 } else {
     Write-Host "[警告] 未找到常用字表" -ForegroundColor Yellow
 }
 
 # 复制输入方案配置
-$schemasDir = Join-Path $DataDir "schemas"
-if (-not (Test-Path $schemasDir)) { New-Item -ItemType Directory -Path $schemasDir -Force | Out-Null }
 $schemaFiles = Get-ChildItem -Path (Join-Path $ScriptDir "data\schemas") -Filter "*.schema.yaml" -ErrorAction SilentlyContinue
 if ($schemaFiles) {
     $schemaFiles | Copy-Item -Destination $schemasDir -Force
@@ -461,12 +463,12 @@ Write-Host "输出文件:"
 Write-Host "- $buildDirLabel\$dllLabel（TSF 桥接）"
 Write-Host "- $buildDirLabel\$exeLabel（输入法服务）"
 Write-Host "- $buildDirLabel\$settingLabel（设置界面）"
-Write-Host "- $buildDirLabel\data\dict\pinyin\*.dict.yaml（拼音词库）"
-Write-Host "- $buildDirLabel\data\dict\pinyin\unigram.txt（Unigram 语言模型）"
-Write-Host "- $buildDirLabel\data\dict\wubi86\wubi86_jidian*.dict.yaml（五笔词库）"
-Write-Host "- $buildDirLabel\data\dict\common_chars.txt（常用字表）"
-Write-Host "- $buildDirLabel\data\config.yaml（默认配置）"
 Write-Host "- $buildDirLabel\data\schemas\*.schema.yaml（输入方案配置）"
+Write-Host "- $buildDirLabel\data\schemas\pinyin\*.dict.yaml（拼音词库）"
+Write-Host "- $buildDirLabel\data\schemas\pinyin\unigram.txt（Unigram 语言模型）"
+Write-Host "- $buildDirLabel\data\schemas\wubi86\wubi86_jidian*.dict.yaml（五笔词库）"
+Write-Host "- $buildDirLabel\data\schemas\common_chars.txt（常用字表）"
+Write-Host "- $buildDirLabel\data\config.yaml（默认配置）"
 Write-Host "- $buildDirLabel\data\system.phrases.yaml（系统短语配置）"
 Write-Host "- $buildDirLabel\data\themes\*\theme.yaml（主题配置）"
 Write-Host ""

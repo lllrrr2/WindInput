@@ -130,22 +130,22 @@ Write-Host "[6/12] 复制数据目录(data/)..."
 $BuildDataDir = Join-Path $BuildDir "data"
 $InstallDataDir = Join-Path $InstallDir "data"
 
-$dataDirs = @("dict\pinyin", "dict\pinyin\cn_dicts", "dict\wubi86", "schemas")
+$dataDirs = @("schemas", "schemas\pinyin", "schemas\pinyin\cn_dicts", "schemas\wubi86")
 foreach ($d in $dataDirs) {
     $target = Join-Path $InstallDataDir $d
     if (-not (Test-Path $target)) { New-Item -ItemType Directory -Path $target -Force | Out-Null }
 }
 
 $dictFiles = @(
-    @{ Src = "dict\pinyin\rime_ice.dict.yaml"; Desc = "拼音词库入口: rime_ice.dict.yaml" },
-    @{ Src = "dict\pinyin\cn_dicts\8105.dict.yaml"; Desc = "拼音单字词库: cn_dicts/8105.dict.yaml" },
-    @{ Src = "dict\pinyin\cn_dicts\base.dict.yaml"; Desc = "拼音基础词库: cn_dicts/base.dict.yaml" },
-    @{ Src = "dict\pinyin\unigram.txt"; Desc = "语言模型: unigram.txt"; Optional = $true },
-    @{ Src = "dict\wubi86\wubi86_jidian.dict.yaml"; Desc = "五笔主词库: wubi86_jidian.dict.yaml" },
-    @{ Src = "dict\wubi86\wubi86_jidian_extra.dict.yaml"; Desc = "五笔扩展词库: wubi86_jidian_extra.dict.yaml"; Optional = $true },
-    @{ Src = "dict\wubi86\wubi86_jidian_extra_district.dict.yaml"; Desc = "五笔行政区域词库: wubi86_jidian_extra_district.dict.yaml"; Optional = $true },
-    @{ Src = "dict\wubi86\wubi86_jidian_user.dict.yaml"; Desc = "五笔用户词库模板: wubi86_jidian_user.dict.yaml"; Optional = $true },
-    @{ Src = "dict\common_chars.txt"; Desc = "常用字表: common_chars.txt" },
+    @{ Src = "schemas\pinyin\rime_ice.dict.yaml"; Desc = "拼音词库入口: rime_ice.dict.yaml" },
+    @{ Src = "schemas\pinyin\cn_dicts\8105.dict.yaml"; Desc = "拼音单字词库: cn_dicts/8105.dict.yaml" },
+    @{ Src = "schemas\pinyin\cn_dicts\base.dict.yaml"; Desc = "拼音基础词库: cn_dicts/base.dict.yaml" },
+    @{ Src = "schemas\pinyin\unigram.txt"; Desc = "语言模型: unigram.txt"; Optional = $true },
+    @{ Src = "schemas\wubi86\wubi86_jidian.dict.yaml"; Desc = "五笔主词库: wubi86_jidian.dict.yaml" },
+    @{ Src = "schemas\wubi86\wubi86_jidian_extra.dict.yaml"; Desc = "五笔扩展词库: wubi86_jidian_extra.dict.yaml"; Optional = $true },
+    @{ Src = "schemas\wubi86\wubi86_jidian_extra_district.dict.yaml"; Desc = "五笔行政区域词库: wubi86_jidian_extra_district.dict.yaml"; Optional = $true },
+    @{ Src = "schemas\wubi86\wubi86_jidian_user.dict.yaml"; Desc = "五笔用户词库模板: wubi86_jidian_user.dict.yaml"; Optional = $true },
+    @{ Src = "schemas\common_chars.txt"; Desc = "常用字表: common_chars.txt" },
     @{ Src = "system.phrases.yaml"; Desc = "系统短语配置: system.phrases.yaml" }
 )
 
@@ -287,12 +287,12 @@ Write-Host "已安装组件:"
 Write-Host "- $DllName (TSF 桥接)"
 Write-Host "- $ExeName (输入法服务)"
 Write-Host "- $SettingName (设置界面)"
-Write-Host "- data\dict\pinyin\rime_ice.dict.yaml (拼音词库入口)"
-Write-Host "- data\dict\pinyin\cn_dicts\*.dict.yaml (拼音词库数据)"
-Write-Host "- data\dict\pinyin\unigram.txt (语言模型)"
-Write-Host "- data\dict\wubi86\wubi86_jidian*.dict.yaml (五笔86词库)"
-Write-Host "- data\dict\common_chars.txt (常用字表)"
 Write-Host "- data\schemas\*.schema.yaml (输入方案配置)"
+Write-Host "- data\schemas\pinyin\rime_ice.dict.yaml (拼音词库入口)"
+Write-Host "- data\schemas\pinyin\cn_dicts\*.dict.yaml (拼音词库数据)"
+Write-Host "- data\schemas\pinyin\unigram.txt (语言模型)"
+Write-Host "- data\schemas\wubi86\wubi86_jidian*.dict.yaml (五笔86词库)"
+Write-Host "- data\schemas\common_chars.txt (常用字表)"
 Write-Host "- data\system.phrases.yaml (系统短语配置)"
 Write-Host "- data\themes\*\theme.yaml (主题配置)"
 Write-Host ""

@@ -472,7 +472,7 @@ func preGeneratePinyinWdb(s *Schema, exeDir, dataDir string, logger *slog.Logger
 
 	// 如果当前方案没有拼音词库，尝试默认路径
 	if pinyinDictPath == "" {
-		pinyinDictPath = resolvePath(exeDir, dataDir, "dict/pinyin/rime_ice.dict.yaml")
+		pinyinDictPath = resolvePath(exeDir, dataDir, "pinyin/rime_ice.dict.yaml")
 	}
 
 	srcPaths := dictcache.RimePinyinSourcePaths(pinyinDictPath)
@@ -485,7 +485,7 @@ func preGeneratePinyinWdb(s *Schema, exeDir, dataDir string, logger *slog.Logger
 	}
 
 	// 预生成 Unigram
-	unigramTxtPath := resolvePath(exeDir, dataDir, "dict/pinyin/unigram.txt")
+	unigramTxtPath := resolvePath(exeDir, dataDir, "pinyin/unigram.txt")
 	unigramWdbPath := strings.TrimSuffix(unigramTxtPath, ".txt") + ".wdb"
 	unigramCachePath := dictcache.CachePath("unigram")
 
@@ -505,7 +505,9 @@ func preGeneratePinyinWdb(s *Schema, exeDir, dataDir string, logger *slog.Logger
 }
 
 // resolvePath 解析相对路径为绝对路径
-// 优先从 exeDir 查找，若文件不存在则回退到 dataDir（用户数据目录）
+// 搜索顺序：exeDir → exeDir/schemas → dataDir → dataDir/schemas
+// 这使得方案配置中的词库路径可以简写为相对于 schemas 目录的路径，
+// 例如 "wubi86/wubi86_jidian.dict.yaml" 会从 schemas/wubi86/ 下查找。
 func resolvePath(exeDir, dataDir, path string) string {
 	if path == "" {
 		return ""
@@ -513,21 +515,23 @@ func resolvePath(exeDir, dataDir, path string) string {
 	if isAbsPath(path) {
 		return path
 	}
+	// 按优先级依次查找
+	searchDirs := make([]string, 0, 4)
 	if exeDir != "" {
-		candidate := filepath.Join(exeDir, path)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
+		searchDirs = append(searchDirs, exeDir, filepath.Join(exeDir, "schemas"))
 	}
 	if dataDir != "" {
-		candidate := filepath.Join(dataDir, path)
+		searchDirs = append(searchDirs, dataDir, filepath.Join(dataDir, "schemas"))
+	}
+	for _, dir := range searchDirs {
+		candidate := filepath.Join(dir, path)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
 	}
-	// 都不存在时默认返回 exeDir 路径（用于错误提示）
+	// 都不存在时默认返回 exeDir/schemas 路径（用于错误提示）
 	if exeDir != "" {
-		return filepath.Join(exeDir, path)
+		return filepath.Join(exeDir, "schemas", path)
 	}
 	return path
 }

@@ -268,10 +268,10 @@ export function getDefaultConfig(): Config {
       available: ["wubi86", "pinyin"],
     },
     dictionary: {
-      system_dict: "dict/wubi86/wubi86.txt",
+      system_dict: "wubi86/wubi86.txt",
       pinyin_user_dict: "pinyin_user_words.txt",
       codetable_user_dict: "wubi_user_words.txt",
-      pinyin_dict: "dict/pinyin",
+      pinyin_dict: "pinyin",
     },
     engine: {
       type: "codetable",
