@@ -143,9 +143,12 @@ try {
 Write-Host "Go 服务构建成功"
 Write-Host ""
 
-# [2/6] 构建 C++ DLL
+# [2/6] 构建 C++ DLL (x64 + x86)
 $dllName = if ($DebugVariant) { "wind_tsf_debug.dll" } else { "wind_tsf.dll" }
-Write-Host "[2/6] 构建 C++ DLL ($dllName)..."
+$dllNameX86 = if ($DebugVariant) { "wind_tsf_debug_x86.dll" } else { "wind_tsf_x86.dll" }
+
+# --- 构建 x64 DLL ---
+Write-Host "[2/6] 构建 C++ DLL x64 ($dllName)..."
 $cppBuildDir = if ($DebugVariant) { Join-Path $ScriptDir "wind_tsf\build_debug" } else { Join-Path $ScriptDir "wind_tsf\build" }
 if (-not (Test-Path $cppBuildDir)) { New-Item -ItemType Directory -Path $cppBuildDir -Force | Out-Null }
 Push-Location $cppBuildDir
@@ -160,19 +163,18 @@ try {
         $cmakeArgs += "-DWIND_DEBUG_VARIANT=ON"
     }
     & cmake @cmakeArgs
-    if ($LASTEXITCODE -ne 0) { Write-Host "[错误] CMake 配置失败" -ForegroundColor Red; exit 1 }
+    if ($LASTEXITCODE -ne 0) { Write-Host "[错误] CMake x64 配置失败" -ForegroundColor Red; exit 1 }
     & cmake --build . --config Release
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[错误] C++ 构建失败" -ForegroundColor Red
+        Write-Host "[错误] C++ x64 构建失败" -ForegroundColor Red
         exit 1
     }
 } finally {
     Pop-Location
 }
 
-# 确保 DLL 在正确的输出目录中
+# 确保 x64 DLL 在正确的输出目录中
 if (-not (Test-Path (Join-Path $BuildDir $dllName))) {
-    # CMake 可能将 DLL 输出到其 build 目录下，手动复制
     $cmakeDllRelease = Join-Path $cppBuildDir "Release\$dllName"
     $cmakeDllRoot = Join-Path $cppBuildDir $dllName
     if (Test-Path $cmakeDllRelease) {
@@ -180,11 +182,65 @@ if (-not (Test-Path (Join-Path $BuildDir $dllName))) {
     } elseif (Test-Path $cmakeDllRoot) {
         Copy-Item -Path $cmakeDllRoot -Destination $BuildDir -Force
     } else {
-        Write-Host "[错误] C++ 构建完成但 $dllName 未找到" -ForegroundColor Red
+        Write-Host "[错误] C++ x64 构建完成但 $dllName 未找到" -ForegroundColor Red
         exit 1
     }
 }
-Write-Host "C++ DLL 构建成功"
+Write-Host "C++ DLL x64 构建成功"
+
+# --- 构建 x86 DLL（供 32 位应用加载） ---
+Write-Host "      构建 C++ DLL x86 ($dllNameX86)..."
+# 保存 x64 DLL（x86 构建的 CMake 输出目录相同，会覆盖）
+$x64DllBackup = Join-Path $BuildDir "${dllName}.x64bak"
+Copy-Item -Path (Join-Path $BuildDir $dllName) -Destination $x64DllBackup -Force
+
+$cppBuildDirX86 = if ($DebugVariant) { Join-Path $ScriptDir "wind_tsf\build_debug_x86" } else { Join-Path $ScriptDir "wind_tsf\build_x86" }
+if (-not (Test-Path $cppBuildDirX86)) { New-Item -ItemType Directory -Path $cppBuildDirX86 -Force | Out-Null }
+Push-Location $cppBuildDirX86
+try {
+    if (Test-Path (Join-Path $cppBuildDirX86 "CMakeCache.txt")) {
+        Remove-Item (Join-Path $cppBuildDirX86 "CMakeCache.txt") -Force
+        Remove-Item (Join-Path $cppBuildDirX86 "CMakeFiles") -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $cmakeArgsX86 = @("..", "-A", "Win32", "-DAPP_VERSION_MAJOR=$VerMajor", "-DAPP_VERSION_MINOR=$VerMinor", "-DAPP_VERSION_PATCH=$VerPatch", "-DAPP_VERSION_BUILD=$VerBuild", "-DAPP_VERSION_STR=$VersionCore")
+    if ($DebugVariant) {
+        $cmakeArgsX86 += "-DWIND_DEBUG_VARIANT=ON"
+    }
+    & cmake @cmakeArgsX86
+    if ($LASTEXITCODE -ne 0) { Write-Host "[错误] CMake x86 配置失败" -ForegroundColor Red; exit 1 }
+    & cmake --build . --config Release
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[错误] C++ x86 构建失败" -ForegroundColor Red
+        exit 1
+    }
+} finally {
+    Pop-Location
+}
+
+# x86 DLL 已输出到 BuildDir（与 x64 同名），重命名为 x86 版本
+$x86DllPath = Join-Path $BuildDir $dllName
+if (Test-Path $x86DllPath) {
+    Move-Item -Path $x86DllPath -Destination (Join-Path $BuildDir $dllNameX86) -Force
+} else {
+    # 尝试从 cmake build 目录查找
+    $x86Candidates = @((Join-Path $cppBuildDirX86 "Release\$dllName"), (Join-Path $cppBuildDirX86 $dllName))
+    $x86Found = $false
+    foreach ($c in $x86Candidates) {
+        if (Test-Path $c) {
+            Copy-Item -Path $c -Destination (Join-Path $BuildDir $dllNameX86) -Force
+            $x86Found = $true
+            break
+        }
+    }
+    if (-not $x86Found) {
+        Write-Host "[错误] C++ x86 构建完成但 DLL 未找到" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# 恢复 x64 DLL
+Move-Item -Path $x64DllBackup -Destination (Join-Path $BuildDir $dllName) -Force
+Write-Host "C++ DLL x86 构建成功"
 Write-Host ""
 
 # [3/6] 构建设置界面
@@ -441,7 +497,7 @@ Write-Host ""
 
 # [6/6] 检查输出文件
 Write-Host "[6/6] 检查输出文件..."
-$checkFiles = if ($DebugVariant) { @("wind_tsf_debug.dll", "wind_input_debug.exe") } else { @("wind_tsf.dll", "wind_input.exe") }
+$checkFiles = if ($DebugVariant) { @("wind_tsf_debug.dll", "wind_tsf_debug_x86.dll", "wind_input_debug.exe") } else { @("wind_tsf.dll", "wind_tsf_x86.dll", "wind_input.exe") }
 foreach ($f in $checkFiles) {
     if (-not (Test-Path (Join-Path $BuildDir $f))) {
         Write-Host "[错误] 未找到 $f" -ForegroundColor Red
@@ -451,6 +507,7 @@ foreach ($f in $checkFiles) {
 
 $buildDirLabel = if ($DebugVariant) { "build_debug" } else { "build" }
 $dllLabel = if ($DebugVariant) { "wind_tsf_debug.dll" } else { "wind_tsf.dll" }
+$dllX86Label = if ($DebugVariant) { "wind_tsf_debug_x86.dll" } else { "wind_tsf_x86.dll" }
 $exeLabel = if ($DebugVariant) { "wind_input_debug.exe" } else { "wind_input.exe" }
 $settingLabel = if ($DebugVariant) { "wind_setting_debug.exe" } else { "wind_setting.exe" }
 
@@ -460,7 +517,8 @@ Write-Host "构建完成！"
 Write-Host "======================================"
 Write-Host ""
 Write-Host "输出文件:"
-Write-Host "- $buildDirLabel\$dllLabel（TSF 桥接）"
+Write-Host "- $buildDirLabel\$dllLabel（TSF 桥接 x64）"
+Write-Host "- $buildDirLabel\$dllX86Label（TSF 桥接 x86）"
 Write-Host "- $buildDirLabel\$exeLabel（输入法服务）"
 Write-Host "- $buildDirLabel\$settingLabel（设置界面）"
 Write-Host "- $buildDirLabel\data\schemas\*.schema.yaml（输入方案配置）"

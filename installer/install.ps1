@@ -10,6 +10,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 if ($DebugVariant) {
     $AppDirName = "WindInputDebug"
     $DllName = "wind_tsf_debug.dll"
+    $DllNameX86 = "wind_tsf_debug_x86.dll"
     $ExeName = "wind_input_debug.exe"
     $SettingName = "wind_setting_debug.exe"
     $ServiceProcessName = "wind_input_debug"
@@ -23,6 +24,7 @@ if ($DebugVariant) {
 } else {
     $AppDirName = "WindInput"
     $DllName = "wind_tsf.dll"
+    $DllNameX86 = "wind_tsf_x86.dll"
     $ExeName = "wind_input.exe"
     $SettingName = "wind_setting.exe"
     $ServiceProcessName = "wind_input"
@@ -44,7 +46,7 @@ Write-Host ""
 
 # [1/12] 检查文件
 Write-Host "[1/12] 检查文件..."
-$requiredFiles = @($DllName, $ExeName)
+$requiredFiles = @($DllName, $DllNameX86, $ExeName)
 foreach ($f in $requiredFiles) {
     if (-not (Test-Path (Join-Path $BuildDir $f))) {
         Write-Host "[错误] 未找到 $f" -ForegroundColor Red
@@ -94,6 +96,13 @@ function Remove-OldFile {
 }
 
 Remove-OldFile -FilePath (Join-Path $InstallDir $DllName) -FileName $DllName -UnregisterCOM
+# 注销 x86 DLL 需要使用 32 位 regsvr32
+$x86DllPath = Join-Path $InstallDir $DllNameX86
+if (Test-Path $x86DllPath) {
+    $regsvr32X86 = Join-Path $env:SystemRoot "SysWOW64\regsvr32.exe"
+    & $regsvr32X86 /u /s $x86DllPath 2>$null
+}
+Remove-OldFile -FilePath $x86DllPath -FileName $DllNameX86
 Remove-OldFile -FilePath (Join-Path $InstallDir "wind_dwrite.dll") -FileName "wind_dwrite.dll"  # 清理旧版本遗留
 Remove-OldFile -FilePath (Join-Path $InstallDir $ExeName) -FileName $ExeName
 Remove-OldFile -FilePath (Join-Path $InstallDir $SettingName) -FileName $SettingName
@@ -122,6 +131,15 @@ if (Test-Path $tsfDllPath) {
         Write-Host "[警告] 设置 $DllName 的 ALL APPLICATION PACKAGES 权限失败" -ForegroundColor Yellow
     } else {
         Write-Host "    * $DllName 已授予 ALL APPLICATION PACKAGES 读取执行权限"
+    }
+}
+$tsfDllPathX86 = Join-Path $InstallDir $DllNameX86
+if (Test-Path $tsfDllPathX86) {
+    & icacls $tsfDllPathX86 /grant "${appPackagesSid}:(RX)" /c | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[警告] 设置 $DllNameX86 的 ALL APPLICATION PACKAGES 权限失败" -ForegroundColor Yellow
+    } else {
+        Write-Host "    * $DllNameX86 已授予 ALL APPLICATION PACKAGES 读取执行权限"
     }
 }
 
@@ -207,10 +225,22 @@ if (Test-Path $themesSource) {
 
 # [9/12] 注册 COM 组件
 Write-Host "[9/12] 注册 COM 组件..."
+# 注册 x64 DLL（使用默认 64 位 regsvr32）
 $regResult = & regsvr32 /s (Join-Path $InstallDir $DllName) 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[错误] COM 注册失败" -ForegroundColor Red
+    Write-Host "[错误] COM x64 注册失败" -ForegroundColor Red
     exit 1
+}
+# 注册 x86 DLL（使用 32 位 regsvr32，写入 WOW6432Node 供 32 位应用加载）
+$regsvr32X86 = Join-Path $env:SystemRoot "SysWOW64\regsvr32.exe"
+$x86DllInstalled = Join-Path $InstallDir $DllNameX86
+if (Test-Path $x86DllInstalled) {
+    $regResultX86 = & $regsvr32X86 /s $x86DllInstalled 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[警告] COM x86 注册失败，32 位应用可能无法使用输入法" -ForegroundColor Yellow
+    } else {
+        Write-Host "  - x86 COM 组件注册成功"
+    }
 }
 
 # [10/13] 调用 InstallLayoutOrTip 将输入法注册到系统输入法列表
@@ -284,7 +314,8 @@ Write-Host ""
 Write-Host "安装目录: $InstallDir"
 Write-Host ""
 Write-Host "已安装组件:"
-Write-Host "- $DllName (TSF 桥接)"
+Write-Host "- $DllName (TSF 桥接 x64)"
+Write-Host "- $DllNameX86 (TSF 桥接 x86)"
 Write-Host "- $ExeName (输入法服务)"
 Write-Host "- $SettingName (设置界面)"
 Write-Host "- data\schemas\*.schema.yaml (输入方案配置)"

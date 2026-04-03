@@ -7,6 +7,7 @@ $ErrorActionPreference = "Continue"
 if ($DebugVariant) {
     $AppDirName = "WindInputDebug"
     $DllName = "wind_tsf_debug.dll"
+    $DllNameX86 = "wind_tsf_debug_x86.dll"
     $ExeName = "wind_input_debug.exe"
     $SettingName = "wind_setting_debug.exe"
     $ServiceProcessName = "wind_input_debug"
@@ -18,6 +19,7 @@ if ($DebugVariant) {
 } else {
     $AppDirName = "WindInput"
     $DllName = "wind_tsf.dll"
+    $DllNameX86 = "wind_tsf_x86.dll"
     $ExeName = "wind_input.exe"
     $SettingName = "wind_setting.exe"
     $ServiceProcessName = "wind_input"
@@ -62,9 +64,16 @@ public class WindInputHelper {
 
 # [3/8] 注销 COM 组件
 Write-Host "[3/8] 注销 COM 组件..."
+# 注销 x64 DLL
 $tsfDll = Join-Path $InstallDir $DllName
 if (Test-Path $tsfDll) {
     & regsvr32 /u /s $tsfDll 2>$null
+}
+# 注销 x86 DLL（使用 32 位 regsvr32）
+$regsvr32X86 = Join-Path $env:SystemRoot "SysWOW64\regsvr32.exe"
+$tsfDllX86 = Join-Path $InstallDir $DllNameX86
+if (Test-Path $tsfDllX86) {
+    & $regsvr32X86 /u /s $tsfDllX86 2>$null
 }
 # 同时尝试注销旧备份 DLL
 $dllPattern = if ($DebugVariant) { "wind_tsf_debug*.dll" } else { "wind_tsf*.dll" }
@@ -76,7 +85,7 @@ Get-ChildItem -Path $InstallDir -Filter $dllPattern -ErrorAction SilentlyContinu
 Write-Host "[4/8] 删除文件..."
 $RandomSuffix = Get-Random -Maximum 99999999
 
-$filesToDelete = @($DllName, $ExeName, $SettingName, "wind_dwrite.dll")
+$filesToDelete = @($DllName, $DllNameX86, $ExeName, $SettingName, "wind_dwrite.dll")
 foreach ($f in $filesToDelete) {
     $filePath = Join-Path $InstallDir $f
     if (-not (Test-Path $filePath)) { continue }

@@ -29,6 +29,11 @@ Var RANDOM_SUFFIX
 !error "Missing file: ${BUILD_DIR}\wind_tsf.dll. Run build_all.ps1 first."
 !endif
 
+!if /FileExists "${BUILD_DIR}\wind_tsf_x86.dll"
+!else
+!error "Missing file: ${BUILD_DIR}\wind_tsf_x86.dll. Run build_all.ps1 first."
+!endif
+
 !if /FileExists "${BUILD_DIR}\wind_input.exe"
 !else
 !error "Missing file: ${BUILD_DIR}\wind_input.exe. Run build_all.ps1 first."
@@ -230,10 +235,15 @@ Section "Install"
   Pop $0 ; discard nsExec exit code
   Sleep 1000
 
-  ; --- Step 2: Unregister old DLL ---
-  IfFileExists "$INSTDIR\wind_tsf.dll" install_has_old_dll install_unreg_done
+  ; --- Step 2: Unregister old DLLs ---
+  IfFileExists "$INSTDIR\wind_tsf.dll" install_has_old_dll install_unreg_x64_done
 install_has_old_dll:
   ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\wind_tsf.dll"'
+install_unreg_x64_done:
+  ; Unregister old x86 DLL using 32-bit regsvr32
+  IfFileExists "$INSTDIR\wind_tsf_x86.dll" install_has_old_x86_dll install_unreg_done
+install_has_old_x86_dll:
+  ExecWait '"$WINDIR\SysWOW64\regsvr32.exe" /u /s "$INSTDIR\wind_tsf_x86.dll"'
 install_unreg_done:
 
   ; --- Step 3: Extract new binaries to staging dir (once, to avoid double-embed) ---
@@ -242,6 +252,7 @@ install_unreg_done:
   SetOutPath "$PLUGINSDIR\stage"
   ClearErrors
   File "${BUILD_DIR}\wind_tsf.dll"
+  File "${BUILD_DIR}\wind_tsf_x86.dll"
   File "${BUILD_DIR}\wind_input.exe"
   File "${BUILD_DIR}\wind_setting.exe"
   IfErrors 0 install_stage_ok
@@ -271,6 +282,20 @@ install_stage_ok:
     SetErrorLevel 3
     Abort
 install_dll_done:
+
+  ; -- wind_tsf_x86.dll --
+  DetailPrint "正在安装 wind_tsf_x86.dll..."
+  Push "$INSTDIR\wind_tsf_x86.dll"
+  Push "$INSTDIR\wind_tsf_x86.dll.old"
+  Call BackupIfLocked
+  ClearErrors
+  CopyFiles /SILENT "$PLUGINSDIR\stage\wind_tsf_x86.dll" "$INSTDIR\wind_tsf_x86.dll"
+  IfErrors 0 install_x86_dll_done
+    IfSilent +2 0
+    MessageBox MB_ICONSTOP|MB_OK "安装 wind_tsf_x86.dll 失败。"
+    SetErrorLevel 3
+    Abort
+install_x86_dll_done:
 
   ; -- wind_input.exe --
   DetailPrint "正在安装 wind_input.exe..."
@@ -304,10 +329,13 @@ install_setting_done:
   DetailPrint "正在设置现代宿主 DLL 权限..."
   nsExec::ExecToLog 'cmd /c icacls "$INSTDIR\wind_tsf.dll" /grant *S-1-15-2-1:^(RX^) /c'
   Pop $0
+  nsExec::ExecToLog 'cmd /c icacls "$INSTDIR\wind_tsf_x86.dll" /grant *S-1-15-2-1:^(RX^) /c'
+  Pop $0
 
   ; --- Step 5: Cleanup staging + old backup files ---
   DetailPrint "正在清理旧文件..."
   Delete "$PLUGINSDIR\stage\wind_tsf.dll"
+  Delete "$PLUGINSDIR\stage\wind_tsf_x86.dll"
   Delete "$PLUGINSDIR\stage\wind_input.exe"
   Delete "$PLUGINSDIR\stage\wind_setting.exe"
   RMDir "$PLUGINSDIR\stage"
@@ -367,12 +395,20 @@ install_cleanup_bak_end:
   File "${BUILD_DIR}\data\themes\msime\theme.yaml"
   SetOutPath "$INSTDIR"
 
-  ; --- Step 7: Register NEW DLL (always at original path, guaranteed new version) ---
+  ; --- Step 7: Register NEW DLLs (always at original path, guaranteed new version) ---
   DetailPrint "正在注册 COM 组件..."
+  ; Register x64 DLL (64-bit regsvr32)
   ExecWait '"$SYSDIR\regsvr32.exe" /s "$INSTDIR\wind_tsf.dll"' $0
   ${If} $0 != 0
-    DetailPrint "警告: COM 注册失败 (错误码 $0)，将在重启后重试。"
+    DetailPrint "警告: COM x64 注册失败 (错误码 $0)，将在重启后重试。"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\RunOnce" "WindInput_RegisterOnReboot" '"$SYSDIR\regsvr32.exe" /s "$INSTDIR\wind_tsf.dll"'
+    SetRebootFlag true
+  ${EndIf}
+  ; Register x86 DLL (32-bit regsvr32, writes to WOW6432Node for 32-bit apps)
+  ExecWait '"$WINDIR\SysWOW64\regsvr32.exe" /s "$INSTDIR\wind_tsf_x86.dll"' $0
+  ${If} $0 != 0
+    DetailPrint "警告: COM x86 注册失败 (错误码 $0)，32 位应用可能无法使用输入法。"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\RunOnce" "WindInput_RegisterX86OnReboot" '"$WINDIR\SysWOW64\regsvr32.exe" /s "$INSTDIR\wind_tsf_x86.dll"'
     SetRebootFlag true
   ${EndIf}
 
@@ -434,10 +470,16 @@ Section "Uninstall"
   DetailPrint "正在从系统输入法列表移除..."
   System::Call 'input::InstallLayoutOrTip(w "0804:{99C2EE30-5C57-45A2-9C63-FB54B34FD90A}{99C2EE31-5C57-45A2-9C63-FB54B34FD90A}", i 0x00000001) i .r0'
 
-  IfFileExists "$INSTDIR\wind_tsf.dll" uninstall_has_dll uninstall_unreg_done
+  IfFileExists "$INSTDIR\wind_tsf.dll" uninstall_has_dll uninstall_unreg_x64_done
 uninstall_has_dll:
-  DetailPrint "正在注销 COM 组件..."
+  DetailPrint "正在注销 COM x64 组件..."
   ExecWait '"$SYSDIR\regsvr32.exe" /u /s "$INSTDIR\wind_tsf.dll"'
+uninstall_unreg_x64_done:
+  ; Unregister x86 DLL using 32-bit regsvr32
+  IfFileExists "$INSTDIR\wind_tsf_x86.dll" uninstall_has_x86_dll uninstall_unreg_done
+uninstall_has_x86_dll:
+  DetailPrint "正在注销 COM x86 组件..."
+  ExecWait '"$WINDIR\SysWOW64\regsvr32.exe" /u /s "$INSTDIR\wind_tsf_x86.dll"'
 uninstall_unreg_done:
 
   ; --- Step 3: Remove binaries (rename if locked, schedule reboot cleanup) ---
@@ -449,6 +491,14 @@ uninstall_unreg_done:
     Delete /REBOOTOK "$INSTDIR\wind_tsf.dll"
     SetRebootFlag true
 uninst_dll_done:
+  ; Remove x86 DLL
+  Push "$INSTDIR\wind_tsf_x86.dll"
+  Push "$INSTDIR\wind_tsf_x86.dll.old"
+  Call un.BackupIfLocked
+  IfErrors 0 uninst_x86_dll_done
+    Delete /REBOOTOK "$INSTDIR\wind_tsf_x86.dll"
+    SetRebootFlag true
+uninst_x86_dll_done:
   ; Clean up legacy wind_dwrite.dll if present from older versions
   Delete "$INSTDIR\wind_dwrite.dll"
   Push "$INSTDIR\wind_input.exe"
