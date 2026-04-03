@@ -5,6 +5,8 @@ package dictcache
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/huanfeng/wind_input/pkg/buildvariant"
 )
 
 var cacheDir string
@@ -18,7 +20,7 @@ func GetCacheDir() string {
 	if localAppData == "" {
 		localAppData = os.TempDir()
 	}
-	cacheDir = filepath.Join(localAppData, "WindInput", "cache")
+	cacheDir = filepath.Join(localAppData, buildvariant.AppName(), "cache")
 	os.MkdirAll(cacheDir, 0755)
 	return cacheDir
 }
