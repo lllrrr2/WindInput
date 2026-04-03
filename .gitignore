@@ -5,6 +5,7 @@
 /build_debug/
 /wind_tsf/build/
 /wind_tsf/build_debug/
+/wind_tsf/build_debug_x86/
 
 # Build cache (rime downloads, etc.)
 /.cache/
