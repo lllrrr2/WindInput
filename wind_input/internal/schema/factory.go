@@ -28,21 +28,21 @@ type EngineBundle struct {
 type SchemaResolver func(schemaID string) *Schema
 
 // CreateEngineFromSchema 根据 Schema 创建引擎实例并加载词库
-func CreateEngineFromSchema(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger, resolver SchemaResolver) (*EngineBundle, error) {
+func CreateEngineFromSchema(s *Schema, exeDir, dataDir string, dm *dict.DictManager, logger *slog.Logger, resolver SchemaResolver) (*EngineBundle, error) {
 	switch s.Engine.Type {
 	case EngineTypeCodeTable:
-		return createCodeTableEngine(s, exeDir, dm, logger)
+		return createCodeTableEngine(s, exeDir, dataDir, dm, logger)
 	case EngineTypePinyin:
-		return createPinyinEngine(s, exeDir, dm, logger)
+		return createPinyinEngine(s, exeDir, dataDir, dm, logger)
 	case EngineTypeMixed:
-		return createMixedEngine(s, exeDir, dm, logger, resolver)
+		return createMixedEngine(s, exeDir, dataDir, dm, logger, resolver)
 	default:
 		return nil, fmt.Errorf("不支持的引擎类型: %s", s.Engine.Type)
 	}
 }
 
 // createCodeTableEngine 创建码表引擎（五笔等）
-func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
+func createCodeTableEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
 	spec := s.Engine.CodeTable
 	if spec == nil {
 		spec = &CodeTableSpec{
@@ -88,7 +88,7 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager, logge
 	// 加载主码表
 	dictSpec := s.GetDefaultDictSpec()
 	if dictSpec != nil {
-		srcPath := resolvePath(exeDir, dictSpec.Path)
+		srcPath := resolvePath(exeDir, dataDir, dictSpec.Path)
 		var norm *dict.WeightNormalizer
 		if dictSpec.WeightSpec != nil {
 			norm = dictSpec.WeightSpec.NewWeightNormalizer()
@@ -112,7 +112,7 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager, logge
 	}
 
 	// 后台预生成拼音 wdb
-	go preGeneratePinyinWdb(s, exeDir, logger)
+	go preGeneratePinyinWdb(s, exeDir, dataDir, logger)
 
 	// GC 释放临时内存
 	go func() {
@@ -127,7 +127,7 @@ func createCodeTableEngine(s *Schema, exeDir string, dm *dict.DictManager, logge
 }
 
 // createPinyinEngine 创建拼音引擎
-func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
+func createPinyinEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, logger *slog.Logger) (*EngineBundle, error) {
 	spec := s.Engine.Pinyin
 	if spec == nil {
 		spec = &PinyinSpec{
@@ -162,7 +162,7 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *
 
 	dictSpec := s.GetDefaultDictSpec()
 	if dictSpec != nil {
-		dictPath := resolvePath(exeDir, dictSpec.Path)
+		dictPath := resolvePath(exeDir, dataDir, dictSpec.Path)
 		var norm *dict.WeightNormalizer
 		if dictSpec.WeightSpec != nil {
 			norm = dictSpec.WeightSpec.NewWeightNormalizer()
@@ -201,7 +201,7 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *
 
 	// 加载 Unigram 语言模型
 	if s.Learning.UnigramPath != "" {
-		unigramTxtPath := resolvePath(exeDir, s.Learning.UnigramPath)
+		unigramTxtPath := resolvePath(exeDir, dataDir, s.Learning.UnigramPath)
 		if err := loadUnigramModel(engine, unigramTxtPath, logger); err != nil {
 			logger.Warn("加载 Unigram 模型失败", "err", err)
 		}
@@ -210,7 +210,7 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *
 	// 加载反查词库（如五笔反查）
 	reverseDicts := s.GetDictsByRole(DictRoleReverseLookup)
 	for _, rd := range reverseDicts {
-		rdPath := resolvePath(exeDir, rd.Path)
+		rdPath := resolvePath(exeDir, dataDir, rd.Path)
 		if err := loadCodetableForPinyin(engine, rdPath, rd.Type, s.Schema.ID, logger); err != nil {
 			logger.Warn("加载反查码表失败", "err", err)
 		} else {
@@ -227,7 +227,7 @@ func createPinyinEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *
 	// 路径从 schema.UserData.UserFreqFile 读取
 	if s.Learning.Mode == LearningAuto || s.Learning.Mode == LearningFrequency {
 		if s.UserData.UserFreqFile != "" {
-			userFreqPath := resolvePath(exeDir, s.UserData.UserFreqFile)
+			userFreqPath := resolvePath(exeDir, dataDir, s.UserData.UserFreqFile)
 			loadPinyinUserFreqs(engine, userFreqPath, logger)
 		}
 		config.EnableUserFreq = true // 同步到引擎 config，控制 OnCandidateSelected
@@ -456,13 +456,13 @@ func SavePinyinUserFreqs(engine *pinyin.Engine, path string) {
 	}
 }
 
-func preGeneratePinyinWdb(s *Schema, exeDir string, logger *slog.Logger) {
+func preGeneratePinyinWdb(s *Schema, exeDir, dataDir string, logger *slog.Logger) {
 	// 查找拼音词库路径及归一化参数
 	var pinyinDictPath string
 	var norm *dict.WeightNormalizer
 	for _, d := range s.Dicts {
 		if d.Type == "rime_pinyin" {
-			pinyinDictPath = resolvePath(exeDir, d.Path)
+			pinyinDictPath = resolvePath(exeDir, dataDir, d.Path)
 			if d.WeightSpec != nil {
 				norm = d.WeightSpec.NewWeightNormalizer()
 			}
@@ -472,7 +472,7 @@ func preGeneratePinyinWdb(s *Schema, exeDir string, logger *slog.Logger) {
 
 	// 如果当前方案没有拼音词库，尝试默认路径
 	if pinyinDictPath == "" {
-		pinyinDictPath = resolvePath(exeDir, "dict/pinyin/rime_ice.dict.yaml")
+		pinyinDictPath = resolvePath(exeDir, dataDir, "dict/pinyin/rime_ice.dict.yaml")
 	}
 
 	srcPaths := dictcache.RimePinyinSourcePaths(pinyinDictPath)
@@ -485,7 +485,7 @@ func preGeneratePinyinWdb(s *Schema, exeDir string, logger *slog.Logger) {
 	}
 
 	// 预生成 Unigram
-	unigramTxtPath := resolvePath(exeDir, "dict/pinyin/unigram.txt")
+	unigramTxtPath := resolvePath(exeDir, dataDir, "dict/pinyin/unigram.txt")
 	unigramWdbPath := strings.TrimSuffix(unigramTxtPath, ".txt") + ".wdb"
 	unigramCachePath := dictcache.CachePath("unigram")
 
@@ -505,13 +505,27 @@ func preGeneratePinyinWdb(s *Schema, exeDir string, logger *slog.Logger) {
 }
 
 // resolvePath 解析相对路径为绝对路径
-func resolvePath(exeDir, path string) string {
+// 优先从 exeDir 查找，若文件不存在则回退到 dataDir（用户数据目录）
+func resolvePath(exeDir, dataDir, path string) string {
 	if path == "" {
 		return ""
 	}
 	if isAbsPath(path) {
 		return path
 	}
+	if exeDir != "" {
+		candidate := filepath.Join(exeDir, path)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	if dataDir != "" {
+		candidate := filepath.Join(dataDir, path)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	// 都不存在时默认返回 exeDir 路径（用于错误提示）
 	if exeDir != "" {
 		return filepath.Join(exeDir, path)
 	}
@@ -521,7 +535,7 @@ func resolvePath(exeDir, path string) string {
 // createMixedEngine 创建混输引擎（五笔+拼音并行查询）
 // 五笔引擎使用 DictManager 的主 CompositeDict（含 codetable-system 层），
 // 拼音引擎使用独立的 CompositeDict（含 pinyin-system 层），避免交叉污染。
-func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *slog.Logger, resolver SchemaResolver) (*EngineBundle, error) {
+func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, logger *slog.Logger, resolver SchemaResolver) (*EngineBundle, error) {
 	// === 1. 读取混输配置 ===
 	mixedSpec := s.Engine.Mixed
 	if mixedSpec == nil {
@@ -640,7 +654,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		codetableCacheID = primarySchema.Schema.ID
 	}
 	if codetableDictSpec != nil {
-		srcPath := resolvePath(exeDir, codetableDictSpec.Path)
+		srcPath := resolvePath(exeDir, dataDir, codetableDictSpec.Path)
 		var codetableNorm *dict.WeightNormalizer
 		if codetableDictSpec.WeightSpec != nil {
 			codetableNorm = codetableDictSpec.WeightSpec.NewWeightNormalizer()
@@ -721,7 +735,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		}
 	}
 	if pinyinDictSpec != nil {
-		dictPath := resolvePath(exeDir, pinyinDictSpec.Path)
+		dictPath := resolvePath(exeDir, dataDir, pinyinDictSpec.Path)
 		var pinyinNorm *dict.WeightNormalizer
 		if pinyinDictSpec.WeightSpec != nil {
 			pinyinNorm = pinyinDictSpec.WeightSpec.NewWeightNormalizer()
@@ -762,7 +776,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		unigramPath = secondarySchema.Learning.UnigramPath
 	}
 	if unigramPath != "" {
-		unigramTxtPath := resolvePath(exeDir, unigramPath)
+		unigramTxtPath := resolvePath(exeDir, dataDir, unigramPath)
 		if err := loadUnigramModel(pinyinEngine, unigramTxtPath, logger); err != nil {
 			logger.Warn("混输：加载 Unigram 模型失败", "err", err)
 		}
@@ -777,7 +791,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 		reverseDicts = secondarySchema.GetDictsByRole(DictRoleReverseLookup)
 	}
 	for _, rd := range reverseDicts {
-		rdPath := resolvePath(exeDir, rd.Path)
+		rdPath := resolvePath(exeDir, dataDir, rd.Path)
 		if err := loadCodetableForPinyin(pinyinEngine, rdPath, rd.Type, codetableCacheID, logger); err != nil {
 			logger.Warn("混输：加载反查码表失败", "err", err)
 		}
@@ -791,7 +805,7 @@ func createMixedEngine(s *Schema, exeDir string, dm *dict.DictManager, logger *s
 	// 加载拼音用户词频
 	if s.Learning.Mode == LearningAuto || s.Learning.Mode == LearningFrequency {
 		if s.UserData.UserFreqFile != "" {
-			userFreqPath := resolvePath(exeDir, s.UserData.UserFreqFile)
+			userFreqPath := resolvePath(exeDir, dataDir, s.UserData.UserFreqFile)
 			loadPinyinUserFreqs(pinyinEngine, userFreqPath, logger)
 		}
 		pinyinConfig.EnableUserFreq = true

@@ -251,7 +251,11 @@ func (m *Manager) loadSchemaEngineLocked(schemaID string) error {
 	resolver := func(id string) *schema.Schema {
 		return m.schemaManager.GetSchema(id)
 	}
-	bundle, err := schema.CreateEngineFromSchema(s, m.exeDir, m.dictManager, m.logger, resolver)
+	dataDir := ""
+	if m.schemaManager != nil {
+		dataDir = m.schemaManager.GetDataDir()
+	}
+	bundle, err := schema.CreateEngineFromSchema(s, m.exeDir, dataDir, m.dictManager, m.logger, resolver)
 	if err != nil {
 		return fmt.Errorf("创建方案 %q 引擎失败: %w", schemaID, err)
 	}
