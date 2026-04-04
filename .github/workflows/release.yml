@@ -117,27 +117,30 @@ jobs:
             }
           }
 
-          # Build markdown
-          $body = ""
+          # Build changelog markdown from commits
+          $changelog = ""
           foreach ($cat in $categories.Values) {
             if ($cat.items.Count -gt 0) {
-              $body += "$($cat.title)`n`n"
-              $body += ($cat.items -join "`n") + "`n`n"
+              $changelog += "$($cat.title)`n`n"
+              $changelog += ($cat.items -join "`n") + "`n`n"
             }
           }
 
-          if (-not $body) {
-            $body = "Initial release.`n"
+          if (-not $changelog) {
+            $changelog = "Initial release.`n"
           }
 
-          # Prepend release notes: header (common) + version note (optional)
-          $prefix = ""
+          # Assemble release notes: header + version note + changelog + footer
+          $body = ""
 
-          # 1) Common header
+          # 1) Common header (top)
           $headerFile = "docs/release-notes/header.md"
           if (Test-Path $headerFile) {
-            $prefix += [System.IO.File]::ReadAllText($headerFile, [System.Text.UTF8Encoding]::new($false)).TrimEnd() + "`n`n"
-            Write-Host "Included common header: $headerFile"
+            $headerContent = [System.IO.File]::ReadAllText($headerFile, [System.Text.UTF8Encoding]::new($false)).Trim()
+            if ($headerContent) {
+              $body += $headerContent + "`n`n---`n`n"
+              Write-Host "Included header: $headerFile"
+            }
           }
 
           # 2) Version-specific note (try v0.1.0-alpha.md then 0.1.0-alpha.md)
@@ -147,13 +150,19 @@ jobs:
             $noteFile = "docs/release-notes/$($tag.TrimStart('v')).md"
           }
           if (Test-Path $noteFile) {
-            $prefix += [System.IO.File]::ReadAllText($noteFile, [System.Text.UTF8Encoding]::new($false)).TrimEnd() + "`n`n"
+            $body += [System.IO.File]::ReadAllText($noteFile, [System.Text.UTF8Encoding]::new($false)).TrimEnd() + "`n`n"
             Write-Host "Included version note: $noteFile"
           }
 
-          # Combine: prefix + separator + changelog
-          if ($prefix) {
-            $body = $prefix + "---`n`n## 变更日志`n`n" + $body
+          # 3) Changelog (what users care about most)
+          $body += "## 更新记录`n`n" + $changelog
+
+          # 4) Common footer (installation, feedback, etc.)
+          $footerFile = "docs/release-notes/footer.md"
+          if (Test-Path $footerFile) {
+            $body += "---`n`n"
+            $body += [System.IO.File]::ReadAllText($footerFile, [System.Text.UTF8Encoding]::new($false)).TrimEnd() + "`n`n"
+            Write-Host "Included footer: $footerFile"
           }
 
           [System.IO.File]::WriteAllText("release_notes.md", $body, [System.Text.UTF8Encoding]::new($false))
