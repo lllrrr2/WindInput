@@ -189,11 +189,32 @@ export async function overrideSystemPhrase(
   return App.OverrideSystemPhrase(code, text, position, disabled);
 }
 
+export async function resetAllSystemPhraseOverrides(): Promise<void> {
+  return App.ResetAllSystemPhraseOverrides();
+}
+
 export async function removeSystemPhraseOverride(
   code: string,
   text: string,
 ): Promise<void> {
   return App.RemoveSystemPhraseOverride(code, text);
+}
+
+// 短语导入导出
+export async function exportUserPhrases(): Promise<string> {
+  return App.ExportUserPhrases();
+}
+
+export async function importUserPhrases(): Promise<void> {
+  return App.ImportUserPhrases();
+}
+
+export async function exportSystemPhrases(): Promise<string> {
+  return App.ExportSystemPhrases();
+}
+
+export async function importSystemPhrases(): Promise<void> {
+  return App.ImportSystemPhrases();
 }
 
 // 用户词库管理

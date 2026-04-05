@@ -17,10 +17,11 @@ import (
 // 含变量的短语为"动态短语"，仅精确匹配（通过 SearchCommand），
 // 不含变量的为"静态短语"，支持前缀搜索。
 type PhraseLayer struct {
-	mu             sync.RWMutex
-	name           string
-	systemFilePath string // 系统短语文件（随程序打包，只读）
-	userFilePath   string // 用户短语文件（用户可编辑）
+	mu               sync.RWMutex
+	name             string
+	systemFilePath     string // 系统短语文件（随程序打包，只读）
+	systemUserFilePath string // 用户目录的系统短语文件（同名覆盖，存在时替代系统文件）
+	userFilePath       string // 用户短语文件（用户可编辑）
 
 	// 静态短语（不含变量）: code -> []PhraseEntry，参与前缀搜索
 	staticPhrases map[string][]PhraseEntry
@@ -73,19 +74,26 @@ type PhraseFileEntry struct {
 	Disabled bool   `yaml:"disabled,omitempty"`
 }
 
-// NewPhraseLayer 创建短语层
-// systemPath: 系统短语文件路径（只读，可为空）
-// userPath: 用户短语文件路径（可读写）
+// NewPhraseLayer 创建短语层（兼容旧调用）
 func NewPhraseLayer(name string, systemPath, userPath string) *PhraseLayer {
+	return NewPhraseLayerEx(name, systemPath, "", userPath)
+}
+
+// NewPhraseLayerEx 创建短语层
+// systemPath: 系统短语文件路径（程序目录，只读）
+// systemUserPath: 用户目录的系统短语文件（同名覆盖，存在时替代 systemPath）
+// userPath: 用户短语文件路径（可读写）
+func NewPhraseLayerEx(name string, systemPath, systemUserPath, userPath string) *PhraseLayer {
 	return &PhraseLayer{
-		name:           name,
-		systemFilePath: systemPath,
-		userFilePath:   userPath,
-		staticPhrases:  make(map[string][]PhraseEntry),
-		dynamicPhrases: make(map[string][]PhraseEntry),
-		phraseGroups:   make(map[string]PhraseGroup),
-		templateEngine: GetTemplateEngine(),
-		cmdCache:       make(map[string][]candidate.Candidate),
+		name:               name,
+		systemFilePath:     systemPath,
+		systemUserFilePath: systemUserPath,
+		userFilePath:       userPath,
+		staticPhrases:    make(map[string][]PhraseEntry),
+		dynamicPhrases:   make(map[string][]PhraseEntry),
+		phraseGroups:     make(map[string]PhraseGroup),
+		templateEngine:   GetTemplateEngine(),
+		cmdCache:         make(map[string][]candidate.Candidate),
 	}
 }
 
@@ -251,10 +259,17 @@ func (pl *PhraseLayer) Load() error {
 	pl.phraseGroups = make(map[string]PhraseGroup)
 	pl.cmdCache = make(map[string][]candidate.Candidate)
 
-	// 1. 加载系统短语
-	if pl.systemFilePath != "" {
+	// 1. 加载系统短语：优先用户目录的同名文件，不存在则用程序目录的原始文件
+	systemLoaded := false
+	if pl.systemUserFilePath != "" {
+		if err := pl.loadFile(pl.systemUserFilePath, true); err == nil {
+			systemLoaded = true
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to load user system phrases: %w", err)
+		}
+	}
+	if !systemLoaded && pl.systemFilePath != "" {
 		if err := pl.loadFile(pl.systemFilePath, true); err != nil {
-			// 系统文件不存在不是错误（开发环境下可能没有）
 			if !os.IsNotExist(err) {
 				return fmt.Errorf("failed to load system phrases: %w", err)
 			}

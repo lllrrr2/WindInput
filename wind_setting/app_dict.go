@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -19,9 +20,11 @@ import (
 type PhraseItem struct {
 	Code     string `json:"code"`
 	Text     string `json:"text"`
+	Texts    string `json:"texts,omitempty"`    // 数组映射：每个字符展开为独立候选
+	Name     string `json:"name,omitempty"`     // 组显示名称
 	Position int    `json:"position"`
-	IsSystem bool   `json:"is_system"` // 是否为系统短语
-	Disabled bool   `json:"disabled"`  // 是否被禁用
+	IsSystem bool   `json:"is_system"`          // 是否为系统短语
+	Disabled bool   `json:"disabled"`           // 是否被禁用
 }
 
 // GetPhrases 获取所有短语（用户短语）
@@ -40,6 +43,8 @@ func (a *App) GetPhrases() ([]PhraseItem, error) {
 		items[i] = PhraseItem{
 			Code:     p.Code,
 			Text:     p.Text,
+			Texts:    p.Texts,
+			Name:     p.Name,
 			Position: p.Position,
 		}
 	}
@@ -47,45 +52,43 @@ func (a *App) GetPhrases() ([]PhraseItem, error) {
 	return items, nil
 }
 
-// GetSystemPhrases 获取系统短语（合并用户覆盖状态）
+// GetSystemPhrases 获取系统短语
+// 优先从用户目录的副本读取，不存在则用程序目录的原始文件
 func (a *App) GetSystemPhrases() ([]PhraseItem, error) {
+	// 优先使用用户目录副本
+	editor := a.systemUserPhraseEditor
+	if editor != nil {
+		cfg := editor.GetPhrases()
+		if cfg != nil && len(cfg.Phrases) > 0 {
+			return a.phraseCfgToItems(cfg, true), nil
+		}
+	}
+	// 降级到原始系统文件
 	if a.systemPhraseEditor == nil {
 		return []PhraseItem{}, nil
 	}
-
 	cfg := a.systemPhraseEditor.GetPhrases()
 	if cfg == nil {
 		return []PhraseItem{}, nil
 	}
+	return a.phraseCfgToItems(cfg, true), nil
+}
 
-	// 构建用户覆盖索引（code+text → PhraseConfig）
-	overrides := make(map[string]dictfile.PhraseConfig)
-	if a.phraseEditor != nil {
-		userCfg := a.phraseEditor.GetPhrases()
-		if userCfg != nil {
-			for _, p := range userCfg.Phrases {
-				overrides[p.Code+"||"+p.Text] = p
-			}
-		}
-	}
-
+// phraseCfgToItems 将短语配置转换为前端项
+func (a *App) phraseCfgToItems(cfg *dictfile.PhrasesConfig, isSystem bool) []PhraseItem {
 	items := make([]PhraseItem, len(cfg.Phrases))
 	for i, p := range cfg.Phrases {
-		item := PhraseItem{
+		items[i] = PhraseItem{
 			Code:     p.Code,
 			Text:     p.Text,
+			Texts:    p.Texts,
+			Name:     p.Name,
 			Position: p.Position,
-			IsSystem: true,
+			IsSystem: isSystem,
+			Disabled: p.Disabled,
 		}
-		// 应用用户覆盖
-		if ov, ok := overrides[p.Code+"||"+p.Text]; ok {
-			item.Position = ov.Position
-			item.Disabled = ov.Disabled
-		}
-		items[i] = item
 	}
-
-	return items, nil
+	return items
 }
 
 // SavePhrases 保存用户短语配置
@@ -101,6 +104,8 @@ func (a *App) SavePhrases(items []PhraseItem) error {
 		cfg.Phrases[i] = dictfile.PhraseConfig{
 			Code:     item.Code,
 			Text:     item.Text,
+			Texts:    item.Texts,
+			Name:     item.Name,
 			Position: item.Position,
 		}
 	}
@@ -175,22 +180,31 @@ func (a *App) UpdatePhrase(oldCode, oldText, newCode, newText string, newPositio
 	return nil
 }
 
-// OverrideSystemPhrase 覆盖系统短语（保存到用户短语文件，不修改系统文件）
+// OverrideSystemPhrase 覆盖系统短语（保存到覆盖文件，不修改系统文件和用户短语文件）
 // 可用于修改 position 或禁用系统短语
 func (a *App) OverrideSystemPhrase(code, text string, position int, disabled bool) error {
-	if a.phraseEditor == nil {
-		return fmt.Errorf("phrase editor not initialized")
+	if a.systemUserPhraseEditor == nil {
+		return fmt.Errorf("system user phrase editor not initialized")
 	}
 
-	cfg := a.phraseEditor.GetPhrases()
+	// 首次修改时，将完整系统文件复制到用户目录
+	if err := a.ensureSystemPhraseCopy(); err != nil {
+		return fmt.Errorf("复制系统短语失败: %w", err)
+	}
+
+	cfg := a.systemUserPhraseEditor.GetPhrases()
 	if cfg == nil {
-		cfg = &dictfile.PhrasesConfig{}
+		return fmt.Errorf("system phrases not loaded")
 	}
 
-	// 查找是否已有覆盖
+	// 在副本中查找并修改
 	found := false
 	for i, p := range cfg.Phrases {
-		if p.Code == code && p.Text == text {
+		matched := p.Code == code && p.Text == text
+		if !matched && p.Texts != "" {
+			matched = p.Code == code && p.Texts != ""
+		}
+		if matched {
 			cfg.Phrases[i].Position = position
 			cfg.Phrases[i].Disabled = disabled
 			found = true
@@ -199,39 +213,68 @@ func (a *App) OverrideSystemPhrase(code, text string, position int, disabled boo
 	}
 
 	if !found {
-		cfg.Phrases = append(cfg.Phrases, dictfile.PhraseConfig{
-			Code:     code,
-			Text:     text,
-			Position: position,
-			Disabled: disabled,
-		})
+		return fmt.Errorf("系统短语未找到: %s", code)
 	}
 
-	a.phraseEditor.SetPhrases(cfg)
+	a.systemUserPhraseEditor.SetPhrases(cfg)
 
-	if err := a.phraseEditor.Save(); err != nil {
+	if err := a.systemUserPhraseEditor.Save(); err != nil {
 		return err
 	}
 
-	a.fileWatcher.UpdateState(a.phraseEditor.GetFilePath())
+	a.fileWatcher.UpdateState(a.systemUserPhraseEditor.GetFilePath())
 	go a.NotifyReload("phrases")
 	return nil
 }
 
-// RemoveSystemPhraseOverride 移除对系统短语的覆盖（恢复为系统默认）
-func (a *App) RemoveSystemPhraseOverride(code, text string) error {
-	if a.phraseEditor == nil {
-		return fmt.Errorf("phrase editor not initialized")
+// ensureSystemPhraseCopy 确保用户目录有系统短语的副本
+func (a *App) ensureSystemPhraseCopy() error {
+	cfg := a.systemUserPhraseEditor.GetPhrases()
+	if cfg != nil && len(cfg.Phrases) > 0 {
+		return nil // 已有副本
 	}
 
-	// 从用户短语文件中移除同 code+text 的覆盖
-	a.phraseEditor.RemovePhrase(code, text)
+	// 从系统文件复制
+	sysCfg := a.systemPhraseEditor.GetPhrases()
+	if sysCfg == nil {
+		return fmt.Errorf("system phrases not available")
+	}
 
-	if err := a.phraseEditor.Save(); err != nil {
+	a.systemUserPhraseEditor.SetPhrases(sysCfg)
+	return a.systemUserPhraseEditor.Save()
+}
+
+// RemoveSystemPhraseOverride 移除对系统短语的覆盖（恢复为系统默认）
+func (a *App) RemoveSystemPhraseOverride(code, text string) error {
+	if a.systemUserPhraseEditor == nil {
+		return fmt.Errorf("override phrase editor not initialized")
+	}
+
+	// 从覆盖文件中移除同 code+text 的覆盖
+	a.systemUserPhraseEditor.RemovePhrase(code, text)
+
+	if err := a.systemUserPhraseEditor.Save(); err != nil {
 		return err
 	}
 
-	a.fileWatcher.UpdateState(a.phraseEditor.GetFilePath())
+	a.fileWatcher.UpdateState(a.systemUserPhraseEditor.GetFilePath())
+	go a.NotifyReload("phrases")
+	return nil
+}
+
+// ResetAllSystemPhraseOverrides 删除用户目录的系统短语副本（恢复全部为系统默认）
+func (a *App) ResetAllSystemPhraseOverrides() error {
+	if a.systemUserPhraseEditor == nil {
+		return fmt.Errorf("system user phrase editor not initialized")
+	}
+
+	// 删除用户目录的副本文件
+	filePath := a.systemUserPhraseEditor.GetFilePath()
+	_ = os.Remove(filePath)
+
+	// 清空编辑器内存数据
+	a.systemUserPhraseEditor.SetPhrases(&dictfile.PhrasesConfig{})
+	a.fileWatcher.UpdateState(filePath)
 	go a.NotifyReload("phrases")
 	return nil
 }
@@ -250,6 +293,114 @@ func (a *App) ReloadPhrases() error {
 		return fmt.Errorf("phrase editor not initialized")
 	}
 	return a.phraseEditor.Reload()
+}
+
+// ExportUserPhrases 导出用户短语文件
+func (a *App) ExportUserPhrases() (string, error) {
+	if a.phraseEditor == nil {
+		return "", fmt.Errorf("phrase editor not initialized")
+	}
+	savePath, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+		Title:           "导出用户短语",
+		DefaultFilename: "user.phrases.yaml",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "YAML 文件", Pattern: "*.yaml;*.yml"},
+		},
+	})
+	if err != nil || savePath == "" {
+		return "", err
+	}
+	data, err := os.ReadFile(a.phraseEditor.GetFilePath())
+	if err != nil {
+		return "", fmt.Errorf("读取用户短语失败: %w", err)
+	}
+	if err := os.WriteFile(savePath, data, 0644); err != nil {
+		return "", fmt.Errorf("导出失败: %w", err)
+	}
+	return savePath, nil
+}
+
+// ImportUserPhrases 导入用户短语文件
+func (a *App) ImportUserPhrases() error {
+	if a.phraseEditor == nil {
+		return fmt.Errorf("phrase editor not initialized")
+	}
+	openPath, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "导入用户短语",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "YAML 文件", Pattern: "*.yaml;*.yml"},
+		},
+	})
+	if err != nil || openPath == "" {
+		return err
+	}
+	data, err := os.ReadFile(openPath)
+	if err != nil {
+		return fmt.Errorf("读取文件失败: %w", err)
+	}
+	if err := os.WriteFile(a.phraseEditor.GetFilePath(), data, 0644); err != nil {
+		return fmt.Errorf("导入失败: %w", err)
+	}
+	a.phraseEditor.Reload()
+	a.fileWatcher.UpdateState(a.phraseEditor.GetFilePath())
+	go a.NotifyReload("phrases")
+	return nil
+}
+
+// ExportSystemPhrases 导出完整系统短语（优先用户副本，否则原始系统文件）
+func (a *App) ExportSystemPhrases() (string, error) {
+	savePath, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+		Title:           "导出系统短语",
+		DefaultFilename: "system.phrases.yaml",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "YAML 文件", Pattern: "*.yaml;*.yml"},
+		},
+	})
+	if err != nil || savePath == "" {
+		return "", err
+	}
+	// 优先用户副本
+	var data []byte
+	if a.systemUserPhraseEditor != nil {
+		data, err = os.ReadFile(a.systemUserPhraseEditor.GetFilePath())
+	}
+	if len(data) == 0 && a.systemPhraseEditor != nil {
+		data, err = os.ReadFile(a.systemPhraseEditor.GetFilePath())
+	}
+	if err != nil {
+		return "", fmt.Errorf("读取系统短语失败: %w", err)
+	}
+	if err := os.WriteFile(savePath, data, 0644); err != nil {
+		return "", fmt.Errorf("导出失败: %w", err)
+	}
+	return savePath, nil
+}
+
+// ImportSystemPhrases 导入系统短语文件（替换用户目录的副本）
+func (a *App) ImportSystemPhrases() error {
+	if a.systemUserPhraseEditor == nil {
+		return fmt.Errorf("system user phrase editor not initialized")
+	}
+	openPath, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "导入系统短语",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "YAML 文件", Pattern: "*.yaml;*.yml"},
+		},
+	})
+	if err != nil || openPath == "" {
+		return err
+	}
+	data, err := os.ReadFile(openPath)
+	if err != nil {
+		return fmt.Errorf("读取文件失败: %w", err)
+	}
+	if err := os.WriteFile(a.systemUserPhraseEditor.GetFilePath(), data, 0644); err != nil {
+		return fmt.Errorf("导入失败: %w", err)
+	}
+	a.systemUserPhraseEditor.Reload()
+	a.fileWatcher.UpdateState(a.systemUserPhraseEditor.GetFilePath())
+	go a.NotifyReload("phrases")
+	return nil
 }
 
 // ========== 用户词库管理 ==========

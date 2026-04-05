@@ -137,11 +137,29 @@
                   : ""
               }}
             </button>
-            <span
+            <button
               v-if="phraseCategory === 'system'"
-              class="toolbar-readonly-hint"
-              >系统短语（只读）</span
+              class="btn btn-sm"
+              @click="handleResetAllSystemPhrases"
+              title="删除所有覆盖，恢复为系统默认"
             >
+              恢复默认
+            </button>
+            <div class="toolbar-spacer"></div>
+            <button
+              class="btn btn-sm"
+              @click="handleImportPhrases"
+              title="导入"
+            >
+              导入
+            </button>
+            <button
+              class="btn btn-sm"
+              @click="handleExportPhrases"
+              title="导出"
+            >
+              导出
+            </button>
           </div>
 
           <!-- 用户短语列表 -->
@@ -164,12 +182,9 @@
                 />
                 <div class="dict-item-main">
                   <span class="dict-item-code">{{ item.code }}</span>
-                  <span class="dict-item-text">{{ item.text }}</span>
-                  <span
-                    v-if="item.text.startsWith('$[') && item.text.endsWith(']')"
-                    class="tag-mapping"
-                    >映射</span
-                  >
+                  <span v-if="item.texts" class="dict-item-text">{{ item.name || item.code }}（{{ item.texts.length }}字符）</span>
+                  <span v-else class="dict-item-text">{{ item.text }}</span>
+                  <span v-if="item.texts" class="tag-mapping">数组</span>
                   <span v-else-if="item.text.includes('$')" class="tag-dynamic"
                     >动态</span
                   >
@@ -218,16 +233,19 @@
                 <div class="dict-item-main">
                   <span class="dict-item-code">{{ item.code }}</span>
                   <span
+                    v-if="item.texts"
+                    class="dict-item-text"
+                    :class="{ 'text-disabled': item.disabled }"
+                    >{{ item.name || item.code }}（{{ item.texts.length }}字符）</span
+                  >
+                  <span
+                    v-else
                     class="dict-item-text"
                     :class="{ 'text-disabled': item.disabled }"
                     >{{ item.text }}</span
                   >
-                  <span
-                    v-if="item.text.startsWith('$[') && item.text.endsWith(']')"
-                    class="tag-mapping"
-                    >映射</span
-                  >
-                  <span v-else-if="item.text.includes('$')" class="tag-dynamic"
+                  <span v-if="item.texts" class="tag-mapping">数组</span>
+                  <span v-else-if="item.text && item.text.includes('$')" class="tag-dynamic"
                     >动态</span
                   >
                   <span class="dict-item-weight">{{ item.position }}</span>
@@ -659,14 +677,45 @@
           />
         </div>
         <div class="form-row">
-          <label>文本</label>
-          <input
-            type="text"
-            v-model="newPhrase.text"
-            class="input"
-            placeholder="如: 我的地址是xxx 或 $Y-$MM-$DD"
-          />
+          <label>类型</label>
+          <label class="radio-inline">
+            <input type="radio" :value="false" v-model="phraseIsArray" /> 普通
+          </label>
+          <label class="radio-inline">
+            <input type="radio" :value="true" v-model="phraseIsArray" /> 数组
+          </label>
         </div>
+        <template v-if="phraseIsArray">
+          <div class="form-row">
+            <label>名称</label>
+            <input
+              type="text"
+              v-model="newPhrase.name"
+              class="input"
+              placeholder="如: 标点符号"
+            />
+          </div>
+          <div class="form-row">
+            <label>字符列表</label>
+            <textarea
+              v-model="newPhrase.texts"
+              class="input"
+              rows="3"
+              placeholder="每个字符展开为独立候选，如: ①②③④⑤"
+            ></textarea>
+          </div>
+        </template>
+        <template v-else>
+          <div class="form-row">
+            <label>文本</label>
+            <input
+              type="text"
+              v-model="newPhrase.text"
+              class="input"
+              placeholder="如: 我的地址是xxx 或 $Y-$MM-$DD"
+            />
+          </div>
+        </template>
         <div class="form-row">
           <label>位置</label>
           <input
@@ -699,7 +748,15 @@
           <label>编码</label>
           <input type="text" class="input" :value="sysEditForm.code" disabled />
         </div>
-        <div class="form-row">
+        <div v-if="sysEditForm.texts" class="form-row">
+          <label>名称</label>
+          <input type="text" class="input" :value="sysEditForm.name" disabled />
+        </div>
+        <div v-if="sysEditForm.texts" class="form-row">
+          <label>字符列表</label>
+          <textarea class="input" rows="3" :value="sysEditForm.texts" disabled></textarea>
+        </div>
+        <div v-else class="form-row">
           <label>文本</label>
           <input type="text" class="input" :value="sysEditForm.text" disabled />
         </div>
@@ -850,14 +907,17 @@ const phraseCount = computed(
   () => phrases.value.length + systemPhrases.value.length,
 );
 const addPhraseDialogVisible = ref(false);
-const newPhrase = ref({ code: "", text: "", position: 1 });
+const newPhrase = ref({ code: "", text: "", texts: "", name: "", position: 1 });
 const editingPhrase = ref<PhraseItem | null>(null); // 非null时为编辑模式
+const phraseIsArray = ref(false); // 是否为数组类型短语
 
 // 系统短语编辑对话框
 const sysEditDialogVisible = ref(false);
 const sysEditForm = ref({
   code: "",
   text: "",
+  texts: "",
+  name: "",
   position: 1,
   hasOverride: false,
 });
@@ -1127,41 +1187,56 @@ async function handleSelectSchema(schemaID: string) {
 // ===== 短语操作 =====
 function openAddPhraseDialog() {
   editingPhrase.value = null;
-  newPhrase.value = { code: "", text: "", position: 1 };
+  newPhrase.value = { code: "", text: "", texts: "", name: "", position: 1 };
+  phraseIsArray.value = false;
   addPhraseDialogVisible.value = true;
 }
 
 function openEditPhraseDialog(item: PhraseItem) {
   editingPhrase.value = item;
+  phraseIsArray.value = !!item.texts;
   newPhrase.value = {
     code: item.code,
-    text: item.text,
+    text: item.text || "",
+    texts: item.texts || "",
+    name: item.name || "",
     position: item.position,
   };
   addPhraseDialogVisible.value = true;
 }
 
 async function handleSavePhrase() {
-  if (!newPhrase.value.code || !newPhrase.value.text) {
-    showDictMessage("请填写编码和文本", "error");
+  const isArr = phraseIsArray.value;
+  if (!newPhrase.value.code || (!isArr && !newPhrase.value.text) || (isArr && !newPhrase.value.texts)) {
+    showDictMessage(isArr ? "请填写编码和字符列表" : "请填写编码和文本", "error");
     return;
   }
   try {
+    const isArr = phraseIsArray.value;
+    const item: PhraseItem = {
+      code: newPhrase.value.code,
+      text: isArr ? "" : newPhrase.value.text,
+      texts: isArr ? newPhrase.value.texts : "",
+      name: isArr ? newPhrase.value.name : "",
+      position: newPhrase.value.position,
+      is_system: false,
+      disabled: false,
+    };
+
     if (editingPhrase.value) {
-      await wailsApi.updatePhrase(
-        editingPhrase.value.code,
-        editingPhrase.value.text,
-        newPhrase.value.code,
-        newPhrase.value.text,
-        newPhrase.value.position,
+      // 编辑：在列表中替换
+      const idx = phrases.value.findIndex(
+        (p) => p.code === editingPhrase.value!.code && p.text === editingPhrase.value!.text && p.texts === editingPhrase.value!.texts,
       );
+      if (idx >= 0) {
+        phrases.value[idx] = item;
+      }
+      await wailsApi.savePhrases(phrases.value);
       showDictMessage("修改成功", "success");
     } else {
-      await wailsApi.addPhrase(
-        newPhrase.value.code,
-        newPhrase.value.text,
-        newPhrase.value.position,
-      );
+      // 新增
+      phrases.value.push(item);
+      await wailsApi.savePhrases(phrases.value);
       showDictMessage("添加成功", "success");
     }
     addPhraseDialogVisible.value = false;
@@ -1176,7 +1251,9 @@ async function handleSavePhrase() {
 function openEditSystemPhraseDialog(item: PhraseItem) {
   sysEditForm.value = {
     code: item.code,
-    text: item.text,
+    text: item.text || "",
+    texts: item.texts || "",
+    name: item.name || "",
     position: item.position,
     hasOverride: false, // TODO: 检测是否已有覆盖
   };
@@ -1224,6 +1301,48 @@ async function handleResetSystemPhrase() {
     await loadPhraseData();
   } catch (e: unknown) {
     showDictMessage((e as Error).message || "操作失败", "error");
+  }
+}
+
+// ===== 恢复系统默认 =====
+async function handleResetAllSystemPhrases() {
+  if (!confirm("确定恢复所有系统短语为默认设置？\n这将删除所有对系统短语的禁用和位置调整。")) return;
+  try {
+    await wailsApi.resetAllSystemPhraseOverrides();
+    showDictMessage("已恢复为系统默认", "success");
+    await loadPhraseData();
+  } catch (e: unknown) {
+    showDictMessage((e as Error).message || "操作失败", "error");
+  }
+}
+
+// ===== 短语导入导出 =====
+async function handleExportPhrases() {
+  try {
+    if (phraseCategory.value === "user") {
+      const path = await wailsApi.exportUserPhrases();
+      if (path) showDictMessage("用户短语已导出", "success");
+    } else {
+      const path = await wailsApi.exportSystemPhrases();
+      if (path) showDictMessage("系统短语已导出", "success");
+    }
+  } catch (e: unknown) {
+    showDictMessage((e as Error).message || "导出失败", "error");
+  }
+}
+
+async function handleImportPhrases() {
+  try {
+    if (phraseCategory.value === "user") {
+      await wailsApi.importUserPhrases();
+      showDictMessage("用户短语已导入", "success");
+    } else {
+      await wailsApi.importSystemPhrases();
+      showDictMessage("系统短语已导入", "success");
+    }
+    await loadPhraseData();
+  } catch (e: unknown) {
+    showDictMessage((e as Error).message || "导入失败", "error");
   }
 }
 

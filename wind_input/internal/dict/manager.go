@@ -66,10 +66,12 @@ func (dm *DictManager) Initialize() error {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
 
-	// 初始化短语层 (Lv1) — 全局共享，加载系统+用户短语
+	// 初始化短语层 (Lv1) — 全局共享
+	// 系统短语：优先加载用户目录的同名文件（用户修改后的副本），不存在则加载程序目录的原始文件
 	systemPhrasePath := filepath.Join(dm.systemDir, "system.phrases.yaml")
+	systemPhraseUserPath := filepath.Join(dm.dataDir, "system.phrases.yaml")
 	userPhrasePath := filepath.Join(dm.dataDir, "user.phrases.yaml")
-	dm.phraseLayer = NewPhraseLayer("phrases", systemPhrasePath, userPhrasePath)
+	dm.phraseLayer = NewPhraseLayerEx("phrases", systemPhrasePath, systemPhraseUserPath, userPhrasePath)
 	if err := dm.phraseLayer.Load(); err != nil {
 		dm.logger.Warn("加载短语配置失败", "error", err)
 	} else {

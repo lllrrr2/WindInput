@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/control"
 
 	"wind_setting/internal/editor"
@@ -22,9 +23,10 @@ type App struct {
 	addWordParams AddWordParams
 
 	// 编辑器
-	configEditor       *editor.ConfigEditor
-	phraseEditor       *editor.PhraseEditor // 用户短语编辑器
-	systemPhraseEditor *editor.PhraseEditor // 系统短语编辑器（只读）
+	configEditor          *editor.ConfigEditor
+	phraseEditor          *editor.PhraseEditor // 用户短语编辑器
+	systemPhraseEditor    *editor.PhraseEditor // 系统短语编辑器（程序目录，只读）
+	systemUserPhraseEditor *editor.PhraseEditor // 用户目录的系统短语（修改后的副本）
 	shadowEditor       *editor.ShadowEditor
 	userDictEditor     *editor.UserDictEditor
 
@@ -98,6 +100,13 @@ func (a *App) startup(ctx context.Context) {
 	systemPhrasePath := filepath.Join(getExeDir(), "data", "system.phrases.yaml")
 	a.systemPhraseEditor = editor.NewPhraseEditorWithPath(systemPhrasePath)
 	a.systemPhraseEditor.Load()
+
+	// 初始化用户目录的系统短语编辑器（同名覆盖）
+	systemUserPath, _ := config.GetSystemPhrasesUserPath()
+	if systemUserPath != "" {
+		a.systemUserPhraseEditor = editor.NewPhraseEditorWithPath(systemUserPath)
+		a.systemUserPhraseEditor.Load() // 文件可能不存在，Load 会返回错误但不影响
+	}
 
 	a.shadowEditor, err = editor.NewShadowEditor()
 	if err == nil {
