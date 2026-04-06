@@ -15,13 +15,13 @@ import (
 )
 
 // rotatingWriter 实现日志文件轮转的 io.Writer
+// 采用非持有句柄模式：每次写入时 Open→Write→Close，
+// 文件在写入间隙无句柄占用，外部工具可随时截断或清空。
 type rotatingWriter struct {
 	mu       sync.Mutex
-	file     *os.File
 	filePath string
 	maxSize  int64 // 单文件最大字节数
 	maxFiles int   // 最大备份文件数
-	curSize  int64 // 当前文件大小
 }
 
 func newRotatingWriter(filePath string, maxSize int64, maxFiles int) (*rotatingWriter, error) {
@@ -38,18 +38,13 @@ func newRotatingWriter(filePath string, maxSize int64, maxFiles int) (*rotatingW
 		}
 	}
 
-	// 打开或创建文件
+	// 验证文件可写
 	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("open log file: %w", err)
 	}
+	f.Close()
 
-	// 获取当前文件大小
-	if info, err := f.Stat(); err == nil {
-		w.curSize = info.Size()
-	}
-
-	w.file = f
 	return w, nil
 }
 
@@ -57,29 +52,20 @@ func (w *rotatingWriter) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	n, err = w.file.Write(p)
-	if err != nil {
-		return n, err
+	// 写入前检查文件大小，决定是否需要轮转
+	if info, err := os.Stat(w.filePath); err == nil {
+		if info.Size() >= w.maxSize {
+			w.rotateFiles()
+		}
 	}
-	w.curSize += int64(n)
-
-	if w.curSize >= w.maxSize {
-		w.rotate()
-	}
-	return n, nil
-}
-
-func (w *rotatingWriter) rotate() {
-	w.file.Close()
-	w.rotateFiles()
 
 	f, err := os.OpenFile(w.filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		// 无法创建新文件，尝试回退
-		return
+		return 0, err
 	}
-	w.file = f
-	w.curSize = 0
+	n, err = f.Write(p)
+	f.Close()
+	return n, err
 }
 
 // rotateFiles 移动备份链：3→删除, 2→3, 1→2, current→1
@@ -104,11 +90,6 @@ func (w *rotatingWriter) rotateFiles() {
 }
 
 func (w *rotatingWriter) Close() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.file != nil {
-		return w.file.Close()
-	}
 	return nil
 }
 
