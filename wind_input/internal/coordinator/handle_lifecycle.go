@@ -17,6 +17,18 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// 应用兼容性规则：caret_use_top 将 Y 从 rect.bottom 转换为 rect.top。
+	// 微信等 WebView 应用的 GetTextExt 返回的 height 不稳定（h=1 或 h=20），
+	// 导致 rect.bottom 在不同时刻差异达 20px，但 rect.top 始终稳定（差异 ≤1px）。
+	if c.activeCompatRule != nil && c.activeCompatRule.CaretUseTop && data.Height > 0 {
+		rawH := data.Height
+		data.Y = data.Y - rawH            // bottom → top
+		data.Height = 1                    // 最小高度，确保候选框紧贴文字下方
+		if data.CompositionStartY != 0 {
+			data.CompositionStartY = data.CompositionStartY - rawH
+		}
+	}
+
 	c.caretX = data.X
 	c.caretY = data.Y
 	c.caretHeight = data.Height
@@ -29,8 +41,9 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 		c.compositionStartValid = true
 	}
 
-	c.logger.Debug("Caret position updated", "x", c.caretX, "y", c.caretY, "height", c.caretHeight,
-		"compStartX", data.CompositionStartX, "compStartY", data.CompositionStartY)
+	c.logger.Debug("caret.diag update",
+		"x", c.caretX, "y", c.caretY, "h", c.caretHeight,
+		"csX", data.CompositionStartX, "csY", data.CompositionStartY)
 
 	// If there's active input, refresh the candidate window position.
 	// This handles the case where C++ re-sends caret update after composition
@@ -44,7 +57,7 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 			// OnKeyDown → SendCaretPositionUpdate 和 UpdateComposition → SendCaretPositionUpdate
 			// 都在同一调用栈中完成，此时 GetTextExt 可能返回旧坐标。
 			// OnLayoutChange 在应用消息循环运行后触发（通常 10-30ms），坐标才可靠。
-			// 超过 100ms 仍未收到新更新时强制显示，避免候选窗口不出现。
+			// 超过 80ms 仍未收到新更新时强制显示，避免候选窗口不出现。
 			elapsed := time.Since(c.pendingFirstShowTime)
 			c.diagCaretUpdateCount++
 
@@ -58,28 +71,58 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 				dy = -dy
 			}
 
-			if elapsed < 10*time.Millisecond {
-				// 同步调用栈内的更新，跳过（坐标可能 stale）
-				c.logger.Info("FirstShow: skipped early update",
-					"seq", c.diagCaretUpdateCount,
-					"elapsed", elapsed.String(),
-					"pos", [2]int{data.X, data.Y},
-					"posA", [2]int{c.diagPreKeyCaretX, c.diagPreKeyCaretY},
-					"deltaX", dx, "deltaY", dy)
+			// 对已知不可靠的进程，使用更长的等待阈值（20ms）以跳过两段式重排的中间值。
+			// 微信等应用在 composition 创建后会经历两段重排：
+			//   第一段 ~10ms：位置近似正确但非最终值（height=20）
+			//   第二段 ~15-20ms：位置最终确定（height 可能变为 1）
+			// 普通应用（记事本等）在 10ms 时位置已稳定，使用默认 10ms 阈值。
+			minWait := 10 * time.Millisecond
+			pendingProfile := c.caretProfiles[c.activeProcessID]
+			if pendingProfile != nil && !pendingProfile.posAReliable {
+				minWait = 20 * time.Millisecond
+			}
+
+			if elapsed < minWait {
+				// 同步调用栈或中间值更新，跳过（不逐条输出日志，仅计数）
 				return nil
 			}
 			// OnLayoutChange 或超时后的更新，可信赖
 			c.pendingFirstShow = false
 			reliable := dx <= 4 && dy <= 4
 			c.updateCaretProfile(reliable)
-			c.logger.Info("FirstShow: resolved by OnLayoutChange",
-				"seq", c.diagCaretUpdateCount,
-				"elapsed", elapsed.String(),
-				"posC", [2]int{data.X, data.Y},
+			// 一条汇总日志：posA=预按键位置, posC=最终接受位置, skipped=跳过的中间更新数
+			c.logger.Debug("caret.diag first=resolved",
 				"posA", [2]int{c.diagPreKeyCaretX, c.diagPreKeyCaretY},
-				"deltaX", dx, "deltaY", dy,
-				"posAReliable", reliable,
+				"posC", [2]int{data.X, data.Y}, "hC", data.Height,
+				"dX", dx, "dY", dy,
+				"elapsed", elapsed.String(),
+				"skipped", c.diagCaretUpdateCount-1,
+				"reliable", reliable,
 				"pid", c.activeProcessID)
+		} else if !c.lastKeyTime.IsZero() {
+			sinceKey := time.Since(c.lastKeyTime)
+			profile := c.caretProfiles[c.activeProcessID]
+
+			if profile != nil && !profile.posAReliable {
+				// 已知不可靠进程：跳过按键后 25ms 内的 caret 更新。
+				// 微信等应用两段式重排在 ~20ms 内才最终稳定，25ms 覆盖完整周期。
+				if sinceKey < 25*time.Millisecond {
+					return nil
+				}
+			} else if sinceKey >= 10*time.Millisecond && c.diagPreKeyCaretValid {
+				// 自校验：检测 OnLayoutChange 与 Position A 的偏差，必要时降级 profile。
+				dx := data.X - c.diagPreKeyCaretX
+				dy := data.Y - c.diagPreKeyCaretY
+				if dx < 0 {
+					dx = -dx
+				}
+				if dy < 0 {
+					dy = -dy
+				}
+				if dx > 4 || dy > 4 {
+					c.updateCaretProfile(false)
+				}
+			}
 		}
 		c.showUI()
 	} else if c.pendingFirstShow && hasInput && hasUI && !hasCandidates {
@@ -236,8 +279,13 @@ func (c *Coordinator) getCompiledHotkeys() (keyDownHotkeys, keyUpHotkeys []uint3
 func (c *Coordinator) HandleFocusGained(processID uint32) *bridge.StatusUpdateData {
 	if processID != 0 {
 		c.activeProcessID = processID
+		c.activeProcessName = bridge.GetProcessName(processID)
+		c.activeCompatRule = c.appCompat.GetRule(c.activeProcessName)
+		if c.activeCompatRule != nil {
+			c.logger.Debug("Compat rule matched", "process", c.activeProcessName, "caretUseTop", c.activeCompatRule.CaretUseTop)
+		}
 	}
-	c.logger.Debug("Focus gained", "processID", processID)
+	c.logger.Debug("Focus gained", "processID", processID, "process", c.activeProcessName)
 
 	// 焦点变化后异步释放内存（非阻塞，不影响响应速度）
 	defer func() {
@@ -295,6 +343,8 @@ func (c *Coordinator) HandleFocusGained(processID uint32) *bridge.StatusUpdateDa
 func (c *Coordinator) HandleIMEActivated(processID uint32) *bridge.StatusUpdateData {
 	if processID != 0 {
 		c.activeProcessID = processID
+		c.activeProcessName = bridge.GetProcessName(processID)
+		c.activeCompatRule = c.appCompat.GetRule(c.activeProcessName)
 	}
 	c.logger.Info("IME activated (user switched back to this IME)", "processID", processID)
 

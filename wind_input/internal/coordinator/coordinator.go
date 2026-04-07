@@ -123,8 +123,14 @@ type Coordinator struct {
 	diagCaretUpdateCount int  // pendingFirstShow 期间收到的 caret update 次数
 
 	// 自适应光标检测：按进程记录 Position A 的可靠性
-	activeProcessID uint32                   // 当前活跃进程 ID
-	caretProfiles   map[uint32]*caretProfile // 每个进程的光标行为档案
+	activeProcessID   uint32                   // 当前活跃进程 ID
+	activeProcessName string                   // 当前活跃进程名（小写）
+	caretProfiles     map[uint32]*caretProfile // 每个进程的光标行为档案
+	lastKeyTime       time.Time                // 最近一次按键处理的时间，用于过滤 stale caret update
+
+	// 应用兼容性规则
+	appCompat        *config.AppCompat     // 兼容性规则（从 compat.yaml 加载）
+	activeCompatRule *config.AppCompatRule // 当前进程匹配的兼容性规则（nil 表示无特殊处理）
 
 	// 临时英文模式状态
 	tempEnglishMode   bool   // 是否处于临时英文模式
@@ -311,7 +317,7 @@ func (c *Coordinator) syncToolbarStateNoLock() {
 }
 
 // NewCoordinator creates a new Coordinator
-func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *config.Config, logger *slog.Logger) *Coordinator {
+func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *config.Config, appCompat *config.AppCompat, logger *slog.Logger) *Coordinator {
 	candidatesPerPage := 9
 	if cfg != nil && cfg.UI.CandidatesPerPage > 0 {
 		candidatesPerPage = cfg.UI.CandidatesPerPage
@@ -373,6 +379,7 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		hotkeysDirty:       true, // 首次使用时需要编译
 		inputHistory:       NewInputHistory(20),
 		caretProfiles:      make(map[uint32]*caretProfile),
+		appCompat:          appCompat,
 	}
 
 	// Set up toolbar callbacks
@@ -569,9 +576,9 @@ func (c *Coordinator) updateCaretProfile(reliable bool) {
 	profile := c.caretProfiles[pid]
 	if profile == nil {
 		c.caretProfiles[pid] = &caretProfile{posAReliable: reliable}
-		c.logger.Info("FirstShow: profile created", "pid", pid, "posAReliable", reliable)
+		c.logger.Info("caret.diag profile created", "pid", pid, "reliable", reliable)
 	} else if !reliable && profile.posAReliable {
 		profile.posAReliable = false
-		c.logger.Info("FirstShow: profile updated to unreliable", "pid", pid)
+		c.logger.Info("caret.diag profile downgraded", "pid", pid)
 	}
 }

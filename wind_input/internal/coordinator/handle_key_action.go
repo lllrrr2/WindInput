@@ -14,6 +14,7 @@ const maxInputBufferLen = 60
 
 func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	startTime := time.Now()
+	c.lastKeyTime = startTime
 
 	// 限制输入缓冲区长度，超长输入没有实际意义且影响性能
 	if len(c.inputBuffer)+len(key) > maxInputBufferLen {
@@ -157,15 +158,15 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 		if profile != nil && profile.posAReliable {
 			// 已学习且 Position A 可靠：直接显示，0 延迟
 			c.pendingFirstShow = false
-			c.logger.Info("FirstShow: immediate (posA reliable)",
+			c.logger.Debug("caret.diag first=immediate posA",
 				"x", c.caretX, "y", c.caretY, "h", c.caretHeight, "pid", c.activeProcessID)
 			c.showUI()
 		} else {
 			// 未学习或 Position A 不可靠：延迟等待 OnLayoutChange
 			c.pendingFirstShow = true
 			c.pendingFirstShowTime = time.Now()
-			c.logger.Info("FirstShow: deferred, posA",
-				"x", c.caretX, "y", c.caretY, "h", c.caretHeight, "valid", c.caretValid,
+			c.logger.Debug("caret.diag first=deferred posA",
+				"x", c.caretX, "y", c.caretY, "h", c.caretHeight,
 				"pid", c.activeProcessID, "learned", profile != nil)
 
 			// 超时回退：如果 80ms 内 OnLayoutChange 没有触发（应用不支持），强制显示
@@ -175,16 +176,10 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 				defer c.mu.Unlock()
 				if c.pendingFirstShow && len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
 					c.pendingFirstShow = false
-
-					// 超时意味着 OnLayoutChange 未触发，Position A 就是最终位置
 					c.updateCaretProfile(true)
-
-					dx := c.caretX - c.diagPreKeyCaretX
-					dy := c.caretY - c.diagPreKeyCaretY
-					c.logger.Info("FirstShow: timeout 80ms, force showing",
+					c.logger.Debug("caret.diag first=timeout posA",
+						"x", c.diagPreKeyCaretX, "y", c.diagPreKeyCaretY,
 						"posNow", [2]int{c.caretX, c.caretY},
-						"posA", [2]int{c.diagPreKeyCaretX, c.diagPreKeyCaretY},
-						"deltaX", dx, "deltaY", dy,
 						"updates", c.diagCaretUpdateCount,
 						"pid", c.activeProcessID)
 					c.showUI()

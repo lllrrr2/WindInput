@@ -331,8 +331,12 @@ func main() {
 	uiManager.WaitReady()
 	logger.Info("UI Manager is ready")
 
+	// Load app compatibility rules
+	appCompat := config.LoadAppCompat()
+	logger.Info("App compatibility rules loaded", "count", len(appCompat.Apps))
+
 	// Create coordinator with Engine Manager, UI Manager and config
-	coord := coordinator.NewCoordinator(engineMgr, uiManager, cfg, logger)
+	coord := coordinator.NewCoordinator(engineMgr, uiManager, cfg, appCompat, logger)
 
 	// 创建控制管道服务端
 	controlServer := control.NewServer(logger, dictManager)

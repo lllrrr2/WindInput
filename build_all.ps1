@@ -475,6 +475,15 @@ if (Test-Path $systemPhrases) {
     Write-Host "[警告] 未找到系统短语配置文件" -ForegroundColor Yellow
 }
 
+# 复制应用兼容性规则
+$compatYaml = Join-Path $ScriptDir "data\compat.yaml"
+if (Test-Path $compatYaml) {
+    Copy-Item -Path $compatYaml -Destination (Join-Path $DataDir "compat.yaml") -Force
+    Write-Host "  - 已复制应用兼容性规则"
+} else {
+    Write-Host "[警告] 未找到应用兼容性规则文件" -ForegroundColor Yellow
+}
+
 # 复制主题文件
 Write-Host "  - 复制主题文件..."
 $themesSrc = Join-Path $ScriptDir "wind_input\themes"

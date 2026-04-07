@@ -204,6 +204,13 @@ if (Test-Path $configSrc) {
     Write-Host "[警告] build\data 目录中未找到默认配置文件 config.yaml" -ForegroundColor Yellow
 }
 
+# [7c/12] 复制应用兼容性规则
+$compatSrc = Join-Path $BuildDataDir "compat.yaml"
+if (Test-Path $compatSrc) {
+    Copy-Item -Path $compatSrc -Destination (Join-Path $InstallDataDir "compat.yaml") -Force
+    Write-Host "  - 应用兼容性规则已复制"
+}
+
 # [8/12] 复制主题文件
 Write-Host "[8/12] 复制主题文件..."
 $themesSource = Join-Path $BuildDataDir "themes"

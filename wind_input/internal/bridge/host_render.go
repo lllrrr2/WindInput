@@ -65,7 +65,7 @@ func (m *HostRenderManager) IsProcessWhitelisted(processID uint32) bool {
 		return false
 	}
 
-	name := getProcessName(processID)
+	name := GetProcessName(processID)
 	if name == "" {
 		return false
 	}
@@ -187,8 +187,8 @@ func (m *HostRenderManager) CleanupAll() {
 	}
 }
 
-// getProcessName returns the executable name (e.g. "SearchHost.exe") for a process ID.
-func getProcessName(pid uint32) string {
+// GetProcessName returns the executable name (e.g. "SearchHost.exe") for a process ID.
+func GetProcessName(pid uint32) string {
 	hProcess, _, _ := procOpenProcess.Call(
 		processQueryLimitedInformation,
 		0,

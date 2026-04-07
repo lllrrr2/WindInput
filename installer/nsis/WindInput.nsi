@@ -389,6 +389,7 @@ install_cleanup_bak_end:
   SetOutPath "$INSTDIR\data"
   File "${BUILD_DIR}\data\config.yaml"
   File "${BUILD_DIR}\data\system.phrases.yaml"
+  File "${BUILD_DIR}\data\compat.yaml"
   SetOutPath "$INSTDIR\data\themes\default"
   File "${BUILD_DIR}\data\themes\default\theme.yaml"
   SetOutPath "$INSTDIR\data\themes\msime"
