@@ -17,8 +17,8 @@ import (
 // 含变量的短语为"动态短语"，仅精确匹配（通过 SearchCommand），
 // 不含变量的为"静态短语"，支持前缀搜索。
 type PhraseLayer struct {
-	mu               sync.RWMutex
-	name             string
+	mu                 sync.RWMutex
+	name               string
 	systemFilePath     string // 系统短语文件（随程序打包，只读）
 	systemUserFilePath string // 用户目录的系统短语文件（同名覆盖，存在时替代系统文件）
 	userFilePath       string // 用户短语文件（用户可编辑）
@@ -89,11 +89,11 @@ func NewPhraseLayerEx(name string, systemPath, systemUserPath, userPath string) 
 		systemFilePath:     systemPath,
 		systemUserFilePath: systemUserPath,
 		userFilePath:       userPath,
-		staticPhrases:    make(map[string][]PhraseEntry),
-		dynamicPhrases:   make(map[string][]PhraseEntry),
-		phraseGroups:     make(map[string]PhraseGroup),
-		templateEngine:   GetTemplateEngine(),
-		cmdCache:         make(map[string][]candidate.Candidate),
+		staticPhrases:      make(map[string][]PhraseEntry),
+		dynamicPhrases:     make(map[string][]PhraseEntry),
+		phraseGroups:       make(map[string]PhraseGroup),
+		templateEngine:     GetTemplateEngine(),
+		cmdCache:           make(map[string][]candidate.Candidate),
 	}
 }
 

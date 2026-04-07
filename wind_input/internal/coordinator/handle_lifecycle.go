@@ -64,6 +64,16 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 	return nil
 }
 
+// HandleSelectionChanged handles selection/caret change events from ITfTextEditSink::OnEndEdit.
+// This is called when the cursor moves outside of composition (e.g., mouse click).
+func (c *Coordinator) HandleSelectionChanged(prevChar rune) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.lastOutputWasDigit = false
+	c.logger.Debug("Selection changed, reset smart punct state", "prevChar", string(prevChar))
+}
+
 // HandleHostRenderReady is called when host render shared memory is set up for the active client.
 // This triggers updating the UI manager's render callbacks immediately, without waiting for next focus change.
 func (c *Coordinator) HandleHostRenderReady() {
@@ -112,6 +122,7 @@ func (c *Coordinator) HandleFocusLost() {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.lastOutputWasDigit = false
 	c.clearState()
 }
 
@@ -135,6 +146,8 @@ func (c *Coordinator) HandleCompositionTerminated() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// 光标位置可能已变化（用户点击了输入框内其他位置），重置数字后智能标点状态
+	c.lastOutputWasDigit = false
 	// Only clear input state and hide candidate window, keep toolbar visible
 	c.clearState()
 	c.hideUI()
@@ -147,6 +160,7 @@ func (c *Coordinator) HandleIMEDeactivated() {
 
 	c.mu.Lock()
 	c.imeActivated = false
+	c.lastOutputWasDigit = false
 	c.clearState()
 	c.mu.Unlock()
 
@@ -211,6 +225,7 @@ func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
 	// Clear any pending input state when focus changes
 	// This ensures composition state is consistent
 	c.mu.Lock()
+	c.lastOutputWasDigit = false
 	if len(c.inputBuffer) > 0 {
 		c.inputBuffer = ""
 		c.inputCursorPos = 0

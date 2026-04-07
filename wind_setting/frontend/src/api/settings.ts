@@ -111,6 +111,7 @@ export interface InputConfig {
   full_width: boolean;
   chinese_punctuation: boolean;
   punct_follow_mode: boolean;
+  smart_punct_after_digit: boolean;
   select_key_groups: string[];
   page_keys: string[];
   highlight_keys: string[]; // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
@@ -335,6 +336,7 @@ export function getDefaultConfig(): Config {
       full_width: false,
       chinese_punctuation: true,
       punct_follow_mode: false,
+      smart_punct_after_digit: true,
       select_key_groups: ["semicolon_quote"],
       page_keys: ["pageupdown", "minus_equal"],
       highlight_keys: ["arrows"],

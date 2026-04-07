@@ -21,6 +21,7 @@ const (
 	CmdCompositionTerminated uint16 = 0x0209 // Composition unexpectedly terminated (e.g., user clicked in input field)
 	CmdShowContextMenu       uint16 = 0x020A // 请求显示右键菜单（TSF发送屏幕坐标）
 	CmdCaretUpdate           uint16 = 0x0301 // Caret position update
+	CmdSelectionChanged      uint16 = 0x0302 // Selection/caret changed without composition (from ITfTextEditSink)
 	CmdBatchEvents           uint16 = 0x0F01 // Batch events container
 )
 
@@ -147,7 +148,7 @@ type BatchHeader struct {
 	Reserved   uint16 // Reserved for future use
 }
 
-// KeyPayload represents a key event (16 bytes, matches C++ struct)
+// KeyPayload represents a key event (18 bytes, matches C++ struct)
 type KeyPayload struct {
 	KeyCode   uint32 // Virtual key code
 	ScanCode  uint32 // Scan code
@@ -155,6 +156,7 @@ type KeyPayload struct {
 	EventType uint8  // 0=KeyDown, 1=KeyUp
 	Toggles   uint8  // Toggle key states (CapsLock/NumLock/ScrollLock)
 	EventSeq  uint16 // Monotonic event sequence number
+	PrevChar  uint16 // Character before caret (from ITfTextEditSink cache, 0 if unavailable)
 }
 
 // CaretPayload represents caret position (20 bytes, matches C++ struct)

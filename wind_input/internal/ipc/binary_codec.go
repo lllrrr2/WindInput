@@ -81,14 +81,21 @@ func (c *BinaryCodec) DecodeKeyPayload(buf []byte) (*KeyPayload, error) {
 		return nil, fmt.Errorf("key payload too short: %d bytes", len(buf))
 	}
 
-	return &KeyPayload{
+	payload := &KeyPayload{
 		KeyCode:   binary.LittleEndian.Uint32(buf[0:4]),
 		ScanCode:  binary.LittleEndian.Uint32(buf[4:8]),
 		Modifiers: binary.LittleEndian.Uint32(buf[8:12]),
 		EventType: buf[12],
 		Toggles:   buf[13],
 		EventSeq:  binary.LittleEndian.Uint16(buf[14:16]),
-	}, nil
+	}
+
+	// Extended field (18 bytes): character before caret from ITfTextEditSink
+	if len(buf) >= 18 {
+		payload.PrevChar = binary.LittleEndian.Uint16(buf[16:18])
+	}
+
+	return payload, nil
 }
 
 // DecodeCommitRequestPayload decodes a commit request payload (barrier mechanism)

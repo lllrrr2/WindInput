@@ -59,6 +59,8 @@ CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     , _dwKeySinkCookie(TF_INVALID_COOKIE)
     , _isComposing(FALSE)
     , _hasCandidates(FALSE)
+    , _lastPassthroughDigit(0)
+    , _digitCaretY(0)
     , _pendingKeyUpKey(0)
     , _pendingKeyUpModifiers(0)
     , _pendingKeyDownTime(0)
@@ -300,6 +302,24 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
         }
     }
     // else: not in Chinese mode and no input session — pass through
+
+    // Track digit pass-through for smart punctuation fallback.
+    // When digits pass through without reaching Go (no input session),
+    // record them so the next punctuation key sent to Go carries this info via prevChar.
+    // This handles editors (e.g., EverEdit) where ITfTextEditSink can't read text.
+    if (*pfEaten == FALSE)
+    {
+        if (wParam >= '0' && wParam <= '9')
+        {
+            _lastPassthroughDigit = (WCHAR)wParam;
+            _digitCaretY = _pTextService->GetLastKnownCaretY();
+        }
+        else
+        {
+            _lastPassthroughDigit = 0;
+            _digitCaretY = 0;
+        }
+    }
 
     return S_OK;
 }
@@ -899,7 +919,32 @@ BOOL CKeyEventSink::_SendKeyToService(uint32_t keyCode, uint32_t modifiers, uint
     // when we pass keys through to the system (e.g., Ctrl+S for save).
     // Using stale _modsState causes all subsequent keys to appear as having Ctrl held.
 
-    BOOL result = pIPCClient->SendKeyEvent(keyCode, scanCode, modifiers, eventType, toggles, eventSeq);
+    // Get character before caret for smart punctuation:
+    // 1. Prefer ITfTextEditSink::OnEndEdit cache (works in Notepad, browsers, etc.)
+    // 2. Fallback to digit pass-through tracking (for editors like EverEdit where TSF text access fails)
+    uint16_t prevChar = (uint16_t)_pTextService->GetCachedPrevChar();
+    if (prevChar == 0 && _lastPassthroughDigit != 0)
+    {
+        // Cross-line movement detection: if caret Y changed since digit was typed,
+        // the user likely moved cursor (mouse click to another line), discard the digit tracking.
+        // Same-line mouse movement cannot be detected without proper ITfTextEditSink support.
+        LONG currentY = _pTextService->GetLastKnownCaretY();
+        if (_digitCaretY != 0 && currentY != 0 && currentY != _digitCaretY)
+        {
+            WIND_LOG_DEBUG_FMT(L"Smart punct: caret Y changed (%ld -> %ld), clearing digit tracking\n",
+                _digitCaretY, currentY);
+            _lastPassthroughDigit = 0;
+            _digitCaretY = 0;
+        }
+        else
+        {
+            prevChar = (uint16_t)_lastPassthroughDigit;
+            _lastPassthroughDigit = 0;  // 已消费，清除以避免后续标点误判
+            _digitCaretY = 0;
+        }
+    }
+
+    BOOL result = pIPCClient->SendKeyEvent(keyCode, scanCode, modifiers, eventType, toggles, eventSeq, prevChar);
 
     WIND_LOG_DEBUG_FMT(L"_SendKeyToService: vk=0x%02X, mods=0x%04X, elapsed=%dms\n",
                  keyCode, modifiers, GetTickCount() - startTime);

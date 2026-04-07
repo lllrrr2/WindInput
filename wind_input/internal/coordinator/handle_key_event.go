@@ -57,6 +57,11 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	// Use Debug for high-frequency key events to reduce log noise
 	c.logger.Debug("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode, "lockWait", lockTime.String())
 
+	// 数字后智能标点：保存前一按键的数字状态，然后重置。
+	// 仅在数字直通（无候选词选择）时重新设置为 true。
+	prevDigitState := c.lastOutputWasDigit
+	c.lastOutputWasDigit = false
+
 	// Check for Ctrl or Alt modifiers
 	hasCtrl := data.Modifiers&ModCtrl != 0
 	hasAlt := data.Modifiers&ModAlt != 0
@@ -233,6 +238,10 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		if c.fullWidth {
 			text = transform.ToFullWidth(text)
 		}
+		// 数字后智能标点：小键盘数字也计入
+		if len(numpadChar) == 1 && numpadChar[0] >= '0' && numpadChar[0] <= '9' {
+			c.lastOutputWasDigit = true
+		}
 		return &bridge.KeyEventResult{
 			Type: bridge.ResponseTypeInsertText,
 			Text: text,
@@ -371,7 +380,7 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		}
 		// No candidates — fall through to punctuation if applicable
 		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
-			return c.handlePunctuation(rune(key[0]))
+			return c.handlePunctuation(rune(key[0]), prevDigitState, data.PrevChar)
 		}
 		return nil
 
@@ -381,7 +390,7 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		}
 		// No candidates — fall through to punctuation if applicable
 		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
-			return c.handlePunctuation(rune(key[0]))
+			return c.handlePunctuation(rune(key[0]), prevDigitState, data.PrevChar)
 		}
 		return nil
 
@@ -398,10 +407,19 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.handleAlphaKey(strings.ToLower(key))
 
 	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
-		return c.handleNumberKey(int(key[0] - '0'))
+		result := c.handleNumberKey(int(key[0] - '0'))
+		if result == nil {
+			// 数字直通（无候选词选择），标记用于智能标点
+			c.lastOutputWasDigit = true
+		}
+		return result
 
 	case len(key) == 1 && key[0] == '0':
-		return c.handleNumberKey(10)
+		result := c.handleNumberKey(10)
+		if result == nil {
+			c.lastOutputWasDigit = true
+		}
+		return result
 
 	case !hasShift && c.isSelectKey2(key, data.KeyCode):
 		// Handle 2nd candidate selection key (e.g., semicolon)
@@ -411,7 +429,7 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		}
 		// If no candidates, treat as punctuation
 		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
-			return c.handlePunctuation(rune(key[0]))
+			return c.handlePunctuation(rune(key[0]), prevDigitState, data.PrevChar)
 		}
 		return nil
 
@@ -426,12 +444,12 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		}
 		// If no candidates, treat as punctuation
 		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
-			return c.handlePunctuation(rune(key[0]))
+			return c.handlePunctuation(rune(key[0]), prevDigitState, data.PrevChar)
 		}
 		return nil
 
 	case len(key) == 1 && c.isPunctuation(rune(key[0])):
-		return c.handlePunctuation(rune(key[0]))
+		return c.handlePunctuation(rune(key[0]), prevDigitState, data.PrevChar)
 
 	default:
 		c.logger.Debug("Unhandled key", "key", key, "keycode", data.KeyCode)

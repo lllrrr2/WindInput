@@ -100,8 +100,9 @@ public:
 
     // Send key event to Go Service (binary protocol)
     // Uses state machine snapshot for modifiers/toggles
+    // prevChar: character before caret from ITfTextEditSink cache (0 if unavailable)
     BOOL SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modifiers, uint8_t eventType,
-                      uint8_t toggles = 0, uint16_t eventSeq = 0);
+                      uint8_t toggles = 0, uint16_t eventSeq = 0, uint16_t prevChar = 0);
 
     // Send commit request (barrier mechanism for Space/Enter/number selection)
     // Returns TRUE if request was sent successfully
@@ -109,6 +110,10 @@ public:
 
     // Send caret position update to Go Service
     BOOL SendCaretUpdate(int x, int y, int height, int compositionStartX = 0, int compositionStartY = 0);
+
+    // Send selection changed notification (from ITfTextEditSink::OnEndEdit)
+    // Async: notifies Go that the caret moved outside of composition (e.g., mouse click)
+    BOOL SendSelectionChanged(uint16_t prevChar = 0);
 
     // Send focus lost notification
     BOOL SendFocusLost();

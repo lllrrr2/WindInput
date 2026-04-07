@@ -92,7 +92,9 @@ func (c *Coordinator) isPunctuation(r rune) bool {
 // handlePunctuation handles punctuation input in Chinese mode
 // If no input buffer, directly output punctuation (converted if chinese punctuation is enabled)
 // If there's input buffer and punct_commit is enabled, commit current candidate and then output punctuation
-func (c *Coordinator) handlePunctuation(r rune) *bridge.KeyEventResult {
+// afterDigit: 前一个按键是否为直通数字（Go 端状态追踪，作为回退判断）
+// prevChar: 光标前一个字符（来自 C++ ITfTextEditSink，0 表示不可用，作为主要判断）
+func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) *bridge.KeyEventResult {
 	c.logger.Debug("handlePunctuation", "char", string(r), "buffer", c.inputBuffer)
 
 	// If there's input in buffer (or confirmed segments), check if we should commit first (punct_commit)
@@ -139,10 +141,15 @@ func (c *Coordinator) handlePunctuation(r rune) *bridge.KeyEventResult {
 			// Convert punctuation
 			punctText := string(r)
 			if c.chinesePunctuation {
-				var converted bool
-				punctText, converted = c.punctConverter.ToChinesePunctStr(r)
-				if !converted {
+				// 数字后智能标点：句号→点号、逗号→英文逗号
+				if c.shouldSmartPunct(r, afterDigit, prevChar) {
 					punctText = string(r)
+				} else {
+					var converted bool
+					punctText, converted = c.punctConverter.ToChinesePunctStr(r)
+					if !converted {
+						punctText = string(r)
+					}
 				}
 			}
 
@@ -169,10 +176,15 @@ func (c *Coordinator) handlePunctuation(r rune) *bridge.KeyEventResult {
 	// No input buffer - directly handle punctuation
 	punctText := string(r)
 	if c.chinesePunctuation {
-		var converted bool
-		punctText, converted = c.punctConverter.ToChinesePunctStr(r)
-		if !converted {
+		// 数字后智能标点：句号→点号、逗号→英文逗号
+		if c.shouldSmartPunct(r, afterDigit, prevChar) {
 			punctText = string(r)
+		} else {
+			var converted bool
+			punctText, converted = c.punctConverter.ToChinesePunctStr(r)
+			if !converted {
+				punctText = string(r)
+			}
 		}
 	}
 
@@ -185,6 +197,23 @@ func (c *Coordinator) handlePunctuation(r rune) *bridge.KeyEventResult {
 		Type: bridge.ResponseTypeInsertText,
 		Text: punctText,
 	}
+}
+
+// shouldSmartPunct 判断是否应对该标点执行数字后智能转换（。→. ，→,）。
+// 优先使用 TSF 提供的 prevChar（光标前字符），不可用时回退到 Go 端状态追踪。
+func (c *Coordinator) shouldSmartPunct(r rune, afterDigit bool, prevChar rune) bool {
+	if c.config == nil || !c.config.Input.SmartPunctAfterDigit {
+		return false
+	}
+	if r != '.' && r != ',' {
+		return false
+	}
+	// 主判断：TSF 提供的光标前字符
+	if prevChar != 0 {
+		return prevChar >= '0' && prevChar <= '9'
+	}
+	// 回退：Go 端按键状态追踪
+	return afterDigit
 }
 
 // applyToggleFullWidth 执行全角切换的核心逻辑（需持锁调用）

@@ -29,6 +29,7 @@ type KeyEventData struct {
 	Modifiers int    // Modifier flags
 	Event     string // "down" or "up"
 	Toggles   uint8  // Toggle key states (CapsLock/NumLock/ScrollLock) from C++ side
+	PrevChar  rune   // Character before caret from ITfTextEditSink (0 if unavailable)
 	// Caret position (optional, sent with key events)
 	Caret *CaretData
 }
@@ -114,6 +115,9 @@ type MessageHandler interface {
 	HandleModeNotify(data ModeNotifyData)
 	// Context menu request from TSF (screen coordinates)
 	HandleShowContextMenu(screenX, screenY int)
+	// Selection changed outside of composition (from ITfTextEditSink::OnEndEdit)
+	// prevChar: character before caret after selection change (0 if unavailable)
+	HandleSelectionChanged(prevChar rune)
 	// Called when host render is set up for the active client (shared memory ready)
 	HandleHostRenderReady()
 }

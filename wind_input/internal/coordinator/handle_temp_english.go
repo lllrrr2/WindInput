@@ -112,7 +112,7 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 		c.hideUI()
 		// 如果是标点，处理标点
 		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
-			punctResult := c.handlePunctuation(rune(key[0]))
+			punctResult := c.handlePunctuation(rune(key[0]), false, 0)
 			if punctResult != nil {
 				return &bridge.KeyEventResult{
 					Type: bridge.ResponseTypeInsertText,

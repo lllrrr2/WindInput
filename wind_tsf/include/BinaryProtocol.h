@@ -25,6 +25,7 @@ constexpr uint16_t CMD_MENU_COMMAND     = 0x0208; // Menu command (toggle_mode, 
 constexpr uint16_t CMD_SHOW_CONTEXT_MENU     = 0x020A; // Request to show context menu (sends screen coordinates)
 constexpr uint16_t CMD_COMPOSITION_TERMINATED = 0x0209; // Composition unexpectedly terminated (e.g., user clicked in input field)
 constexpr uint16_t CMD_CARET_UPDATE     = 0x0301; // Caret position update
+constexpr uint16_t CMD_SELECTION_CHANGED = 0x0302; // Selection/caret changed without composition (from ITfTextEditSink)
 constexpr uint16_t CMD_BATCH_EVENTS     = 0x0F01; // Batch events container
 
 // ============================================================================
@@ -109,7 +110,7 @@ struct BatchHeader
 };
 static_assert(sizeof(BatchHeader) == 4, "BatchHeader must be 4 bytes");
 
-// Key event payload (16 bytes)
+// Key event payload (18 bytes)
 struct KeyPayload
 {
     uint32_t keyCode;     // Virtual key code
@@ -118,8 +119,9 @@ struct KeyPayload
     uint8_t  eventType;   // 0=KeyDown, 1=KeyUp
     uint8_t  toggles;     // Toggle key states (CapsLock/NumLock/ScrollLock)
     uint16_t eventSeq;    // Monotonic event sequence number
+    uint16_t prevChar;    // Character before caret (from ITfTextEditSink cache, 0 if unavailable)
 };
-static_assert(sizeof(KeyPayload) == 16, "KeyPayload must be 16 bytes");
+static_assert(sizeof(KeyPayload) == 18, "KeyPayload must be 18 bytes");
 
 // Caret position payload (20 bytes)
 struct CaretPayload
@@ -131,6 +133,15 @@ struct CaretPayload
     int32_t compositionStartY; // Screen Y of composition range start (0 if no composition)
 };
 static_assert(sizeof(CaretPayload) == 20, "CaretPayload must be 20 bytes");
+
+// Selection changed payload (4 bytes) - sent from ITfTextEditSink::OnEndEdit
+// Notifies Go that the caret moved outside of composition (e.g., mouse click)
+struct SelectionChangedPayload
+{
+    uint16_t prevChar;  // Character before caret after selection change (0 if unavailable)
+    uint16_t reserved;  // Reserved for future use
+};
+static_assert(sizeof(SelectionChangedPayload) == 4, "SelectionChangedPayload must be 4 bytes");
 
 // Composition update header (before UTF-8 text)
 struct CompositionHeader

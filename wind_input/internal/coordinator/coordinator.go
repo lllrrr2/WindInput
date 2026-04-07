@@ -151,6 +151,10 @@ type Coordinator struct {
 	// 输入历史：追踪最近上屏文字，用于加词推荐
 	inputHistory *InputHistory
 
+	// 数字后智能标点：追踪上一个直通输出是否为数字
+	// 用于在中文标点模式下将数字后的 。→. ，→, 自动转换为英文标点
+	lastOutputWasDigit bool
+
 	// 加词模式状态
 	addWordActive bool   // 是否处于加词模式
 	addWordChars  []rune // 可选字符池

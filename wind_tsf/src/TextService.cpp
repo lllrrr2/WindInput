@@ -517,6 +517,9 @@ CTextService::CTextService()
     , _gaDisplayAttributeInput(TF_INVALID_GUIDATOM)
     , _dwLayoutSinkCookie(TF_INVALID_COOKIE)
     , _pLayoutSinkContext(nullptr)
+    , _dwTextEditSinkCookie(TF_INVALID_COOKIE)
+    , _pTextEditSinkContext(nullptr)
+    , _cachedPrevChar(0)
 {
     ZeroMemory(&_cachedCaretRect, sizeof(_cachedCaretRect));
     ZeroMemory(&_cachedCompStartRect, sizeof(_cachedCompStartRect));
@@ -558,6 +561,10 @@ STDAPI CTextService::QueryInterface(REFIID riid, void** ppvObj)
     else if (IsEqualIID(riid, IID_ITfTextLayoutSink))
     {
         *ppvObj = (ITfTextLayoutSink*)this;
+    }
+    else if (IsEqualIID(riid, IID_ITfTextEditSink))
+    {
+        *ppvObj = (ITfTextEditSink*)this;
     }
 
     if (*ppvObj)
@@ -685,8 +692,9 @@ STDAPI CTextService::Deactivate()
     // End any active composition before deactivating
     EndComposition();
 
-    // Unregister layout sink
+    // Unregister layout sink and edit sink
     _UnadviseTextLayoutSink();
+    _UnadviseTextEditSink();
 
     // Release language bar button
     _UninitLangBarButton();
@@ -793,6 +801,7 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
         if (SUCCEEDED(pDocMgrFocus->GetTop(&pContext)) && pContext != nullptr)
         {
             _AdviseTextLayoutSink(pContext);
+            _AdviseTextEditSink(pContext);
             pContext->Release();
         }
 
@@ -885,6 +894,7 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
 
         // Unregister layout sink when losing focus
         _UnadviseTextLayoutSink();
+        _UnadviseTextEditSink();
 
         _needsFocusRecovery = FALSE;
     }
@@ -2204,6 +2214,107 @@ void CTextService::_UnadviseTextLayoutSink()
         _pLayoutSinkContext = nullptr;
         _dwLayoutSinkCookie = TF_INVALID_COOKIE;
         WIND_LOG_DEBUG(L"TextLayoutSink unadvised\n");
+    }
+}
+
+// ============================================================================
+// ITfTextEditSink implementation
+// ============================================================================
+
+STDAPI CTextService::OnEndEdit(ITfContext* pContext, TfEditCookie ecReadOnly, ITfEditRecord* pEditRecord)
+{
+    // Always update cached prevChar (character before caret) for smart punctuation
+    WCHAR prevChar = 0;
+
+    TF_SELECTION sel[1];
+    ULONG fetched = 0;
+    HRESULT hr = pContext->GetSelection(ecReadOnly, TF_DEFAULT_SELECTION, 1, sel, &fetched);
+
+    if (SUCCEEDED(hr) && fetched > 0 && sel[0].range != nullptr)
+    {
+        // Clone range and shift start back by 1 character to get the char before caret
+        ITfRange* pRange = nullptr;
+        hr = sel[0].range->Clone(&pRange);
+        if (SUCCEEDED(hr) && pRange != nullptr)
+        {
+            LONG shifted = 0;
+            hr = pRange->ShiftStart(ecReadOnly, -1, &shifted, nullptr);
+            if (SUCCEEDED(hr) && shifted == -1)
+            {
+                WCHAR buf[2] = {0};
+                ULONG charCount = 0;
+                hr = pRange->GetText(ecReadOnly, 0, buf, 1, &charCount);
+                if (SUCCEEDED(hr) && charCount > 0)
+                {
+                    prevChar = buf[0];
+                }
+            }
+            pRange->Release();
+        }
+        sel[0].range->Release();
+    }
+
+    _cachedPrevChar = prevChar;
+
+    // Check if selection changed (cursor moved)
+    BOOL selChanged = FALSE;
+    pEditRecord->GetSelectionStatus(&selChanged);
+
+    // When selection changes outside of composition (e.g., mouse click, arrow keys),
+    // clear digit pass-through tracking and notify Go to reset smart punct state.
+    // During composition, Go tracks state internally via key events.
+    if (selChanged && _pComposition == nullptr)
+    {
+        // Clear C++ side digit tracking (handles editors where OnEndEdit fires on mouse click)
+        if (_pKeyEventSink != nullptr)
+        {
+            _pKeyEventSink->ClearPassthroughDigit();
+        }
+
+        // Notify Go side to reset its smart punct state
+        if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
+        {
+            _pIPCClient->SendSelectionChanged((uint16_t)prevChar);
+        }
+    }
+
+    return S_OK;
+}
+
+void CTextService::_AdviseTextEditSink(ITfContext* pContext)
+{
+    _UnadviseTextEditSink();
+
+    if (pContext == nullptr)
+        return;
+
+    ITfSource* pSource = nullptr;
+    if (SUCCEEDED(pContext->QueryInterface(IID_ITfSource, (void**)&pSource)) && pSource != nullptr)
+    {
+        if (SUCCEEDED(pSource->AdviseSink(IID_ITfTextEditSink, (ITfTextEditSink*)this, &_dwTextEditSinkCookie)))
+        {
+            _pTextEditSinkContext = pContext;
+            _pTextEditSinkContext->AddRef();
+            WIND_LOG_DEBUG(L"TextEditSink advised successfully\n");
+        }
+        pSource->Release();
+    }
+}
+
+void CTextService::_UnadviseTextEditSink()
+{
+    if (_pTextEditSinkContext != nullptr && _dwTextEditSinkCookie != TF_INVALID_COOKIE)
+    {
+        ITfSource* pSource = nullptr;
+        if (SUCCEEDED(_pTextEditSinkContext->QueryInterface(IID_ITfSource, (void**)&pSource)) && pSource != nullptr)
+        {
+            pSource->UnadviseSink(_dwTextEditSinkCookie);
+            pSource->Release();
+        }
+        _pTextEditSinkContext->Release();
+        _pTextEditSinkContext = nullptr;
+        _dwTextEditSinkCookie = TF_INVALID_COOKIE;
+        WIND_LOG_DEBUG(L"TextEditSink unadvised\n");
     }
 }
 

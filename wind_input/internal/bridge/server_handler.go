@@ -107,6 +107,9 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 	case ipc.CmdCaretUpdate:
 		return s.handleCaretUpdate(payload, clientID)
 
+	case ipc.CmdSelectionChanged:
+		return s.handleSelectionChanged(payload, clientID)
+
 	case ipc.CmdHostRenderRequest:
 		return s.handleHostRenderRequest(clientID, processID)
 
@@ -135,12 +138,14 @@ func (s *Server) handleKeyEvent(payload []byte, clientID int) []byte {
 		Modifiers: int(keyPayload.Modifiers),
 		Event:     eventType,
 		Toggles:   keyPayload.Toggles,
+		PrevChar:  rune(keyPayload.PrevChar),
 	}
 
 	s.logger.Debug("Key event", "clientID", clientID,
 		"keyCode", keyData.KeyCode,
 		"modifiers", fmt.Sprintf("0x%X", keyData.Modifiers),
 		"toggles", fmt.Sprintf("0x%X", keyData.Toggles),
+		"prevChar", fmt.Sprintf("%d(%s)", keyData.PrevChar, string(keyData.PrevChar)),
 		"event", eventType)
 
 	result := s.handler.HandleKeyEvent(keyData)
@@ -218,6 +223,18 @@ func (s *Server) handleCaretUpdate(payload []byte, clientID int) []byte {
 		CompositionStartX: int(caretPayload.CompositionStartX),
 		CompositionStartY: int(caretPayload.CompositionStartY),
 	})
+
+	return s.codec.EncodeAck()
+}
+
+func (s *Server) handleSelectionChanged(payload []byte, clientID int) []byte {
+	var prevChar rune
+	if len(payload) >= 4 {
+		prevChar = rune(binary.LittleEndian.Uint16(payload[0:2]))
+	}
+
+	s.logger.Debug("Selection changed", "clientID", clientID, "prevChar", prevChar)
+	s.handler.HandleSelectionChanged(prevChar)
 
 	return s.codec.EncodeAck()
 }

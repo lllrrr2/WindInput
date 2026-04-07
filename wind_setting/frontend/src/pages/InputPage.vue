@@ -20,8 +20,12 @@
               type="button"
               @click="filterDropdownOpen = !filterDropdownOpen"
             >
-              <span class="filter-select-label">{{ currentFilterOption.label }}</span>
-              <span v-if="currentFilterOption.tag" class="filter-select-tag">{{ currentFilterOption.tag }}</span>
+              <span class="filter-select-label">{{
+                currentFilterOption.label
+              }}</span>
+              <span v-if="currentFilterOption.tag" class="filter-select-tag">{{
+                currentFilterOption.tag
+              }}</span>
               <span class="filter-select-arrow">&#9662;</span>
             </button>
             <div v-if="filterDropdownOpen" class="filter-menu">
@@ -34,7 +38,9 @@
               >
                 <div class="filter-option-main">
                   <span class="filter-option-name">{{ opt.label }}</span>
-                  <span v-if="opt.tag" class="filter-option-tag">{{ opt.tag }}</span>
+                  <span v-if="opt.tag" class="filter-option-tag">{{
+                    opt.tag
+                  }}</span>
                 </div>
                 <div class="filter-option-desc">{{ opt.desc }}</div>
               </div>
@@ -49,9 +55,23 @@
         </div>
         <div class="setting-control">
           <label class="switch">
+            <input type="checkbox" v-model="formData.input.punct_follow_mode" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>数字后智能标点</label>
+          <p class="setting-hint">
+            数字后句号输出点号、逗号输出英文逗号，方便输入 IP、小数、千分位等
+          </p>
+        </div>
+        <div class="setting-control">
+          <label class="switch">
             <input
               type="checkbox"
-              v-model="formData.input.punct_follow_mode"
+              v-model="formData.input.smart_punct_after_digit"
             />
             <span class="slider"></span>
           </label>
@@ -65,9 +85,7 @@
       <div class="setting-item">
         <div class="setting-info">
           <label>记忆前次状态</label>
-          <p class="setting-hint">
-            启用后恢复上次的中英文、全半角和标点状态
-          </p>
+          <p class="setting-hint">启用后恢复上次的中英文、全半角和标点状态</p>
         </div>
         <div class="setting-control">
           <label class="switch">
@@ -194,9 +212,11 @@ const filterModeOptions = [
   },
 ];
 
-const currentFilterOption = computed(() =>
-  filterModeOptions.find((o) => o.value === props.formData.engine.filter_mode) ||
-    filterModeOptions[0],
+const currentFilterOption = computed(
+  () =>
+    filterModeOptions.find(
+      (o) => o.value === props.formData.engine.filter_mode,
+    ) || filterModeOptions[0],
 );
 
 function selectFilterMode(value: string) {
@@ -237,7 +257,9 @@ onUnmounted(() => {
   cursor: pointer;
   font-size: 13px;
   color: #1f2937;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   min-width: 160px;
 }
 .filter-select:hover {

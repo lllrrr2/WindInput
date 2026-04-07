@@ -17,7 +17,8 @@ class CTextService : public ITfTextInputProcessorEx,
                      public ITfThreadMgrEventSink,
                      public ITfCompositionSink,
                      public ITfDisplayAttributeProvider,
-                     public ITfTextLayoutSink
+                     public ITfTextLayoutSink,
+                     public ITfTextEditSink
 {
     friend class CUpdateCompositionEditSession;
     friend class CEndCompositionEditSession;
@@ -56,6 +57,9 @@ public:
     // ITfTextLayoutSink
     STDMETHODIMP OnLayoutChange(ITfContext* pContext, TfLayoutCode lCode, ITfContextView* pView);
 
+    // ITfTextEditSink
+    STDMETHODIMP OnEndEdit(ITfContext* pContext, TfEditCookie ecReadOnly, ITfEditRecord* pEditRecord);
+
     // Get thread manager
     ITfThreadMgr* GetThreadMgr() { return _pThreadMgr; }
 
@@ -79,6 +83,13 @@ public:
 
     // Insert text and start new composition (for top code commit)
     BOOL InsertTextAndStartComposition(const std::wstring& insertText, const std::wstring& newComposition);
+
+    // Get cached character before caret (set by ITfTextEditSink::OnEndEdit)
+    // Used by KeyEventSink to include prevChar in key events for smart punctuation
+    WCHAR GetCachedPrevChar() const { return _cachedPrevChar; }
+
+    // Get last known caret Y position (for cross-line movement detection)
+    LONG GetLastKnownCaretY() const { return _lastKnownCaretY; }
 
     // Get and send caret position to Go Service
     BOOL GetCaretPosition(LONG* px, LONG* py, LONG* pHeight);
@@ -161,6 +172,15 @@ private:
     ITfContext* _pLayoutSinkContext;  // Context we registered the sink on
     void _AdviseTextLayoutSink(ITfContext* pContext);
     void _UnadviseTextLayoutSink();
+
+    // ITfTextEditSink registration
+    DWORD _dwTextEditSinkCookie;
+    ITfContext* _pTextEditSinkContext;  // Context we registered the sink on
+    void _AdviseTextEditSink(ITfContext* pContext);
+    void _UnadviseTextEditSink();
+
+    // Cached character before caret (updated by OnEndEdit, consumed by KeyEventSink)
+    WCHAR _cachedPrevChar;
 
     BOOL _InitThreadMgrEventSink();
     void _UninitThreadMgrEventSink();

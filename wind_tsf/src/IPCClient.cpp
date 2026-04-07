@@ -519,7 +519,7 @@ BOOL CIPCClient::_SendBinaryMessage(uint16_t command, const void* payload, uint3
 // ============================================================================
 
 BOOL CIPCClient::SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modifiers, uint8_t eventType,
-                              uint8_t toggles, uint16_t eventSeq)
+                              uint8_t toggles, uint16_t eventSeq, uint16_t prevChar)
 {
     if (!_ShouldAttemptOperation())
     {
@@ -539,9 +539,10 @@ BOOL CIPCClient::SendKeyEvent(uint32_t keyCode, uint32_t scanCode, uint32_t modi
     payload.eventType = eventType;
     payload.toggles = toggles;
     payload.eventSeq = eventSeq;
+    payload.prevChar = prevChar;
 
-    _LogDebug(L"Sending key event: keyCode=0x%X, mods=0x%X, type=%d, toggles=0x%X, seq=%d",
-              keyCode, modifiers, eventType, toggles, eventSeq);
+    _LogDebug(L"Sending key event: keyCode=0x%X, mods=0x%X, type=%d, toggles=0x%X, seq=%d, prevChar=0x%X",
+              keyCode, modifiers, eventType, toggles, eventSeq, prevChar);
 
     return _SendBinaryMessage(CMD_KEY_EVENT, &payload, sizeof(payload));
 }
@@ -587,6 +588,27 @@ BOOL CIPCClient::SendCaretUpdate(int x, int y, int height, int compositionStartX
 
     // Send async - no response needed for caret updates
     return _SendBinaryMessage(CMD_CARET_UPDATE, &payload, sizeof(payload), true /* async */);
+}
+
+BOOL CIPCClient::SendSelectionChanged(uint16_t prevChar)
+{
+    if (!_ShouldAttemptOperation())
+    {
+        return FALSE;
+    }
+
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
+    SelectionChangedPayload payload;
+    payload.prevChar = prevChar;
+    payload.reserved = 0;
+
+    _LogDebug(L"Sending selection changed (async): prevChar=0x%X", prevChar);
+
+    return _SendBinaryMessage(CMD_SELECTION_CHANGED, &payload, sizeof(payload), true /* async */);
 }
 
 BOOL CIPCClient::SendFocusLost()

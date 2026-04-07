@@ -100,14 +100,15 @@ type ToolbarConfig struct {
 
 // InputConfig contains input behavior settings
 type InputConfig struct {
-	PunctFollowMode  bool                   `yaml:"punct_follow_mode" json:"punct_follow_mode"`
-	SelectKeyGroups  []string               `yaml:"select_key_groups" json:"select_key_groups"`
-	PageKeys         []string               `yaml:"page_keys" json:"page_keys"`
-	HighlightKeys    []string               `yaml:"highlight_keys" json:"highlight_keys"`     // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
-	PinyinSeparator  string                 `yaml:"pinyin_separator" json:"pinyin_separator"` // 拼音分隔符: "auto", "quote", "backtick", "none"
-	ShiftTempEnglish ShiftTempEnglishConfig `yaml:"shift_temp_english" json:"shift_temp_english"`
-	CapsLockBehavior CapsLockBehaviorConfig `yaml:"capslock_behavior" json:"capslock_behavior"`
-	TempPinyin       TempPinyinConfig       `yaml:"temp_pinyin" json:"temp_pinyin"`
+	PunctFollowMode      bool                   `yaml:"punct_follow_mode" json:"punct_follow_mode"`
+	SelectKeyGroups      []string               `yaml:"select_key_groups" json:"select_key_groups"`
+	PageKeys             []string               `yaml:"page_keys" json:"page_keys"`
+	HighlightKeys        []string               `yaml:"highlight_keys" json:"highlight_keys"`                   // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
+	SmartPunctAfterDigit bool                   `yaml:"smart_punct_after_digit" json:"smart_punct_after_digit"` // 数字后标点智能转换：句号→点号、逗号→英文逗号（默认 true）
+	PinyinSeparator      string                 `yaml:"pinyin_separator" json:"pinyin_separator"`               // 拼音分隔符: "auto", "quote", "backtick", "none"
+	ShiftTempEnglish     ShiftTempEnglishConfig `yaml:"shift_temp_english" json:"shift_temp_english"`
+	CapsLockBehavior     CapsLockBehaviorConfig `yaml:"capslock_behavior" json:"capslock_behavior"`
+	TempPinyin           TempPinyinConfig       `yaml:"temp_pinyin" json:"temp_pinyin"`
 }
 
 // TempPinyinConfig 临时拼音模式配置
@@ -181,11 +182,12 @@ func DefaultConfig() *Config {
 			Visible: true,
 		},
 		Input: InputConfig{
-			PunctFollowMode: false,
-			SelectKeyGroups: []string{"semicolon_quote"},
-			PageKeys:        []string{"pageupdown", "minus_equal"},
-			HighlightKeys:   []string{"arrows"},
-			PinyinSeparator: "auto",
+			SmartPunctAfterDigit: true,
+			PunctFollowMode:      false,
+			SelectKeyGroups:      []string{"semicolon_quote"},
+			PageKeys:             []string{"pageupdown", "minus_equal"},
+			HighlightKeys:        []string{"arrows"},
+			PinyinSeparator:      "auto",
 			ShiftTempEnglish: ShiftTempEnglishConfig{
 				Enabled:               true,
 				ShowEnglishCandidates: true,
