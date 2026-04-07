@@ -81,6 +81,54 @@ type ConfirmedSegment struct {
 	ConsumedCode string // 消耗的原始拼音编码，如 "women"
 }
 
+// caretState 光标位置与自适应检测相关状态
+type caretState struct {
+	// 当前光标位置（来自 C++ TSF Bridge）
+	caretX      int
+	caretY      int
+	caretHeight int
+	caretValid  bool // true if we have received valid caret position (coordinates can be negative in multi-monitor)
+
+	// Composition start position: captured when inputBuffer transitions from empty to non-empty.
+	// Used to anchor the candidate window at the start of the composition when inline preedit is enabled,
+	// instead of following the current caret position which moves as the user types.
+	compositionStartX     int
+	compositionStartY     int
+	compositionStartValid bool
+
+	// Last known valid window position (for fallback)
+	lastValidX int
+	lastValidY int
+
+	// 首字符光标位置诊断：记录 Position A（预按键光标）和后续更新的差异
+	diagPreKeyCaretX     int  // Position A: 按键前的光标 X
+	diagPreKeyCaretY     int  // Position A: 按键前的光标 Y
+	diagPreKeyCaretValid bool // Position A 是否有效
+	diagCaretUpdateCount int  // pendingFirstShow 期间收到的 caret update 次数
+
+	// 自适应光标检测：按进程记录 Position A 的可靠性
+	activeProcessID   uint32                   // 当前活跃进程 ID
+	activeProcessName string                   // 当前活跃进程名（小写）
+	caretProfiles     map[uint32]*caretProfile // 每个进程的光标行为档案
+	lastKeyTime       time.Time                // 最近一次按键处理的时间，用于过滤 stale caret update
+}
+
+// tempModeState 临时输入模式（临时英文/临时拼音）状态
+type tempModeState struct {
+	tempEnglishMode   bool   // 是否处于临时英文模式
+	tempEnglishBuffer string // 临时英文缓冲区
+	tempPinyinMode    bool   // 是否处于临时拼音模式
+	tempPinyinBuffer  string // 临时拼音输入缓冲区
+}
+
+// addWordState 快捷加词模式状态
+type addWordState struct {
+	addWordActive bool   // 是否处于加词模式
+	addWordChars  []rune // 可选字符池
+	addWordLen    int    // 当前选取的词长
+	addWordCode   string // 自动计算的编码
+}
+
 // Coordinator orchestrates between C++ Bridge, Engine, and native UI
 type Coordinator struct {
 	engineMgr    *engine.Manager
@@ -116,46 +164,15 @@ type Coordinator struct {
 	pendingFirstShow     bool      // 首字符延迟显示：等待布局更新后的准确位置再显示候选窗口
 	pendingFirstShowTime time.Time // pendingFirstShow 设置的时间，用于跳过同步调用栈内的 stale 更新
 
-	// 首字符光标位置诊断：记录 Position A（预按键光标）和后续更新的差异
-	diagPreKeyCaretX     int  // Position A: 按键前的光标 X
-	diagPreKeyCaretY     int  // Position A: 按键前的光标 Y
-	diagPreKeyCaretValid bool // Position A 是否有效
-	diagCaretUpdateCount int  // pendingFirstShow 期间收到的 caret update 次数
-
-	// 自适应光标检测：按进程记录 Position A 的可靠性
-	activeProcessID   uint32                   // 当前活跃进程 ID
-	activeProcessName string                   // 当前活跃进程名（小写）
-	caretProfiles     map[uint32]*caretProfile // 每个进程的光标行为档案
-	lastKeyTime       time.Time                // 最近一次按键处理的时间，用于过滤 stale caret update
+	// 光标位置与自适应检测
+	caretState
 
 	// 应用兼容性规则
 	appCompat        *config.AppCompat     // 兼容性规则（从 compat.yaml 加载）
 	activeCompatRule *config.AppCompatRule // 当前进程匹配的兼容性规则（nil 表示无特殊处理）
 
-	// 临时英文模式状态
-	tempEnglishMode   bool   // 是否处于临时英文模式
-	tempEnglishBuffer string // 临时英文缓冲区
-
-	// 临时拼音模式状态
-	tempPinyinMode   bool   // 是否处于临时拼音模式
-	tempPinyinBuffer string // 临时拼音输入缓冲区
-
-	// Caret position (from C++)
-	caretX      int
-	caretY      int
-	caretHeight int
-	caretValid  bool // true if we have received valid caret position (coordinates can be negative in multi-monitor)
-
-	// Composition start position: captured when inputBuffer transitions from empty to non-empty.
-	// Used to anchor the candidate window at the start of the composition when inline preedit is enabled,
-	// instead of following the current caret position which moves as the user types.
-	compositionStartX     int
-	compositionStartY     int
-	compositionStartValid bool
-
-	// Last known valid window position (for fallback)
-	lastValidX int
-	lastValidY int
+	// 临时输入模式
+	tempModeState
 
 	// Punctuation converter with state (for paired punctuation like quotes)
 	punctConverter *transform.PunctuationConverter
@@ -178,11 +195,8 @@ type Coordinator struct {
 	// 用于在中文标点模式下将数字后的 。→. ，→, 自动转换为英文标点
 	lastOutputWasDigit bool
 
-	// 加词模式状态
-	addWordActive bool   // 是否处于加词模式
-	addWordChars  []rune // 可选字符池
-	addWordLen    int    // 当前选取的词长
-	addWordCode   string // 自动计算的编码
+	// 快捷加词模式
+	addWordState
 }
 
 // BridgeServer interface for broadcasting state to TSF clients
@@ -371,15 +385,17 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		currentPage:        1,
 		totalPages:         1,
 		candidatesPerPage:  candidatesPerPage,
-		caretX:             100,
-		caretY:             100,
-		caretHeight:        20,
-		punctConverter:     transform.NewPunctuationConverter(),
-		hotkeyCompiler:     hotkey.NewCompiler(cfg),
-		hotkeysDirty:       true, // 首次使用时需要编译
-		inputHistory:       NewInputHistory(20),
-		caretProfiles:      make(map[uint32]*caretProfile),
-		appCompat:          appCompat,
+		caretState: caretState{
+			caretX:        100,
+			caretY:        100,
+			caretHeight:   20,
+			caretProfiles: make(map[uint32]*caretProfile),
+		},
+		punctConverter: transform.NewPunctuationConverter(),
+		hotkeyCompiler: hotkey.NewCompiler(cfg),
+		hotkeysDirty:   true, // 首次使用时需要编译
+		inputHistory:   NewInputHistory(20),
+		appCompat:      appCompat,
 	}
 
 	// Set up toolbar callbacks
