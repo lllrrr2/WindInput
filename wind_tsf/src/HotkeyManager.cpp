@@ -168,26 +168,31 @@ uint32_t CHotkeyManager::CalcKeyHash(uint32_t modifiers, uint32_t keyCode)
 }
 
 // Static method: Get current modifier state from system
+// Uses both GetAsyncKeyState (hardware state) and GetKeyState (message queue state)
+// to avoid missing modifiers from simulated input (e.g. AHK SendInput).
+// GetAsyncKeyState can lag behind injected key events, while GetKeyState is
+// synchronized with the thread's message queue and reflects the correct state
+// when processing a queued keystroke.
 uint32_t CHotkeyManager::GetCurrentModifiers()
 {
     uint32_t modifiers = 0;
 
-    // Check generic modifiers
-    if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
+    // Check generic modifiers - union of async (hardware) and sync (message queue) state
+    if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) || (GetKeyState(VK_SHIFT) & 0x8000))
         modifiers |= KEYMOD_SHIFT;
-    if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+    if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) || (GetKeyState(VK_CONTROL) & 0x8000))
         modifiers |= KEYMOD_CTRL;
-    if (GetAsyncKeyState(VK_MENU) & 0x8000)
+    if ((GetAsyncKeyState(VK_MENU) & 0x8000) || (GetKeyState(VK_MENU) & 0x8000))
         modifiers |= KEYMOD_ALT;
 
     // Check specific left/right modifiers
-    if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+    if ((GetAsyncKeyState(VK_LSHIFT) & 0x8000) || (GetKeyState(VK_LSHIFT) & 0x8000))
         modifiers |= KEYMOD_LSHIFT;
-    if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+    if ((GetAsyncKeyState(VK_RSHIFT) & 0x8000) || (GetKeyState(VK_RSHIFT) & 0x8000))
         modifiers |= KEYMOD_RSHIFT;
-    if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+    if ((GetAsyncKeyState(VK_LCONTROL) & 0x8000) || (GetKeyState(VK_LCONTROL) & 0x8000))
         modifiers |= KEYMOD_LCTRL;
-    if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+    if ((GetAsyncKeyState(VK_RCONTROL) & 0x8000) || (GetKeyState(VK_RCONTROL) & 0x8000))
         modifiers |= KEYMOD_RCTRL;
 
     // Check CapsLock state
