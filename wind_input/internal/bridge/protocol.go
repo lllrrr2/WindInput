@@ -102,9 +102,9 @@ type MessageHandler interface {
 	HandleCaretUpdate(data CaretData) error
 	HandleFocusLost()
 	HandleCompositionTerminated()
-	HandleFocusGained() *StatusUpdateData
+	HandleFocusGained(processID uint32) *StatusUpdateData
 	HandleIMEDeactivated()
-	HandleIMEActivated() *StatusUpdateData
+	HandleIMEActivated(processID uint32) *StatusUpdateData
 	HandleToggleMode() (commitText string, chineseMode bool)
 	HandleCapsLockState(on bool)
 	HandleMenuCommand(command string) *StatusUpdateData

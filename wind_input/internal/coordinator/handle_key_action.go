@@ -134,32 +134,63 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	}
 
 	showStart := time.Now()
-	// 首字符延迟显示候选窗口。某些应用（EverEdit、微信等）在 composition 创建后
-	// 不会立即更新 GetTextExt 返回值，需要等消息循环运行（WM_PAINT）后才会刷新。
-	// ITfTextLayoutSink::OnLayoutChange 会在应用重排后触发准确的 caret update。
-	// 我们跳过同步调用栈内的 stale 更新（通常 <5ms），等待 OnLayoutChange 的更新
-	// （通常 15-30ms），避免候选框先出现在错误位置再跳动。
+	// 首字符自适应延迟显示候选窗口。
+	// 某些应用在 composition 创建后不会立即更新 GetTextExt 返回值（如微信 deltaY=20px），
+	// 需要等 OnLayoutChange 触发后才能获取准确坐标。但另一些应用（EverEdit、Terminal 等）
+	// OnLayoutChange 根本不触发或延迟极高（80-100ms），而 Position A（预按键光标）完全准确。
 	//
-	// 例外：HostRender 模式下（开始菜单等受限环境），TSF 的 RequestEditSession 始终
-	// 失败导致 composition 文本无法写入，OnLayoutChange 永远不会触发。此时光标位置
-	// 已经是 fallback 近似值，等待精确位置没有意义，直接显示即可。
+	// 自适应策略：按进程 ID 记录 Position A 的可靠性。
+	// - 首次 composition：延迟等待 OnLayoutChange（80ms 超时），同时记录 Position A 与最终位置差异
+	// - 后续 composition：如果 Position A 可靠（delta ≤ 4px），直接显示，0 延迟
+	//
+	// HostRender 模式（开始菜单等受限环境）始终直接显示。
 	isHostRendering := c.uiManager != nil && c.uiManager.IsHostRendering()
 	if wasEmpty && !isHostRendering {
-		c.pendingFirstShow = true
-		c.pendingFirstShowTime = time.Now()
-		c.logger.Debug("First character, deferring candidate window for OnLayoutChange")
+		// 记录 Position A（预按键光标位置）用于诊断和自适应判断
+		c.diagPreKeyCaretX = c.caretX
+		c.diagPreKeyCaretY = c.caretY
+		c.diagPreKeyCaretValid = c.caretValid
+		c.diagCaretUpdateCount = 0
 
-		// 超时回退：如果 100ms 内 OnLayoutChange 没有触发（应用不支持），强制显示
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			if c.pendingFirstShow && len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
-				c.pendingFirstShow = false
-				c.logger.Debug("pendingFirstShow timeout, force showing")
-				c.showUI()
-			}
-		}()
+		// 自适应检测：查询该进程的历史光标行为
+		profile := c.caretProfiles[c.activeProcessID]
+		if profile != nil && profile.posAReliable {
+			// 已学习且 Position A 可靠：直接显示，0 延迟
+			c.pendingFirstShow = false
+			c.logger.Info("FirstShow: immediate (posA reliable)",
+				"x", c.caretX, "y", c.caretY, "h", c.caretHeight, "pid", c.activeProcessID)
+			c.showUI()
+		} else {
+			// 未学习或 Position A 不可靠：延迟等待 OnLayoutChange
+			c.pendingFirstShow = true
+			c.pendingFirstShowTime = time.Now()
+			c.logger.Info("FirstShow: deferred, posA",
+				"x", c.caretX, "y", c.caretY, "h", c.caretHeight, "valid", c.caretValid,
+				"pid", c.activeProcessID, "learned", profile != nil)
+
+			// 超时回退：如果 80ms 内 OnLayoutChange 没有触发（应用不支持），强制显示
+			go func() {
+				time.Sleep(80 * time.Millisecond)
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				if c.pendingFirstShow && len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
+					c.pendingFirstShow = false
+
+					// 超时意味着 OnLayoutChange 未触发，Position A 就是最终位置
+					c.updateCaretProfile(true)
+
+					dx := c.caretX - c.diagPreKeyCaretX
+					dy := c.caretY - c.diagPreKeyCaretY
+					c.logger.Info("FirstShow: timeout 80ms, force showing",
+						"posNow", [2]int{c.caretX, c.caretY},
+						"posA", [2]int{c.diagPreKeyCaretX, c.diagPreKeyCaretY},
+						"deltaX", dx, "deltaY", dy,
+						"updates", c.diagCaretUpdateCount,
+						"pid", c.activeProcessID)
+					c.showUI()
+				}
+			}()
+		}
 	} else {
 		c.pendingFirstShow = false
 		c.showUI()

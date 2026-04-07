@@ -46,15 +46,40 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 			// OnLayoutChange 在应用消息循环运行后触发（通常 10-30ms），坐标才可靠。
 			// 超过 100ms 仍未收到新更新时强制显示，避免候选窗口不出现。
 			elapsed := time.Since(c.pendingFirstShowTime)
+			c.diagCaretUpdateCount++
+
+			// 计算当前位置与 Position A 的差异
+			dx := data.X - c.diagPreKeyCaretX
+			dy := data.Y - c.diagPreKeyCaretY
+			if dx < 0 {
+				dx = -dx
+			}
+			if dy < 0 {
+				dy = -dy
+			}
+
 			if elapsed < 10*time.Millisecond {
 				// 同步调用栈内的更新，跳过（坐标可能 stale）
-				c.logger.Debug("pendingFirstShow: skipping early caret update",
-					"elapsed", elapsed.String())
+				c.logger.Info("FirstShow: skipped early update",
+					"seq", c.diagCaretUpdateCount,
+					"elapsed", elapsed.String(),
+					"pos", [2]int{data.X, data.Y},
+					"posA", [2]int{c.diagPreKeyCaretX, c.diagPreKeyCaretY},
+					"deltaX", dx, "deltaY", dy)
 				return nil
 			}
 			// OnLayoutChange 或超时后的更新，可信赖
 			c.pendingFirstShow = false
-			c.logger.Debug("pendingFirstShow resolved", "elapsed", elapsed.String())
+			reliable := dx <= 4 && dy <= 4
+			c.updateCaretProfile(reliable)
+			c.logger.Info("FirstShow: resolved by OnLayoutChange",
+				"seq", c.diagCaretUpdateCount,
+				"elapsed", elapsed.String(),
+				"posC", [2]int{data.X, data.Y},
+				"posA", [2]int{c.diagPreKeyCaretX, c.diagPreKeyCaretY},
+				"deltaX", dx, "deltaY", dy,
+				"posAReliable", reliable,
+				"pid", c.activeProcessID)
 		}
 		c.showUI()
 	} else if c.pendingFirstShow && hasInput && hasUI && !hasCandidates {
@@ -208,8 +233,11 @@ func (c *Coordinator) getCompiledHotkeys() (keyDownHotkeys, keyUpHotkeys []uint3
 }
 
 // HandleFocusGained handles focus gained events and returns current status
-func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
-	c.logger.Debug("Focus gained")
+func (c *Coordinator) HandleFocusGained(processID uint32) *bridge.StatusUpdateData {
+	if processID != 0 {
+		c.activeProcessID = processID
+	}
+	c.logger.Debug("Focus gained", "processID", processID)
 
 	// 焦点变化后异步释放内存（非阻塞，不影响响应速度）
 	defer func() {
@@ -264,8 +292,11 @@ func (c *Coordinator) HandleFocusGained() *bridge.StatusUpdateData {
 
 // HandleIMEActivated handles IME being switched back (user selected this IME again)
 // This is called from TSF's Activate method
-func (c *Coordinator) HandleIMEActivated() *bridge.StatusUpdateData {
-	c.logger.Info("IME activated (user switched back to this IME)")
+func (c *Coordinator) HandleIMEActivated(processID uint32) *bridge.StatusUpdateData {
+	if processID != 0 {
+		c.activeProcessID = processID
+	}
+	c.logger.Info("IME activated (user switched back to this IME)", "processID", processID)
 
 	// Clear any pending input state when IME is reactivated
 	// This ensures composition state is consistent

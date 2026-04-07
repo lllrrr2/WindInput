@@ -81,7 +81,7 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 
 	case ipc.CmdIMEActivated:
 		s.logger.Info("IME activated (user switched back to this IME)", "clientID", clientID, "processID", processID)
-		statusUpdate := s.handler.HandleIMEActivated()
+		statusUpdate := s.handler.HandleIMEActivated(processID)
 		if statusUpdate != nil {
 			return s.encodeStatusUpdateWithHostRender(statusUpdate, processID)
 		}
@@ -199,7 +199,7 @@ func (s *Server) handleFocusGained(payload []byte, clientID int, processID uint3
 		}
 	}
 
-	statusUpdate := s.handler.HandleFocusGained()
+	statusUpdate := s.handler.HandleFocusGained(processID)
 	if statusUpdate != nil {
 		return s.encodeStatusUpdateWithHostRender(statusUpdate, processID)
 	}
