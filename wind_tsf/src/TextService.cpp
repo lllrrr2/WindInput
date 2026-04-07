@@ -663,6 +663,8 @@ CTextService::CTextService()
     , _cachedPrevChar(0)
     , _dwOpenCloseSinkCookie(TF_INVALID_COOKIE)
     , _bInCompartmentChange(FALSE)
+    , _bKeyboardDisabled(FALSE)
+    , _dwKeyboardDisabledSinkCookie(TF_INVALID_COOKIE)
 {
     ZeroMemory(&_cachedCaretRect, sizeof(_cachedCaretRect));
     ZeroMemory(&_cachedCompStartRect, sizeof(_cachedCompStartRect));
@@ -826,6 +828,17 @@ STDAPI CTextService::ActivateEx(ITfThreadMgr* pThreadMgr, TfClientId tfClientId,
         WIND_LOG_INFO(L"OpenCloseCompartment initialized\n");
     }
 
+    // Initialize compartment event sink for GUID_COMPARTMENT_KEYBOARD_DISABLED
+    // This allows us to stop intercepting keys when system disables keyboard input
+    if (!_InitKeyboardDisabledCompartment())
+    {
+        WIND_LOG_WARN(L"_InitKeyboardDisabledCompartment failed (non-fatal)\n");
+    }
+    else
+    {
+        WIND_LOG_INFO(L"KeyboardDisabledCompartment initialized\n");
+    }
+
     // Update caret position before notifying activation
     // This ensures status indicators appear at the correct position immediately
     SendCaretPositionUpdate();
@@ -860,8 +873,9 @@ STDAPI CTextService::Deactivate()
     // Release display attribute
     _UninitDisplayAttribute();
 
-    // Release compartment event sink
+    // Release compartment event sinks
     _UninitOpenCloseCompartment();
+    _UninitKeyboardDisabledCompartment();
 
     // Release key event sink
     _UninitKeyEventSink();
@@ -1329,14 +1343,61 @@ BOOL CTextService::_SetOpenCloseCompartment(BOOL bOpen)
 
 STDAPI CTextService::OnChange(REFGUID rguid)
 {
+    if (_pThreadMgr == nullptr)
+        return S_OK;
+
+    // ================================================================
+    // GUID_COMPARTMENT_KEYBOARD_DISABLED
+    // ================================================================
+    if (IsEqualGUID(rguid, GUID_COMPARTMENT_KEYBOARD_DISABLED))
+    {
+        ITfCompartmentMgr* pCompMgr = nullptr;
+        HRESULT hr = _pThreadMgr->QueryInterface(IID_ITfCompartmentMgr, (void**)&pCompMgr);
+        if (FAILED(hr) || pCompMgr == nullptr)
+            return S_OK;
+
+        ITfCompartment* pCompartment = nullptr;
+        hr = pCompMgr->GetCompartment(GUID_COMPARTMENT_KEYBOARD_DISABLED, &pCompartment);
+        pCompMgr->Release();
+
+        if (FAILED(hr) || pCompartment == nullptr)
+            return S_OK;
+
+        VARIANT var;
+        VariantInit(&var);
+        hr = pCompartment->GetValue(&var);
+        pCompartment->Release();
+
+        if (FAILED(hr) || var.vt != VT_I4)
+            return S_OK;
+
+        BOOL bDisabled = (var.lVal != 0);
+        if (_bKeyboardDisabled == bDisabled)
+            return S_OK;
+
+        _bKeyboardDisabled = bDisabled;
+
+        WIND_LOG_INFO_FMT(L"Compartment KEYBOARD_DISABLED changed: %d\n", bDisabled);
+
+        // End composition when keyboard becomes disabled
+        if (bDisabled)
+            EndComposition();
+
+        // Update language bar to show disabled state
+        if (_pLangBarItemButton != nullptr)
+            _pLangBarItemButton->UpdateKeyboardDisabled(bDisabled);
+
+        return S_OK;
+    }
+
+    // ================================================================
+    // GUID_COMPARTMENT_KEYBOARD_OPENCLOSE
+    // ================================================================
     if (!IsEqualGUID(rguid, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE))
         return S_OK;
 
     // Avoid re-entrant handling when we set the compartment ourselves
     if (_bInCompartmentChange)
-        return S_OK;
-
-    if (_pThreadMgr == nullptr)
         return S_OK;
 
     // Read current compartment value
@@ -1387,6 +1448,76 @@ STDAPI CTextService::OnChange(REFGUID rguid)
 
     WIND_LOG_INFO_FMT(L"Mode switched via system compartment to %s\n", _bChineseMode ? L"Chinese" : L"English");
     return S_OK;
+}
+
+BOOL CTextService::_InitKeyboardDisabledCompartment()
+{
+    if (_pThreadMgr == nullptr)
+        return FALSE;
+
+    ITfCompartmentMgr* pCompMgr = nullptr;
+    HRESULT hr = _pThreadMgr->QueryInterface(IID_ITfCompartmentMgr, (void**)&pCompMgr);
+    if (FAILED(hr) || pCompMgr == nullptr)
+        return FALSE;
+
+    ITfCompartment* pCompartment = nullptr;
+    hr = pCompMgr->GetCompartment(GUID_COMPARTMENT_KEYBOARD_DISABLED, &pCompartment);
+    pCompMgr->Release();
+
+    if (FAILED(hr) || pCompartment == nullptr)
+        return FALSE;
+
+    // Read current value
+    VARIANT var;
+    VariantInit(&var);
+    if (SUCCEEDED(pCompartment->GetValue(&var)) && var.vt == VT_I4)
+        _bKeyboardDisabled = (var.lVal != 0);
+
+    // Advise for changes
+    ITfSource* pSource = nullptr;
+    hr = pCompartment->QueryInterface(IID_ITfSource, (void**)&pSource);
+    pCompartment->Release();
+
+    if (FAILED(hr) || pSource == nullptr)
+        return FALSE;
+
+    hr = pSource->AdviseSink(IID_ITfCompartmentEventSink, (ITfCompartmentEventSink*)this, &_dwKeyboardDisabledSinkCookie);
+    pSource->Release();
+
+    if (FAILED(hr))
+    {
+        _dwKeyboardDisabledSinkCookie = TF_INVALID_COOKIE;
+        return FALSE;
+    }
+
+    WIND_LOG_DEBUG_FMT(L"Compartment KEYBOARD_DISABLED sink advised, current=%d\n", _bKeyboardDisabled);
+    return TRUE;
+}
+
+void CTextService::_UninitKeyboardDisabledCompartment()
+{
+    if (_dwKeyboardDisabledSinkCookie == TF_INVALID_COOKIE || _pThreadMgr == nullptr)
+        return;
+
+    ITfCompartmentMgr* pCompMgr = nullptr;
+    if (SUCCEEDED(_pThreadMgr->QueryInterface(IID_ITfCompartmentMgr, (void**)&pCompMgr)) && pCompMgr != nullptr)
+    {
+        ITfCompartment* pCompartment = nullptr;
+        if (SUCCEEDED(pCompMgr->GetCompartment(GUID_COMPARTMENT_KEYBOARD_DISABLED, &pCompartment)) && pCompartment != nullptr)
+        {
+            ITfSource* pSource = nullptr;
+            if (SUCCEEDED(pCompartment->QueryInterface(IID_ITfSource, (void**)&pSource)) && pSource != nullptr)
+            {
+                pSource->UnadviseSink(_dwKeyboardDisabledSinkCookie);
+                pSource->Release();
+            }
+            pCompartment->Release();
+        }
+        pCompMgr->Release();
+    }
+
+    _dwKeyboardDisabledSinkCookie = TF_INVALID_COOKIE;
+    WIND_LOG_DEBUG(L"Compartment KEYBOARD_DISABLED sink unadvised\n");
 }
 
 void CTextService::_DoFullStateSync()

@@ -27,6 +27,7 @@ CLangBarItemButton::CLangBarItemButton(CTextService* pTextService)
     , _bFullWidth(FALSE)
     , _bChinesePunct(TRUE)
     , _bToolbarVisible(FALSE)
+    , _bKeyboardDisabled(FALSE)
     , _hMsgWnd(NULL)
 {
     // Default input type label
@@ -127,6 +128,12 @@ STDAPI CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip)
     if (pbstrToolTip == nullptr)
         return E_INVALIDARG;
 
+    if (_bKeyboardDisabled)
+    {
+        *pbstrToolTip = SysAllocString(L"清风输入法 - 已禁用");
+        return (*pbstrToolTip != nullptr) ? S_OK : E_OUTOFMEMORY;
+    }
+
     // Use effective mode: Chinese mode + CapsLock ON = English Upper (temporary)
     BOOL effectiveChinese = _bChineseMode && !_bCapsLock;
 
@@ -168,6 +175,10 @@ STDAPI CLangBarItemButton::OnClick(TfLBIClick click, POINT pt, const RECT* prcAr
         _ShowPopupMenu(pt);
         return S_OK;
     }
+
+    // When keyboard is disabled by system, ignore left click toggle
+    if (_bKeyboardDisabled)
+        return S_OK;
 
     // Left click: Toggle mode via Go service (all state changes go through Go)
     if (_pTextService != nullptr)
@@ -379,6 +390,9 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
         BYTE r = pixels[i * 4 + 2];
         // max(r, g, b) as alpha - preserves anti-aliased edge transitions
         BYTE alpha = r > g ? (r > b ? r : b) : (g > b ? g : b);
+        // When keyboard is disabled, reduce alpha to 35% for dimmed appearance
+        if (_bKeyboardDisabled)
+            alpha = (BYTE)(alpha * 90 / 255);
         pixels[i * 4 + 0] = 0;      // B = 0
         pixels[i * 4 + 1] = 0;      // G = 0
         pixels[i * 4 + 2] = 0;      // R = 0
@@ -648,6 +662,19 @@ void CLangBarItemButton::UpdateCapsLockState(BOOL bCapsLock)
 
     // Only update if in English mode (Chinese mode doesn't show Caps Lock state)
     if (!_bChineseMode && _pLangBarItemSink != nullptr)
+    {
+        _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
+    }
+}
+
+void CLangBarItemButton::UpdateKeyboardDisabled(BOOL bDisabled)
+{
+    if (_bKeyboardDisabled == bDisabled)
+        return;
+
+    _bKeyboardDisabled = bDisabled;
+
+    if (_pLangBarItemSink != nullptr)
     {
         _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
     }

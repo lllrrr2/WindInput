@@ -141,6 +141,10 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // Trace: Log ALL key presses (very high frequency)
     WIND_LOG_TRACE_FMT(L"OnTestKeyDown: wParam=0x%02X\n", (uint32_t)wParam);
 
+    // Keyboard disabled by system: pass through all keys
+    if (_pTextService->IsKeyboardDisabled())
+        return S_OK;
+
     // First check if the context is read-only (browser non-editable area)
     if (_IsContextReadOnly(pContext))
     {
@@ -611,6 +615,10 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
 STDAPI CKeyEventSink::OnTestKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam, BOOL* pfEaten)
 {
     *pfEaten = FALSE;
+
+    // Keyboard disabled by system: pass through all keys
+    if (_pTextService->IsKeyboardDisabled())
+        return S_OK;
 
     // Handle pending toggle key release
     if (_pendingKeyUpKey != 0)

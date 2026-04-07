@@ -109,6 +109,7 @@ public:
     void ToggleInputMode();
     void SetInputMode(BOOL bChineseMode);  // Set mode from service response (no IPC)
     BOOL IsChineseMode() { return _bChineseMode; }
+    BOOL IsKeyboardDisabled() { return _bKeyboardDisabled; }
     ULONGLONG GetFocusSessionId() const { return _focusSessionId; }
 
     // Check if there's an active composition
@@ -147,6 +148,7 @@ private:
 
     // Input mode state
     BOOL _bChineseMode;
+    BOOL _bKeyboardDisabled;   // GUID_COMPARTMENT_KEYBOARD_DISABLED
     ULONGLONG _focusSessionId;
 
     // Composition
@@ -195,6 +197,12 @@ private:
     BOOL _InitOpenCloseCompartment();
     void _UninitOpenCloseCompartment();
     BOOL _SetOpenCloseCompartment(BOOL bOpen);
+
+    // Compartment event sink (GUID_COMPARTMENT_KEYBOARD_DISABLED)
+    DWORD _dwKeyboardDisabledSinkCookie;
+
+    BOOL _InitKeyboardDisabledCompartment();
+    void _UninitKeyboardDisabledCompartment();
 
     BOOL _InitThreadMgrEventSink();
     void _UninitThreadMgrEventSink();

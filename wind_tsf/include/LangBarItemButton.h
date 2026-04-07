@@ -56,6 +56,9 @@ public:
     // Update the button when Caps Lock state changes
     void UpdateCapsLockState(BOOL bCapsLock);
 
+    // Update the button when keyboard disabled state changes
+    void UpdateKeyboardDisabled(BOOL bDisabled);
+
     // Update both mode and Caps Lock state
     void UpdateState(BOOL bChineseMode, BOOL bCapsLock);
 
@@ -112,10 +115,11 @@ private:
     ITfLangBarItemSink* _pLangBarItemSink;
     DWORD _dwCookie;
     BOOL _bChineseMode;
-    BOOL _bCapsLock;        // Caps Lock state
-    BOOL _bFullWidth;       // Full-width mode (全角)
-    BOOL _bChinesePunct;    // Chinese punctuation mode (中文标点)
-    BOOL _bToolbarVisible;  // Toolbar visibility
+    BOOL _bCapsLock;           // Caps Lock state
+    BOOL _bFullWidth;          // Full-width mode (全角)
+    BOOL _bChinesePunct;       // Chinese punctuation mode (中文标点)
+    BOOL _bToolbarVisible;     // Toolbar visibility
+    BOOL _bKeyboardDisabled;   // Keyboard disabled by system
 
     // Input method type label for Chinese mode display
     // Default: "中", future values: "拼"(Pinyin), "五"(Wubi), "双"(Shuangpin)
