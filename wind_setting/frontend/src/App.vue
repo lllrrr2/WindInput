@@ -190,6 +190,10 @@ function mergeWithDefaults(cfg: any): Config {
         ...defaults.input.temp_pinyin,
         ...cfg.input?.temp_pinyin,
       },
+      auto_pair: {
+        ...defaults.input.auto_pair,
+        ...cfg.input?.auto_pair,
+      },
     },
     advanced: { ...defaults.advanced, ...cfg.advanced },
   };
@@ -350,6 +354,8 @@ async function resetCurrentPageDefaults() {
         ...formData.value.input,
         punct_follow_mode: defaults.input.punct_follow_mode,
         filter_mode: defaults.input.filter_mode,
+        smart_punct_after_digit: defaults.input.smart_punct_after_digit,
+        auto_pair: { ...defaults.input.auto_pair },
       };
       break;
     case "hotkey":

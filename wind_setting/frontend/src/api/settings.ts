@@ -105,6 +105,15 @@ export interface TempPinyinConfig {
   trigger_keys: string[];
 }
 
+// 自动标点配对配置
+export interface AutoPairConfig {
+  chinese: boolean;
+  english: boolean;
+  blacklist: string[];
+  chinese_pairs: string[][];
+  english_pairs: string[][];
+}
+
 // 输入配置
 export interface InputConfig {
   full_width: boolean;
@@ -117,6 +126,7 @@ export interface InputConfig {
   highlight_keys: string[]; // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
   pinyin_separator: string; // 拼音分隔符: "auto", "quote", "backtick", "none"
   temp_pinyin: TempPinyinConfig;
+  auto_pair: AutoPairConfig;
 }
 
 // 高级配置
@@ -343,6 +353,23 @@ export function getDefaultConfig(): Config {
       pinyin_separator: "auto",
       temp_pinyin: {
         trigger_keys: ["backtick"],
+      },
+      auto_pair: {
+        chinese: true,
+        english: false,
+        blacklist: [],
+        chinese_pairs: [
+          ["（", "）"],
+          ["【", "】"],
+          ["｛", "｝"],
+          ["《", "》"],
+          ["〈", "〉"],
+        ],
+        english_pairs: [
+          ["(", ")"],
+          ["[", "]"],
+          ["{", "}"],
+        ],
       },
     },
     advanced: {

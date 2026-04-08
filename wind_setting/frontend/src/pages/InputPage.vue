@@ -79,6 +79,46 @@
       </div>
     </div>
 
+    <!-- 标点配对 -->
+    <div class="settings-card">
+      <div class="card-title">标点配对</div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>中文标点自动配对</label>
+          <p class="setting-hint">
+            输入左括号类标点时自动补全右标点，如输入《自动变为《》
+          </p>
+        </div>
+        <div class="setting-control">
+          <label class="switch">
+            <input
+              type="checkbox"
+              v-model="formData.input.auto_pair.chinese"
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="setting-item item-disabled">
+        <div class="setting-info">
+          <label>英文标点自动配对</label>
+          <p class="setting-hint">
+            英文模式下自动配对括号（开发中）
+          </p>
+        </div>
+        <div class="setting-control">
+          <label class="switch">
+            <input
+              type="checkbox"
+              v-model="formData.input.auto_pair.english"
+              disabled
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
     <!-- 默认状态 -->
     <div class="settings-card">
       <div class="card-title">默认状态</div>
