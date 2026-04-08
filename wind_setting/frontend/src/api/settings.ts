@@ -121,6 +121,7 @@ export interface InputConfig {
   punct_follow_mode: boolean;
   filter_mode: string; // 候选过滤模式: "smart", "general", "gb18030"
   smart_punct_after_digit: boolean;
+  smart_punct_list: string;
   select_key_groups: string[];
   page_keys: string[];
   highlight_keys: string[]; // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
@@ -347,6 +348,7 @@ export function getDefaultConfig(): Config {
       punct_follow_mode: false,
       filter_mode: "smart",
       smart_punct_after_digit: true,
+      smart_punct_list: ".,:",
       select_key_groups: ["semicolon_quote"],
       page_keys: ["pageupdown", "minus_equal"],
       highlight_keys: ["arrows"],

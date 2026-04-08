@@ -252,13 +252,13 @@ func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) 
 	}
 }
 
-// shouldSmartPunct 判断是否应对该标点执行数字后智能转换（。→. ，→,）。
+// shouldSmartPunct 判断是否应对该标点执行数字后智能转换（保持英文标点）。
 // 优先使用 TSF 提供的 prevChar（光标前字符），不可用时回退到 Go 端状态追踪。
 func (c *Coordinator) shouldSmartPunct(r rune, afterDigit bool, prevChar rune) bool {
 	if c.config == nil || !c.config.Input.SmartPunctAfterDigit {
 		return false
 	}
-	if r != '.' && r != ',' {
+	if !c.isSmartPunctChar(r) {
 		return false
 	}
 	// 主判断：TSF 提供的光标前字符
@@ -267,6 +267,21 @@ func (c *Coordinator) shouldSmartPunct(r rune, afterDigit bool, prevChar rune) b
 	}
 	// 回退：Go 端按键状态追踪
 	return afterDigit
+}
+
+// isSmartPunctChar 判断该英文标点是否在数字后智能标点列表中
+func (c *Coordinator) isSmartPunctChar(r rune) bool {
+	list := c.config.Input.SmartPunctList
+	if list == "" {
+		// 列表为空时回退到默认行为
+		return r == '.' || r == ','
+	}
+	for _, ch := range list {
+		if ch == r {
+			return true
+		}
+	}
+	return false
 }
 
 // getAutoPairTracker 返回当前应使用的配对追踪器，nil 表示不启用配对
@@ -339,6 +354,17 @@ func (c *Coordinator) handleTogglePunct() *bridge.KeyEventResult {
 	c.logger.Debug("Chinese punctuation toggled via hotkey", "chinesePunctuation", c.chinesePunctuation)
 	c.syncToolbarState()
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+}
+
+// isModifierOnlyKey 判断是否为 modifier-only 按键（不产生字符输出）
+func isModifierOnlyKey(vk uint32) bool {
+	switch vk {
+	case ipc.VK_SHIFT, ipc.VK_LSHIFT, ipc.VK_RSHIFT,
+		ipc.VK_CONTROL, ipc.VK_LCONTROL, ipc.VK_RCONTROL,
+		ipc.VK_MENU, ipc.VK_CAPITAL:
+		return true
+	}
+	return false
 }
 
 // getToggleModeKey maps keycode to toggle mode key name

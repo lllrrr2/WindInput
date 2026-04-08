@@ -59,8 +59,12 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 
 	// 数字后智能标点：保存前一按键的数字状态，然后重置。
 	// 仅在数字直通（无候选词选择）时重新设置为 true。
+	// 对于 modifier-only 按键（Shift/Ctrl/Alt/CapsLock），保持状态不变，
+	// 避免 Shift+标点（如 Shift+; 输入冒号）时丢失数字后状态。
 	prevDigitState := c.lastOutputWasDigit
-	c.lastOutputWasDigit = false
+	if !isModifierOnlyKey(uint32(data.KeyCode)) {
+		c.lastOutputWasDigit = false
+	}
 
 	// Check for Ctrl or Alt modifiers
 	hasCtrl := data.Modifiers&ModCtrl != 0

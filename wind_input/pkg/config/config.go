@@ -105,7 +105,8 @@ type InputConfig struct {
 	SelectKeyGroups      []string               `yaml:"select_key_groups" json:"select_key_groups"`
 	PageKeys             []string               `yaml:"page_keys" json:"page_keys"`
 	HighlightKeys        []string               `yaml:"highlight_keys" json:"highlight_keys"`                   // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
-	SmartPunctAfterDigit bool                   `yaml:"smart_punct_after_digit" json:"smart_punct_after_digit"` // 数字后标点智能转换：句号→点号、逗号→英文逗号（默认 true）
+	SmartPunctAfterDigit bool                   `yaml:"smart_punct_after_digit" json:"smart_punct_after_digit"` // 数字后标点智能转换（默认 true）
+	SmartPunctList       string                 `yaml:"smart_punct_list" json:"smart_punct_list"`               // 数字后保持英文的标点字符，如 ".,:"
 	PinyinSeparator      string                 `yaml:"pinyin_separator" json:"pinyin_separator"`               // 拼音分隔符: "auto", "quote", "backtick", "none"
 	ShiftTempEnglish     ShiftTempEnglishConfig `yaml:"shift_temp_english" json:"shift_temp_english"`
 	CapsLockBehavior     CapsLockBehaviorConfig `yaml:"capslock_behavior" json:"capslock_behavior"`
@@ -207,6 +208,7 @@ func DefaultConfig() *Config {
 		},
 		Input: InputConfig{
 			SmartPunctAfterDigit: true,
+			SmartPunctList:       ".,:",
 			PunctFollowMode:      false,
 			FilterMode:           "smart",
 			SelectKeyGroups:      []string{"semicolon_quote"},
