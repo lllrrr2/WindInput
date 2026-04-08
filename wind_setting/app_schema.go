@@ -17,7 +17,8 @@ type SchemaInfo struct {
 	IconLabel   string `json:"icon_label" yaml:"icon_label"`
 	Version     string `json:"version" yaml:"version"`
 	Description string `json:"description" yaml:"description"`
-	EngineType  string `json:"engine_type"` // codetable | pinyin（从 engine.type 读取）
+	EngineType  string `json:"engine_type"`     // codetable | pinyin | mixed（从 engine.type 读取）
+	Error       string `json:"error,omitempty"` // 验证错误信息，非空表示方案异常
 }
 
 // SchemaConfigMeta 方案元信息
@@ -78,6 +79,8 @@ type SchemaConfig struct {
 }
 
 // GetAvailableSchemas 获取所有可用的输入方案列表
+// 每个方案会进行轻量级验证（引擎类型、词典文件是否存在等），
+// 异常方案的 Error 字段会包含错误描述。
 func (a *App) GetAvailableSchemas() ([]SchemaInfo, error) {
 	exeDir := getExeDir()
 	configDir, err := config.GetConfigDir()
@@ -88,11 +91,22 @@ func (a *App) GetAvailableSchemas() ([]SchemaInfo, error) {
 	schemas := make(map[string]SchemaInfo)
 
 	// 先加载内置方案（exeDir/data/schemas）
-	loadSchemaInfoFromDir(filepath.Join(exeDir, "data", "schemas"), schemas)
+	builtinDir := filepath.Join(exeDir, "data", "schemas")
+	loadSchemaInfoFromDir(builtinDir, schemas)
 
 	// 再加载用户方案（覆盖同 ID）
+	userDir := ""
 	if configDir != "" {
-		loadSchemaInfoFromDir(filepath.Join(configDir, "schemas"), schemas)
+		userDir = filepath.Join(configDir, "schemas")
+		loadSchemaInfoFromDir(userDir, schemas)
+	}
+
+	// 对每个方案进行资源验证（词典文件是否存在）
+	for id, s := range schemas {
+		if errMsg := validateSchemaResources(s.ID, exeDir, configDir); errMsg != "" {
+			s.Error = errMsg
+			schemas[id] = s
+		}
 	}
 
 	result := make([]SchemaInfo, 0, len(schemas))
@@ -177,6 +191,10 @@ func loadSchemaInfoFromDir(dir string, schemas map[string]SchemaInfo) {
 		return
 	}
 
+	validEngineTypes := map[string]bool{
+		"codetable": true, "pinyin": true, "mixed": true,
+	}
+
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".schema.yaml") {
 			continue
@@ -197,7 +215,7 @@ func loadSchemaInfoFromDir(dir string, schemas map[string]SchemaInfo) {
 			continue
 		}
 
-		schemas[cfg.Schema.ID] = SchemaInfo{
+		info := SchemaInfo{
 			ID:          cfg.Schema.ID,
 			Name:        cfg.Schema.Name,
 			IconLabel:   cfg.Schema.IconLabel,
@@ -205,7 +223,93 @@ func loadSchemaInfoFromDir(dir string, schemas map[string]SchemaInfo) {
 			Description: cfg.Schema.Description,
 			EngineType:  cfg.Engine.Type,
 		}
+
+		// 结构验证：引擎类型
+		if cfg.Engine.Type == "" {
+			info.Error = "engine.type 未配置"
+		} else if !validEngineTypes[cfg.Engine.Type] {
+			info.Error = fmt.Sprintf("engine.type 不支持: %s", cfg.Engine.Type)
+		}
+
+		// 结构验证：混输引用式方案可以没有词库
+		isMixedRef := cfg.Engine.Type == "mixed" && cfg.Engine.Mixed != nil &&
+			(cfg.Engine.Mixed["primary_schema"] != nil || cfg.Engine.Mixed["secondary_schema"] != nil)
+		if len(cfg.Dicts) == 0 && !isMixedRef && info.Error == "" {
+			info.Error = "未配置词库"
+		}
+
+		schemas[cfg.Schema.ID] = info
 	}
+}
+
+// validateSchemaResources 验证方案引用的词典文件是否存在
+// 返回空字符串表示验证通过，否则返回错误描述
+func validateSchemaResources(schemaID, exeDir, configDir string) string {
+	path, err := findSchemaFile(schemaID)
+	if err != nil {
+		return "方案文件不存在"
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "无法读取方案文件"
+	}
+
+	var cfg SchemaConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Sprintf("方案文件解析失败: %s", err.Error())
+	}
+
+	// 混输引用式方案通过引用其他方案获取词库，不需要检查词典文件
+	isMixedRef := cfg.Engine.Type == "mixed" && cfg.Engine.Mixed != nil &&
+		(cfg.Engine.Mixed["primary_schema"] != nil || cfg.Engine.Mixed["secondary_schema"] != nil)
+	if isMixedRef {
+		return ""
+	}
+
+	// 检查每个词典文件是否存在
+	exeDataDir := filepath.Join(exeDir, "data")
+	var missing []string
+	for _, d := range cfg.Dicts {
+		if d.Path == "" {
+			continue
+		}
+		if !resolveDictFileExists(d.Path, exeDataDir, configDir) {
+			missing = append(missing, d.Path)
+		}
+	}
+
+	if len(missing) > 0 {
+		if len(missing) == 1 {
+			return fmt.Sprintf("词典文件不存在: %s", missing[0])
+		}
+		return fmt.Sprintf("缺少 %d 个词典文件", len(missing))
+	}
+	return ""
+}
+
+// resolveDictFileExists 检查词典文件是否存在（与 wind_input 的 resolvePath 逻辑一致）
+func resolveDictFileExists(dictPath, exeDataDir, configDir string) bool {
+	if filepath.IsAbs(dictPath) {
+		_, err := os.Stat(dictPath)
+		return err == nil
+	}
+
+	// 按优先级在多个目录中查找
+	searchDirs := make([]string, 0, 4)
+	if exeDataDir != "" {
+		searchDirs = append(searchDirs, exeDataDir, filepath.Join(exeDataDir, "schemas"))
+	}
+	if configDir != "" {
+		searchDirs = append(searchDirs, configDir, filepath.Join(configDir, "schemas"))
+	}
+	for _, dir := range searchDirs {
+		candidate := filepath.Join(dir, dictPath)
+		if _, err := os.Stat(candidate); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func findSchemaFile(schemaID string) (string, error) {

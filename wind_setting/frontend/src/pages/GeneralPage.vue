@@ -91,8 +91,23 @@ async function loadAllSchemas() {
       enabledSchemaIDs.value = available.filter((id: string) =>
         schemas.some((s) => s.id === id),
       );
+      // 如果有无效的方案 ID 被过滤掉了，同步更新配置以清理脏数据
+      if (enabledSchemaIDs.value.length !== available.length) {
+        props.formData.schema.available = [...enabledSchemaIDs.value];
+      }
     } else {
       enabledSchemaIDs.value = schemas.map((s) => s.id);
+    }
+
+    // 如果当前活跃方案已不存在，自动切换到第一个可用方案
+    const activeID = props.formData.schema?.active;
+    if (activeID && !enabledSchemaIDs.value.includes(activeID)) {
+      const firstValid = enabledSchemaIDs.value.find(
+        (id) => !schemas.find((s) => s.id === id)?.error,
+      );
+      if (firstValid) {
+        props.formData.schema.active = firstValid;
+      }
     }
 
     for (const id of enabledSchemaIDs.value) {
@@ -459,8 +474,12 @@ onUnmounted(() => {
                     schema.engine_type
                   ] || schema.engine_type
                 }}</span>
+                <span v-if="schema.error" class="schema-row-error">异常</span>
               </div>
-              <div v-if="schema.description" class="schema-add-option-desc">
+              <div v-if="schema.error" class="schema-add-option-desc schema-error-msg">
+                {{ schema.error }}
+              </div>
+              <div v-else-if="schema.description" class="schema-add-option-desc">
                 {{ schema.description }}
               </div>
             </div>
@@ -517,9 +536,21 @@ onUnmounted(() => {
                 >
                   v{{ getSchemaVersion(schemaID) }}
                 </span>
+                <span
+                  v-if="getSchemaInfo(schemaID)?.error"
+                  class="schema-row-error"
+                  :title="getSchemaInfo(schemaID)?.error"
+                >
+                  异常
+                </span>
               </div>
               <div class="schema-row-sub">
-                {{ getSchemaSubtitle(schemaID) }}
+                <template v-if="getSchemaInfo(schemaID)?.error">
+                  <span class="schema-error-msg">{{ getSchemaInfo(schemaID)?.error }}</span>
+                </template>
+                <template v-else>
+                  {{ getSchemaSubtitle(schemaID) }}
+                </template>
               </div>
             </div>
             <div class="schema-row-actions">
@@ -527,6 +558,8 @@ onUnmounted(() => {
                 v-if="schemaID !== activeSchemaID"
                 class="btn btn-sm"
                 @click.stop="setActiveSchema(schemaID)"
+                :disabled="!!getSchemaInfo(schemaID)?.error"
+                :title="getSchemaInfo(schemaID)?.error ? '方案异常，无法设为当前' : ''"
               >
                 设为当前
               </button>
@@ -1249,6 +1282,18 @@ onUnmounted(() => {
   font-size: 11px;
   color: #9ca3af;
   flex-shrink: 0;
+}
+.schema-row-error {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fef2f2;
+  color: #dc2626;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.schema-error-msg {
+  color: #dc2626;
 }
 .schema-row-sub {
   font-size: 12px;
