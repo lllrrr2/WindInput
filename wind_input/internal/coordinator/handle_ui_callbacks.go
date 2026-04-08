@@ -87,21 +87,30 @@ func (c *Coordinator) handleGlobalSwitchEngine() {
 	}
 	c.mu.Unlock()
 
-	newSchemaID, err := c.engineMgr.ToggleSchema(available)
+	result, err := c.engineMgr.ToggleSchema(available)
 	if err != nil {
 		c.logger.Error("Failed to switch schema via global hotkey", "error", err)
 		return
 	}
-	c.logger.Info("Schema switched via global hotkey", "newSchema", newSchemaID)
+	c.logger.Info("Schema switched via global hotkey", "newSchema", result.NewSchemaID)
+
+	// 记录跳过的异常方案
+	for id, errMsg := range result.SkippedSchemas {
+		c.logger.Warn("Schema skipped due to error", "schemaID", id, "error", errMsg)
+	}
 
 	go func() {
-		if err := config.UpdateSchemaActive(newSchemaID); err != nil {
+		if err := config.UpdateSchemaActive(result.NewSchemaID); err != nil {
 			c.logger.Error("Failed to save schema to config", "error", err)
 		}
 	}()
 
 	c.mu.Lock()
-	c.showEngineIndicator()
+	if len(result.SkippedSchemas) > 0 {
+		c.showEngineIndicatorWithSkipped(result.SkippedSchemas)
+	} else {
+		c.showEngineIndicator()
+	}
 	c.broadcastState()
 	c.mu.Unlock()
 

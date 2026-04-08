@@ -132,25 +132,34 @@ func (c *Coordinator) handleEngineSwitchKey() *bridge.KeyEventResult {
 	if c.config != nil {
 		available = c.config.Schema.Available
 	}
-	newSchemaID, err := c.engineMgr.ToggleSchema(available)
+	result, err := c.engineMgr.ToggleSchema(available)
 	if err != nil {
 		c.logger.Error("Failed to switch schema", "error", err)
 		return nil
 	}
 
-	c.logger.Info("Schema switched", "newSchema", newSchemaID)
+	c.logger.Info("Schema switched", "newSchema", result.NewSchemaID)
+
+	// 记录跳过的异常方案
+	for id, errMsg := range result.SkippedSchemas {
+		c.logger.Warn("Schema skipped due to error", "schemaID", id, "error", errMsg)
+	}
 
 	// 保存到用户配置
 	go func() {
-		if err := config.UpdateSchemaActive(newSchemaID); err != nil {
+		if err := config.UpdateSchemaActive(result.NewSchemaID); err != nil {
 			c.logger.Error("Failed to save schema to config", "error", err)
 		} else {
-			c.logger.Debug("Schema saved to config", "schema", newSchemaID)
+			c.logger.Debug("Schema saved to config", "schema", result.NewSchemaID)
 		}
 	}()
 
-	// 显示引擎指示器
-	c.showEngineIndicator()
+	// 显示引擎指示器（如果有跳过的方案，显示带异常提示的指示器）
+	if len(result.SkippedSchemas) > 0 {
+		c.showEngineIndicatorWithSkipped(result.SkippedSchemas)
+	} else {
+		c.showEngineIndicator()
+	}
 
 	// 返回 ClearComposition 让 C++ 端清除 _isComposing 状态
 	if hadInput {
@@ -163,6 +172,54 @@ func (c *Coordinator) handleEngineSwitchKey() *bridge.KeyEventResult {
 func (c *Coordinator) showEngineIndicator() {
 	// Reuse showModeIndicator which now uses schema name
 	c.showModeIndicator()
+}
+
+// showEngineIndicatorWithSkipped 显示带异常方案提示的引擎指示器
+// 当有方案因配置错误被跳过时，指示器文本中附加提示信息
+func (c *Coordinator) showEngineIndicatorWithSkipped(skipped map[string]string) {
+	if c.uiManager == nil || !c.uiManager.IsReady() {
+		return
+	}
+
+	// 获取当前方案名称作为主文本
+	var modeText string
+	if c.engineMgr != nil {
+		name, _ := c.engineMgr.GetSchemaDisplayInfo()
+		if name != "" {
+			modeText = name
+		} else {
+			modeText = "中"
+		}
+	}
+
+	// 收集跳过的方案名称
+	var skippedNames []string
+	for id := range skipped {
+		displayName := id
+		if c.engineMgr != nil {
+			if sm := c.engineMgr.GetSchemaManager(); sm != nil {
+				if s := sm.GetSchema(id); s != nil && s.Schema.Name != "" {
+					displayName = s.Schema.Name
+				}
+			}
+		}
+		skippedNames = append(skippedNames, displayName)
+	}
+
+	// 构建提示文本：「全拼（五笔异常）」
+	if len(skippedNames) > 0 {
+		modeText += "（"
+		for i, name := range skippedNames {
+			if i > 0 {
+				modeText += "、"
+			}
+			modeText += name + "异常"
+		}
+		modeText += "）"
+	}
+
+	x, y := c.getIndicatorPosition()
+	c.uiManager.ShowModeIndicator(modeText, x, y)
 }
 
 // GetCurrentEngineName 获取当前引擎名称

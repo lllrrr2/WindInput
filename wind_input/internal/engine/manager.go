@@ -120,17 +120,26 @@ func (m *Manager) SwitchSchema(schemaID string) error {
 	return nil
 }
 
+// ToggleSchemaResult 方案切换结果
+type ToggleSchemaResult struct {
+	// NewSchemaID 成功切换到的方案 ID
+	NewSchemaID string
+	// SkippedSchemas 因加载失败而跳过的方案（ID → 错误信息）
+	SkippedSchemas map[string]string
+}
+
 // ToggleSchema 按 available 列表循环切换方案
 // available 为配置中启用的方案 ID 列表（顺序决定切换顺序）；
 // 若为空则回退到 SchemaManager 中所有已加载方案。
-func (m *Manager) ToggleSchema(available []string) (string, error) {
+// 当下一个方案加载失败时，会自动跳过并尝试后续方案。
+func (m *Manager) ToggleSchema(available []string) (*ToggleSchemaResult, error) {
 	m.mu.RLock()
 	sm := m.schemaManager
 	currentID := m.currentID
 	m.mu.RUnlock()
 
 	if sm == nil {
-		return currentID, fmt.Errorf("SchemaManager 未设置")
+		return nil, fmt.Errorf("SchemaManager 未设置")
 	}
 
 	// 使用 available 列表；若为空则回退到所有已加载方案
@@ -145,41 +154,56 @@ func (m *Manager) ToggleSchema(available []string) (string, error) {
 	}
 
 	if len(idList) <= 1 {
-		return currentID, nil
+		return &ToggleSchemaResult{NewSchemaID: currentID}, nil
 	}
 
-	// 找当前方案在列表中的位置，切换到下一个
-	nextID := ""
+	// 找当前方案在列表中的位置
+	startIdx := 0
 	for i, id := range idList {
 		if id == currentID {
-			nextID = idList[(i+1)%len(idList)]
+			startIdx = i
 			break
 		}
 	}
-	if nextID == "" {
-		nextID = idList[0]
-	}
 
-	if err := m.SwitchSchema(nextID); err != nil {
-		return currentID, err
-	}
+	// 从下一个方案开始，逐个尝试切换，跳过失败的方案
+	var skipped map[string]string
+	n := len(idList)
+	for offset := 1; offset < n; offset++ {
+		candidateID := idList[(startIdx+offset)%n]
 
-	// 同步 DictManager
-	m.mu.RLock()
-	dm := m.dictManager
-	m.mu.RUnlock()
-	if dm != nil {
-		s := sm.GetSchema(nextID)
-		if s != nil {
-			dm.SwitchSchemaFull(nextID, s.UserData.ShadowFile, s.UserData.UserDictFile,
-				s.UserData.TempDictFile, s.Learning.TempMaxEntries, s.Learning.TempPromoteCount)
+		if err := m.SwitchSchema(candidateID); err != nil {
+			m.logger.Warn("方案加载失败，跳过", "schemaID", candidateID, "error", err)
+			if skipped == nil {
+				skipped = make(map[string]string)
+			}
+			skipped[candidateID] = err.Error()
+			continue
 		}
+
+		// 切换成功，同步 DictManager
+		m.mu.RLock()
+		dm := m.dictManager
+		m.mu.RUnlock()
+		if dm != nil {
+			s := sm.GetSchema(candidateID)
+			if s != nil {
+				dm.SwitchSchemaFull(candidateID, s.UserData.ShadowFile, s.UserData.UserDictFile,
+					s.UserData.TempDictFile, s.Learning.TempMaxEntries, s.Learning.TempPromoteCount)
+			}
+		}
+
+		// 更新 SchemaManager 的活跃方案
+		sm.SetActive(candidateID)
+
+		return &ToggleSchemaResult{
+			NewSchemaID:    candidateID,
+			SkippedSchemas: skipped,
+		}, nil
 	}
 
-	// 更新 SchemaManager 的活跃方案
-	sm.SetActive(nextID)
-
-	return nextID, nil
+	// 所有方案都失败了
+	return nil, fmt.Errorf("所有可用方案均加载失败")
 }
 
 // ActivateTempSchema 临时激活方案（如码表方案下临时用拼音）
@@ -399,6 +423,13 @@ func (m *Manager) SwitchToSchemaByID(schemaID string) error {
 	sm.SetActive(schemaID)
 
 	return nil
+}
+
+// GetSchemaManager 返回底层的 SchemaManager（用于查询方案元信息）
+func (m *Manager) GetSchemaManager() *schema.SchemaManager {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.schemaManager
 }
 
 // GetSchemaDisplayInfo 获取方案显示信息（名称 + 图标）
