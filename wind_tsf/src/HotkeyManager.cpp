@@ -79,6 +79,13 @@ HotkeyType CHotkeyManager::ClassifyInputKey(WPARAM vk, uint32_t modifiers)
     // Numbers 0-9
     if (vk >= '0' && vk <= '9')
     {
+        // Shift+number produces punctuation characters (!, @, #, $, etc.)
+        // Classify as Punctuation so OnTestKeyDown always eats them in Chinese mode,
+        // allowing Go service to convert to Chinese punctuation.
+        if (modifiers & KEYMOD_SHIFT)
+        {
+            return HotkeyType::Punctuation;
+        }
         return HotkeyType::Number;
     }
 
