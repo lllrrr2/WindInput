@@ -93,6 +93,8 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 	}
 
 	// 为每个单音节添加单字节点（确保至少有通路）
+	// 单字回退节点施加 LogProb 惩罚，确保多字词路径始终优于单字拼凑路径。
+	const singleCharPenalty = -3.0
 	for startPos := 0; startPos < n; startPos++ {
 		if startPos >= len(dag.nodes) {
 			continue
@@ -114,6 +116,10 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 				seen[key] = true
 
 				logProb := calcLogProb(cand, unigram)
+				// 单字回退节点施加惩罚，防止高频单字拼凑出"前他""林歪"等伪词组
+				if len([]rune(cand.Text)) == 1 {
+					logProb += singleCharPenalty
+				}
 
 				node := LatticeNode{
 					Start:     startPos,

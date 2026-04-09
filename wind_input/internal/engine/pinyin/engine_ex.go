@@ -150,10 +150,8 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 					continue
 				}
 				charCount := len([]rune(sentence))
-				// 造句结果：initialQuality 根据词组构成区分
-				// 包含多字词的造句结果与精确匹配同级（4.0），
-				// 纯单字拼接（每个 Word 都是单字）降级为 1.0，避免非词库组合排到前面
-				iq := 4.0
+
+				// 检查是否为纯单字拼凑（每个 Word 都是单字）
 				allSingleChar := true
 				for _, w := range vResult.Words {
 					if len([]rune(w)) > 1 {
@@ -161,6 +159,14 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 						break
 					}
 				}
+				// 短输入（≤3 音节）的纯单字拼凑直接丢弃，不作为候选。
+				// 这些组合（如"前他""林歪"）不是真实词组，对用户没有价值。
+				// 长句（≥4 音节）保留单字回退作为兜底，确保输入始终有结果。
+				if allSingleChar && syllableCount <= 3 {
+					continue
+				}
+				// 长句中的纯单字拼凑降低优先级
+				iq := 4.0
 				if allSingleChar {
 					iq = 1.0
 				}

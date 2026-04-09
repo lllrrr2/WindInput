@@ -304,8 +304,11 @@ func (m *BigramModel) LogProb(word1, word2 string) float64 {
 		}
 	}
 
-	// 回退到 Unigram
-	return uniProb
+	// 回退到 Unigram，施加惩罚：bigram 中找不到该词对说明共现概率极低，
+	// 仅凭高频单字不应获得与真实词组相当的分数。
+	// 惩罚值 -4.0 约等于将概率缩小到 ~1.8%，确保真实词组路径始终占优。
+	const backoffPenalty = -4.0
+	return uniProb + backoffPenalty
 }
 
 // logSumExp 计算 log(exp(a) + exp(b))，避免数值溢出
