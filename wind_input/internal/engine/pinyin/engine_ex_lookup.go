@@ -25,12 +25,12 @@ func (e *Engine) sortCandidates(candidates []candidate.Candidate, order string, 
 		})
 	case "smart":
 		// 智能混排：Scorer 已统一处理 LM 分数，直接按权重排序
-		sort.Slice(candidates, func(i, j int) bool {
+		sort.SliceStable(candidates, func(i, j int) bool {
 			return candidate.Better(candidates[i], candidates[j])
 		})
 	default: // "char_first" 或默认
 		// 单字优先：默认按权重排序即可（权重体系已保证单字在同音节下排在词组前面的逻辑）
-		sort.Slice(candidates, func(i, j int) bool {
+		sort.SliceStable(candidates, func(i, j int) bool {
 			return candidate.Better(candidates[i], candidates[j])
 		})
 	}
@@ -122,12 +122,9 @@ func (e *Engine) lookupWithFuzzy(code string, syllables []string) []candidate.Ca
 	return results
 }
 
-// getFuzzyConfig 获取模糊拼音配置
+// getFuzzyConfig 获取模糊拼音配置（原子读取，线程安全）
 func (e *Engine) getFuzzyConfig() *FuzzyConfig {
-	if e.config != nil {
-		return e.config.Fuzzy
-	}
-	return nil
+	return e.fuzzyPtr.Load()
 }
 
 // ============================================================

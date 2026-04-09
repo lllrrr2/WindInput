@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/dict"
@@ -32,9 +33,10 @@ type Engine struct {
 	codeHintTable   *dict.CodeTable     // 编码反查码表
 	codeHintReverse map[string][]string // 汉字 -> 编码（反向索引）
 	config          *Config
-	dictManager     *dict.DictManager // 词库管理器（用于用户词频学习）
-	scorer          *Scorer           // 统一候选评分器（deprecated，保留供五笔引擎引用）
-	rimeScorer      *RimeScorer       // Rime 风格连续评分器
+	fuzzyPtr        atomic.Pointer[FuzzyConfig] // 线程安全的模糊音配置（热更新时原子写入，查询时原子读取）
+	dictManager     *dict.DictManager           // 词库管理器（用于用户词频学习）
+	scorer          *Scorer                     // 统一候选评分器（deprecated，保留供五笔引擎引用）
+	rimeScorer      *RimeScorer                 // Rime 风格连续评分器
 	logger          *slog.Logger
 
 	// 双拼支持
@@ -64,7 +66,7 @@ func NewEngineWithConfig(d *dict.CompositeDict, config *Config, logger *slog.Log
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Engine{
+	e := &Engine{
 		dict:         d,
 		syllableTrie: NewSyllableTrie(),
 		config:       config,
@@ -72,11 +74,28 @@ func NewEngineWithConfig(d *dict.CompositeDict, config *Config, logger *slog.Log
 		rimeScorer:   NewRimeScorer(nil, nil),
 		logger:       logger,
 	}
+	if config.Fuzzy != nil {
+		e.fuzzyPtr.Store(config.Fuzzy)
+	}
+	return e
 }
 
 // SetConfig 设置配置
 func (e *Engine) SetConfig(config *Config) {
 	e.config = config
+	if config != nil {
+		e.fuzzyPtr.Store(config.Fuzzy)
+	} else {
+		e.fuzzyPtr.Store(nil)
+	}
+}
+
+// SetFuzzyConfig 原子更新模糊拼音配置（线程安全，供热更新调用）
+func (e *Engine) SetFuzzyConfig(fc *FuzzyConfig) {
+	e.fuzzyPtr.Store(fc)
+	if e.config != nil {
+		e.config.Fuzzy = fc
+	}
 }
 
 // GetConfig 获取配置

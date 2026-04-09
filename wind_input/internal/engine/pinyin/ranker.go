@@ -98,7 +98,7 @@ func (r *Ranker) Rank(input *RankInput) []candidate.Candidate {
 	}
 
 	// 按得分降序排序
-	sort.Slice(scored, func(i, j int) bool {
+	sort.SliceStable(scored, func(i, j int) bool {
 		return scored[i].score > scored[j].score
 	})
 

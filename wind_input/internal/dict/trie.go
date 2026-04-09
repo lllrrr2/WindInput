@@ -72,7 +72,7 @@ func (t *Trie) SearchPrefix(prefix string, limit int) []candidate.Candidate {
 	var results []candidate.Candidate
 	t.collectAll(node, &results, limit)
 
-	sort.Slice(results, func(i, j int) bool {
+	sort.SliceStable(results, func(i, j int) bool {
 		return candidate.Better(results[i], results[j])
 	})
 

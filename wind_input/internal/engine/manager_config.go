@@ -97,19 +97,21 @@ func updatePinyinConfig(pinyinEngine *pinyin.Engine, pinyinCfg *config.PinyinCon
 		cfg.ShowCodeHint = showCodeHint
 
 		if pinyinCfg.Fuzzy.Enabled {
-			cfg.Fuzzy = &pinyin.FuzzyConfig{
-				ZhZ:   pinyinCfg.Fuzzy.ZhZ,
-				ChC:   pinyinCfg.Fuzzy.ChC,
-				ShS:   pinyinCfg.Fuzzy.ShS,
-				NL:    pinyinCfg.Fuzzy.NL,
-				FH:    pinyinCfg.Fuzzy.FH,
-				RL:    pinyinCfg.Fuzzy.RL,
-				AnAng: pinyinCfg.Fuzzy.AnAng,
-				EnEng: pinyinCfg.Fuzzy.EnEng,
-				InIng: pinyinCfg.Fuzzy.InIng,
-			}
+			pinyinEngine.SetFuzzyConfig(&pinyin.FuzzyConfig{
+				ZhZ:     pinyinCfg.Fuzzy.ZhZ,
+				ChC:     pinyinCfg.Fuzzy.ChC,
+				ShS:     pinyinCfg.Fuzzy.ShS,
+				NL:      pinyinCfg.Fuzzy.NL,
+				FH:      pinyinCfg.Fuzzy.FH,
+				RL:      pinyinCfg.Fuzzy.RL,
+				AnAng:   pinyinCfg.Fuzzy.AnAng,
+				EnEng:   pinyinCfg.Fuzzy.EnEng,
+				InIng:   pinyinCfg.Fuzzy.InIng,
+				IanIang: pinyinCfg.Fuzzy.IanIang,
+				UanUang: pinyinCfg.Fuzzy.UanUang,
+			})
 		} else {
-			cfg.Fuzzy = nil
+			pinyinEngine.SetFuzzyConfig(nil)
 		}
 
 		if oldShowCodeHint && !showCodeHint {

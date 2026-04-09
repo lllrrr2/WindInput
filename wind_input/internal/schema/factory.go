@@ -154,15 +154,17 @@ func createPinyinEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager,
 	// 模糊音配置
 	if spec.Fuzzy != nil && spec.Fuzzy.Enabled {
 		config.Fuzzy = &pinyin.FuzzyConfig{
-			ZhZ:   spec.Fuzzy.ZhZ,
-			ChC:   spec.Fuzzy.ChC,
-			ShS:   spec.Fuzzy.ShS,
-			NL:    spec.Fuzzy.NL,
-			FH:    spec.Fuzzy.FH,
-			RL:    spec.Fuzzy.RL,
-			AnAng: spec.Fuzzy.AnAng,
-			EnEng: spec.Fuzzy.EnEng,
-			InIng: spec.Fuzzy.InIng,
+			ZhZ:     spec.Fuzzy.ZhZ,
+			ChC:     spec.Fuzzy.ChC,
+			ShS:     spec.Fuzzy.ShS,
+			NL:      spec.Fuzzy.NL,
+			FH:      spec.Fuzzy.FH,
+			RL:      spec.Fuzzy.RL,
+			AnAng:   spec.Fuzzy.AnAng,
+			EnEng:   spec.Fuzzy.EnEng,
+			InIng:   spec.Fuzzy.InIng,
+			IanIang: spec.Fuzzy.IanIang,
+			UanUang: spec.Fuzzy.UanUang,
 		}
 	}
 

@@ -118,30 +118,65 @@ func (h *ReloadHandler) reloadActiveSchemaConfig() {
 
 	case schema.EngineTypePinyin:
 		if spec := s.Engine.Pinyin; spec != nil {
-			pinyinCfg := &config.PinyinConfig{
-				ShowCodeHint:    spec.ShowCodeHint,
-				UseSmartCompose: spec.UseSmartCompose,
-				CandidateOrder:  spec.CandidateOrder,
+			h.applyPinyinSpec(spec)
+		}
+
+	case schema.EngineTypeMixed:
+		// 混输方案：拼音配置可能在自身的 Engine.Pinyin 或引用的次方案中
+		pinyinSpec := s.Engine.Pinyin
+		if pinyinSpec == nil && s.Engine.Mixed != nil && s.Engine.Mixed.SecondarySchema != "" {
+			if secSchema := h.schemaMgr.GetSchema(s.Engine.Mixed.SecondarySchema); secSchema != nil {
+				pinyinSpec = secSchema.Engine.Pinyin
 			}
-			if spec.Fuzzy != nil && spec.Fuzzy.Enabled {
-				pinyinCfg.Fuzzy = config.FuzzyPinyinConfig{
-					Enabled: true,
-					ZhZ:     spec.Fuzzy.ZhZ,
-					ChC:     spec.Fuzzy.ChC,
-					ShS:     spec.Fuzzy.ShS,
-					NL:      spec.Fuzzy.NL,
-					FH:      spec.Fuzzy.FH,
-					RL:      spec.Fuzzy.RL,
-					AnAng:   spec.Fuzzy.AnAng,
-					EnEng:   spec.Fuzzy.EnEng,
-					InIng:   spec.Fuzzy.InIng,
+		}
+		if pinyinSpec != nil {
+			h.applyPinyinSpec(pinyinSpec)
+		}
+		// 码表子引擎配置
+		if s.Engine.Mixed != nil && s.Engine.Mixed.PrimarySchema != "" {
+			if priSchema := h.schemaMgr.GetSchema(s.Engine.Mixed.PrimarySchema); priSchema != nil {
+				if spec := priSchema.Engine.CodeTable; spec != nil {
+					h.engineMgr.UpdateCodetableOptions(
+						spec.AutoCommitUnique,
+						spec.ClearOnEmptyMax,
+						spec.TopCodeCommit,
+						spec.PunctCommit,
+						spec.ShowCodeHint,
+						spec.SingleCodeInput,
+						spec.CandidateSortMode,
+					)
 				}
 			}
-			h.engineMgr.UpdatePinyinOptions(pinyinCfg)
 		}
 	}
 
 	h.logger.Debug("Schema config reloaded", "schema", activeID, "engineType", s.Engine.Type)
+}
+
+// applyPinyinSpec 将 PinyinSpec 转换为 PinyinConfig 并更新引擎
+func (h *ReloadHandler) applyPinyinSpec(spec *schema.PinyinSpec) {
+	pinyinCfg := &config.PinyinConfig{
+		ShowCodeHint:    spec.ShowCodeHint,
+		UseSmartCompose: spec.UseSmartCompose,
+		CandidateOrder:  spec.CandidateOrder,
+	}
+	if spec.Fuzzy != nil {
+		pinyinCfg.Fuzzy = config.FuzzyPinyinConfig{
+			Enabled: spec.Fuzzy.Enabled,
+			ZhZ:     spec.Fuzzy.ZhZ,
+			ChC:     spec.Fuzzy.ChC,
+			ShS:     spec.Fuzzy.ShS,
+			NL:      spec.Fuzzy.NL,
+			FH:      spec.Fuzzy.FH,
+			RL:      spec.Fuzzy.RL,
+			AnAng:   spec.Fuzzy.AnAng,
+			EnEng:   spec.Fuzzy.EnEng,
+			InIng:   spec.Fuzzy.InIng,
+			IanIang: spec.Fuzzy.IanIang,
+			UanUang: spec.Fuzzy.UanUang,
+		}
+	}
+	h.engineMgr.UpdatePinyinOptions(pinyinCfg)
 }
 
 // GetStatus 获取服务状态

@@ -332,7 +332,7 @@ func (e *Engine) convertMixedOverflow(input string, maxCandidates int) *ConvertR
 	merged = append(merged, codetableCandidates...)
 	merged = append(merged, pinyinCandidates...)
 
-	sort.Slice(merged, func(i, j int) bool {
+	sort.SliceStable(merged, func(i, j int) bool {
 		return candidate.Better(merged[i], merged[j])
 	})
 	merged = dedupByText(merged)
@@ -449,7 +449,7 @@ func (e *Engine) convertMixed(input string, maxCandidates int) *ConvertResult {
 	merged = append(merged, pinyinCandidates...)
 
 	// 按权重排序
-	sort.Slice(merged, func(i, j int) bool {
+	sort.SliceStable(merged, func(i, j int) bool {
 		return candidate.Better(merged[i], merged[j])
 	})
 

@@ -335,7 +335,7 @@ func (c *CompositeDict) LookupAbbrev(code string, limit int) []candidate.Candida
 		}
 	}
 
-	sort.Slice(results, func(i, j int) bool {
+	sort.SliceStable(results, func(i, j int) bool {
 		return candidate.Better(results[i], results[j])
 	})
 

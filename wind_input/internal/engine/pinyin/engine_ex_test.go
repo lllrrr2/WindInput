@@ -206,20 +206,14 @@ func TestEngineConvertExRanking(t *testing.T) {
 		t.Logf("zheshi candidate[%d]: %s (weight=%d)", i, c.Text, c.Weight)
 	}
 
-	// 所有精确匹配的2字词应在单字之前
-	firstSingleCharIdx := -1
-	lastPhraseIdx := -1
-	for i, c := range result.Candidates {
-		if len([]rune(c.Text)) == 1 {
-			if firstSingleCharIdx == -1 {
-				firstSingleCharIdx = i
-			}
-		} else {
-			lastPhraseIdx = i
+	// 默认排序模式（char_first）按权重降序排列，验证权重单调递减
+	for i := 1; i < len(result.Candidates); i++ {
+		if result.Candidates[i].Weight > result.Candidates[i-1].Weight {
+			t.Errorf("candidates not sorted by weight: [%d]%s(w=%d) > [%d]%s(w=%d)",
+				i, result.Candidates[i].Text, result.Candidates[i].Weight,
+				i-1, result.Candidates[i-1].Text, result.Candidates[i-1].Weight)
+			break
 		}
-	}
-	if firstSingleCharIdx >= 0 && lastPhraseIdx >= 0 && firstSingleCharIdx < lastPhraseIdx {
-		t.Errorf("Single char appears before a phrase: singleAt=%d, phraseAt=%d", firstSingleCharIdx, lastPhraseIdx)
 	}
 }
 

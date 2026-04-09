@@ -102,6 +102,8 @@ type FuzzySpec struct {
 	AnAng   bool `yaml:"an_ang"`
 	EnEng   bool `yaml:"en_eng"`
 	InIng   bool `yaml:"in_ing"`
+	IanIang bool `yaml:"ian_iang"`
+	UanUang bool `yaml:"uan_uang"`
 }
 
 // DictRole 词库角色

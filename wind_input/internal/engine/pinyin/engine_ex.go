@@ -150,7 +150,20 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 					continue
 				}
 				charCount := len([]rune(sentence))
-				// 造句结果：initialQuality=4.0（与精确匹配同级），coverage 基于已完成音节比例
+				// 造句结果：initialQuality 根据词组构成区分
+				// 包含多字词的造句结果与精确匹配同级（4.0），
+				// 纯单字拼接（每个 Word 都是单字）降级为 1.0，避免非词库组合排到前面
+				iq := 4.0
+				allSingleChar := true
+				for _, w := range vResult.Words {
+					if len([]rune(w)) > 1 {
+						allSingleChar = false
+						break
+					}
+				}
+				if allSingleChar {
+					iq = 1.0
+				}
 				coverage := float64(syllableCount) / float64(totalSyllableCount)
 				// 造句的 dictWeight 用 Viterbi 路径的 LogProb 反映整句质量
 				// LogProb 通常在 [-30, 0] 范围，转换为正向权重
@@ -161,7 +174,7 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 				c := candidate.Candidate{
 					Text:           sentence,
 					Code:           completedCode,
-					Weight:         e.rimeScore(sentence, sentenceWeight, 4.0, coverage, charCount),
+					Weight:         e.rimeScore(sentence, sentenceWeight, iq, coverage, charCount),
 					ConsumedLength: allCompletedEnd, // 仅消耗已完成音节，partial 留在 buffer
 					// Viterbi 结果来自系统词库/语言模型造句，不应被 smart/common 过滤误删。
 					IsCommon: true,
