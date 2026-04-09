@@ -81,6 +81,7 @@ type SchemaConfig struct {
 // GetAvailableSchemas 获取所有可用的输入方案列表
 // 每个方案会进行轻量级验证（引擎类型、词典文件是否存在等），
 // 异常方案的 Error 字段会包含错误描述。
+// 使用合并读取：用户方案与内置方案合并后再验证，兼容 diff 精简文件。
 func (a *App) GetAvailableSchemas() ([]SchemaInfo, error) {
 	exeDir := getExeDir()
 	configDir, err := config.GetConfigDir()
@@ -88,22 +89,54 @@ func (a *App) GetAvailableSchemas() ([]SchemaInfo, error) {
 		configDir = ""
 	}
 
+	// 收集所有 schema ID（去重）
+	schemaIDs := collectSchemaIDs(exeDir, configDir)
+
+	validEngineTypes := map[string]bool{
+		"codetable": true, "pinyin": true, "mixed": true,
+	}
+
 	schemas := make(map[string]SchemaInfo)
+	for _, id := range schemaIDs {
+		// 通过合并读取获取完整配置
+		cfg, err := a.GetSchemaConfig(id)
+		if err != nil {
+			schemas[id] = SchemaInfo{ID: id, Error: fmt.Sprintf("加载失败: %v", err)}
+			continue
+		}
 
-	// 先加载内置方案（exeDir/data/schemas）
-	builtinDir := filepath.Join(exeDir, "data", "schemas")
-	loadSchemaInfoFromDir(builtinDir, schemas)
+		info := SchemaInfo{
+			ID:          cfg.Schema.ID,
+			Name:        cfg.Schema.Name,
+			IconLabel:   cfg.Schema.IconLabel,
+			Version:     cfg.Schema.Version,
+			Description: cfg.Schema.Description,
+			EngineType:  cfg.Engine.Type,
+		}
 
-	// 再加载用户方案（覆盖同 ID）
-	userDir := ""
-	if configDir != "" {
-		userDir = filepath.Join(configDir, "schemas")
-		loadSchemaInfoFromDir(userDir, schemas)
+		// 结构验证：引擎类型
+		if cfg.Engine.Type == "" {
+			info.Error = "engine.type 未配置"
+		} else if !validEngineTypes[cfg.Engine.Type] {
+			info.Error = fmt.Sprintf("engine.type 不支持: %s", cfg.Engine.Type)
+		}
+
+		// 结构验证：混输引用式方案可以没有词库
+		isMixedRef := cfg.Engine.Type == "mixed" && cfg.Engine.Mixed != nil &&
+			(cfg.Engine.Mixed["primary_schema"] != nil || cfg.Engine.Mixed["secondary_schema"] != nil)
+		if len(cfg.Dicts) == 0 && !isMixedRef && info.Error == "" {
+			info.Error = "未配置词库"
+		}
+
+		schemas[cfg.Schema.ID] = info
 	}
 
 	// 对每个方案进行资源验证（词典文件是否存在）
 	for id, s := range schemas {
-		if errMsg := validateSchemaResources(s.ID, exeDir, configDir); errMsg != "" {
+		if s.Error != "" {
+			continue
+		}
+		if errMsg := validateSchemaResourcesMerged(id, a, exeDir, configDir); errMsg != "" {
 			s.Error = errMsg
 			schemas[id] = s
 		}
@@ -239,79 +272,53 @@ func (a *App) SwitchActiveSchema(schemaID string) error {
 
 // --- 内部辅助函数 ---
 
-func loadSchemaInfoFromDir(dir string, schemas map[string]SchemaInfo) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
+// collectSchemaIDs 从内置和用户目录收集所有去重的 schema ID
+func collectSchemaIDs(exeDir, configDir string) []string {
+	seen := make(map[string]bool)
+	var ids []string
 
-	validEngineTypes := map[string]bool{
-		"codetable": true, "pinyin": true, "mixed": true,
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".schema.yaml") {
-			continue
-		}
-
-		path := filepath.Join(dir, entry.Name())
-		data, err := os.ReadFile(path)
+	collectFromDir := func(dir string) {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue
+			return
 		}
-
-		var cfg SchemaConfig
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			continue
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".schema.yaml") {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			var peek struct {
+				Schema struct {
+					ID string `yaml:"id"`
+				} `yaml:"schema"`
+			}
+			if err := yaml.Unmarshal(data, &peek); err != nil || peek.Schema.ID == "" {
+				continue
+			}
+			if !seen[peek.Schema.ID] {
+				seen[peek.Schema.ID] = true
+				ids = append(ids, peek.Schema.ID)
+			}
 		}
-
-		if cfg.Schema.ID == "" {
-			continue
-		}
-
-		info := SchemaInfo{
-			ID:          cfg.Schema.ID,
-			Name:        cfg.Schema.Name,
-			IconLabel:   cfg.Schema.IconLabel,
-			Version:     cfg.Schema.Version,
-			Description: cfg.Schema.Description,
-			EngineType:  cfg.Engine.Type,
-		}
-
-		// 结构验证：引擎类型
-		if cfg.Engine.Type == "" {
-			info.Error = "engine.type 未配置"
-		} else if !validEngineTypes[cfg.Engine.Type] {
-			info.Error = fmt.Sprintf("engine.type 不支持: %s", cfg.Engine.Type)
-		}
-
-		// 结构验证：混输引用式方案可以没有词库
-		isMixedRef := cfg.Engine.Type == "mixed" && cfg.Engine.Mixed != nil &&
-			(cfg.Engine.Mixed["primary_schema"] != nil || cfg.Engine.Mixed["secondary_schema"] != nil)
-		if len(cfg.Dicts) == 0 && !isMixedRef && info.Error == "" {
-			info.Error = "未配置词库"
-		}
-
-		schemas[cfg.Schema.ID] = info
 	}
+
+	collectFromDir(filepath.Join(exeDir, "data", "schemas"))
+	if configDir != "" {
+		collectFromDir(filepath.Join(configDir, "schemas"))
+	}
+
+	return ids
 }
 
-// validateSchemaResources 验证方案引用的词典文件是否存在
-// 返回空字符串表示验证通过，否则返回错误描述
-func validateSchemaResources(schemaID, exeDir, configDir string) string {
-	path, err := findSchemaFile(schemaID)
+// validateSchemaResourcesMerged 使用合并读取验证方案引用的词典文件是否存在
+func validateSchemaResourcesMerged(schemaID string, a *App, exeDir, configDir string) string {
+	cfg, err := a.GetSchemaConfig(schemaID)
 	if err != nil {
-		return "方案文件不存在"
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "无法读取方案文件"
-	}
-
-	var cfg SchemaConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Sprintf("方案文件解析失败: %s", err.Error())
+		return fmt.Sprintf("加载方案失败: %v", err)
 	}
 
 	// 混输引用式方案通过引用其他方案获取词库，不需要检查词典文件
