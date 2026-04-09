@@ -31,7 +31,7 @@ func LoadSchemaFile(path string) (*Schema, error) {
 }
 
 // DiscoverSchemas 扫描目录加载所有方案
-// 优先级：dataDir > exeDir（同 ID 时 dataDir 覆盖 exeDir）
+// 优先级：dataDir > exeDir（同 ID 时用户方案与内置方案合并，用户配置覆盖内置默认值）
 func DiscoverSchemas(exeDir, dataDir string) (map[string]*Schema, error) {
 	schemas := make(map[string]*Schema)
 
@@ -41,9 +41,9 @@ func DiscoverSchemas(exeDir, dataDir string) (map[string]*Schema, error) {
 		return nil, fmt.Errorf("加载内置方案失败: %w", err)
 	}
 
-	// 再加载用户方案（同 ID 覆盖内置）
+	// 再加载用户方案（同 ID 时合并：内置方案为基础，用户配置覆盖其上，缺失字段保留内置值）
 	userSchemaDir := filepath.Join(dataDir, "schemas")
-	if err := loadSchemasFromDir(userSchemaDir, schemas); err != nil {
+	if err := loadAndMergeUserSchemas(userSchemaDir, schemas); err != nil {
 		// 用户目录不存在不算错误
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("加载用户方案失败: %w", err)
@@ -85,6 +85,81 @@ func loadSchemasFromDir(dir string, schemas map[string]*Schema) error {
 	}
 
 	return nil
+}
+
+// loadAndMergeUserSchemas 从用户目录加载方案并与内置方案合并
+// 同 ID 时：以内置方案为基础，用户配置覆盖其上（缺失字段保留内置值）
+// 不同 ID 时：作为全新用户方案加载
+func loadAndMergeUserSchemas(dir string, schemas map[string]*Schema) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, schemaFileSuffix) {
+			continue
+		}
+
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[schema] 跳过无法读取的方案文件 %s: %v\n", path, err)
+			continue
+		}
+
+		// 先提取 schema ID，判断是否需要与内置方案合并
+		var peek struct {
+			Schema struct {
+				ID string `yaml:"id"`
+			} `yaml:"schema"`
+		}
+		if err := yaml.Unmarshal(data, &peek); err != nil {
+			fmt.Fprintf(os.Stderr, "[schema] 跳过无效方案文件 %s: %v\n", path, err)
+			continue
+		}
+
+		var s *Schema
+		if builtin, ok := schemas[peek.Schema.ID]; ok && peek.Schema.ID != "" {
+			// 存在同 ID 内置方案：深拷贝内置方案作为基础，用户配置覆盖其上
+			s = deepCopySchema(builtin)
+			if err := yaml.Unmarshal(data, s); err != nil {
+				fmt.Fprintf(os.Stderr, "[schema] 合并方案文件失败 %s: %v\n", path, err)
+				continue
+			}
+		} else {
+			// 无内置方案：作为全新方案加载
+			s = &Schema{}
+			if err := yaml.Unmarshal(data, s); err != nil {
+				fmt.Fprintf(os.Stderr, "[schema] 跳过无效方案文件 %s: %v\n", path, err)
+				continue
+			}
+		}
+
+		if err := validateSchema(s, path); err != nil {
+			fmt.Fprintf(os.Stderr, "[schema] 跳过无效方案文件 %s: %v\n", path, err)
+			continue
+		}
+
+		schemas[s.Schema.ID] = s
+	}
+
+	return nil
+}
+
+// deepCopySchema 通过 YAML 序列化/反序列化实现方案的深拷贝
+func deepCopySchema(src *Schema) *Schema {
+	data, err := yaml.Marshal(src)
+	if err != nil {
+		return &Schema{}
+	}
+	dst := &Schema{}
+	_ = yaml.Unmarshal(data, dst)
+	return dst
 }
 
 // validateSchema 校验方案必填字段

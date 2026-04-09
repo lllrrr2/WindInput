@@ -213,6 +213,116 @@ func TestDiscoverSchemas(t *testing.T) {
 	}
 }
 
+func TestDiscoverSchemas_MergeUserWithBuiltin(t *testing.T) {
+	exeDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	// 内置方案：完整的 codetable 方案，带 encoder 和 learning 配置
+	exeSchemaDir := filepath.Join(exeDir, "schemas")
+	os.MkdirAll(exeSchemaDir, 0755)
+	builtinContent := `
+schema:
+  id: test_merge
+  name: "测试方案"
+  icon_label: "测"
+  version: "1.0"
+engine:
+  type: codetable
+  codetable:
+    max_code_length: 4
+    auto_commit_unique: false
+    top_code_commit: true
+    show_code_hint: true
+    candidate_sort_mode: frequency
+  filter_mode: smart
+dictionaries:
+  - id: main
+    path: "dict/test.txt"
+    type: rime_codetable
+    default: true
+user_data:
+  shadow_file: "test.shadow.yaml"
+  user_dict_file: "test.userwords.txt"
+learning:
+  mode: manual
+  protect_top_n: 3
+encoder:
+  max_word_length: 10
+  rules:
+    - length_equal: 2
+      formula: "AaAbBaBb"
+`
+	os.WriteFile(filepath.Join(exeSchemaDir, "test_merge.schema.yaml"), []byte(builtinContent), 0644)
+
+	// 用户方案：只修改部分字段（auto_commit_unique 和 protect_top_n）
+	userSchemaDir := filepath.Join(dataDir, "schemas")
+	os.MkdirAll(userSchemaDir, 0755)
+	userContent := `
+schema:
+  id: test_merge
+engine:
+  codetable:
+    auto_commit_unique: true
+learning:
+  protect_top_n: 5
+`
+	os.WriteFile(filepath.Join(userSchemaDir, "test_merge.schema.yaml"), []byte(userContent), 0644)
+
+	schemas, err := DiscoverSchemas(exeDir, dataDir)
+	if err != nil {
+		t.Fatalf("DiscoverSchemas 失败: %v", err)
+	}
+
+	s := schemas["test_merge"]
+	if s == nil {
+		t.Fatal("test_merge 方案不存在")
+	}
+
+	// 用户修改的字段应生效
+	if s.Engine.CodeTable == nil {
+		t.Fatal("codetable 配置不应为 nil")
+	}
+	if !s.Engine.CodeTable.AutoCommitUnique {
+		t.Error("auto_commit_unique 应被用户覆盖为 true")
+	}
+	if s.Learning.ProtectTopN != 5 {
+		t.Errorf("protect_top_n 应被用户覆盖为 5, 实际=%d", s.Learning.ProtectTopN)
+	}
+
+	// 内置默认值应保留
+	if s.Engine.Type != EngineTypeCodeTable {
+		t.Errorf("engine.type 应保留内置值 codetable, 实际=%s", s.Engine.Type)
+	}
+	if s.Engine.CodeTable.MaxCodeLength != 4 {
+		t.Errorf("max_code_length 应保留内置值 4, 实际=%d", s.Engine.CodeTable.MaxCodeLength)
+	}
+	if !s.Engine.CodeTable.TopCodeCommit {
+		t.Error("top_code_commit 应保留内置值 true")
+	}
+	if !s.Engine.CodeTable.ShowCodeHint {
+		t.Error("show_code_hint 应保留内置值 true")
+	}
+	if s.Engine.FilterMode != "smart" {
+		t.Errorf("filter_mode 应保留内置值 smart, 实际=%s", s.Engine.FilterMode)
+	}
+	if s.Schema.Name != "测试方案" {
+		t.Errorf("name 应保留内置值, 实际=%s", s.Schema.Name)
+	}
+	if s.Encoder == nil {
+		t.Error("encoder 应保留内置配置")
+	} else if s.Encoder.MaxWordLength != 10 {
+		t.Errorf("encoder.max_word_length 应保留内置值 10, 实际=%d", s.Encoder.MaxWordLength)
+	}
+
+	// dictionaries 和 user_data 应保留内置值（用户未指定）
+	if len(s.Dicts) != 1 || s.Dicts[0].ID != "main" {
+		t.Errorf("dictionaries 应保留内置配置, 实际=%d 个", len(s.Dicts))
+	}
+	if s.UserData.ShadowFile != "test.shadow.yaml" {
+		t.Errorf("shadow_file 应保留内置值, 实际=%s", s.UserData.ShadowFile)
+	}
+}
+
 func TestSchemaManager(t *testing.T) {
 	exeDir := t.TempDir()
 	dataDir := t.TempDir()
