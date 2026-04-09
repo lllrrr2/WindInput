@@ -224,44 +224,42 @@ func (s *Server) PushCommitTextToActiveClient(text string) {
 	}
 
 	// Fallback: active process has no push pipe connection.
-	// Broadcast to all push pipe clients — only the TSF instance with
-	// an active composition will actually insert the text.
-	s.logger.Warn("PushCommitText: no push pipe for active process, broadcasting to all clients",
-		"activeProcessID", activeProcessID)
-
+	// Try to find a single push pipe client as fallback (safe when only one client is connected).
+	// Do NOT broadcast to all clients — that causes duplicate text insertion.
 	s.pushMu.RLock()
-	type clientInfo struct {
-		handle windows.Handle
-		writer *pipeWriter
-	}
-	allClients := make([]clientInfo, 0, len(s.pushClients))
-	for h, w := range s.pushClients {
-		allClients = append(allClients, clientInfo{handle: h, writer: w})
+	clientCount := len(s.pushClients)
+	var fallbackHandle windows.Handle
+	var fallbackWriter *pipeWriter
+	if clientCount == 1 {
+		for h, w := range s.pushClients {
+			fallbackHandle = h
+			fallbackWriter = w
+		}
 	}
 	s.pushMu.RUnlock()
 
-	var failedHandles []windows.Handle
-	for _, client := range allClients {
-		if err := s.codec.WriteMessage(client.writer, encoded); err != nil {
-			failedHandles = append(failedHandles, client.handle)
-		}
-	}
-
-	if len(failedHandles) > 0 {
-		s.pushMu.Lock()
-		for _, h := range failedHandles {
-			pid := s.pushHandleToPID[h]
-			delete(s.pushClients, h)
-			delete(s.pushHandleToPID, h)
+	if clientCount == 1 && fallbackWriter != nil {
+		s.logger.Warn("PushCommitText: no push pipe for active process, using single-client fallback",
+			"activeProcessID", activeProcessID)
+		if err := s.codec.WriteMessage(fallbackWriter, encoded); err != nil {
+			s.logger.Warn("Failed to push commit text via fallback", "error", err)
+			s.pushMu.Lock()
+			pid := s.pushHandleToPID[fallbackHandle]
+			delete(s.pushClients, fallbackHandle)
+			delete(s.pushHandleToPID, fallbackHandle)
 			if pid != 0 {
 				delete(s.pushClientsByPID, pid)
 			}
-			windows.CloseHandle(h)
+			s.pushMu.Unlock()
+			windows.CloseHandle(fallbackHandle)
+		} else {
+			s.logger.Info("Commit text push completed via single-client fallback")
 		}
-		s.pushMu.Unlock()
+		return
 	}
 
-	s.logger.Info("Commit text broadcast completed", "totalClients", len(allClients), "failed", len(failedHandles))
+	s.logger.Warn("PushCommitText: no push pipe for active process, skipping to avoid duplicate insertion",
+		"activeProcessID", activeProcessID, "pushClientCount", clientCount)
 }
 
 // PushClearCompositionToActiveClient sends a clear composition command to the active TSF client
