@@ -86,6 +86,16 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.handleTogglePunct()
 	}
 
+	// Handle toggle toolbar hotkey
+	if c.config != nil && c.matchHotkey(c.config.Hotkeys.ToggleToolbar, hasCtrl, hasShift, hasAlt, data.KeyCode) {
+		return c.handleToggleToolbarKey()
+	}
+
+	// Handle open settings hotkey
+	if c.config != nil && c.matchHotkey(c.config.Hotkeys.OpenSettings, hasCtrl, hasShift, hasAlt, data.KeyCode) {
+		return c.handleOpenSettingsKey()
+	}
+
 	// 候选词操作快捷键（仅在输入态且有候选时生效）
 	if c.config != nil && hasCtrl && len(c.candidates) > 0 && len(c.inputBuffer) > 0 {
 		if num := c.matchCandidateActionKey(c.config.Hotkeys.DeleteCandidate, hasCtrl, hasShift, data.KeyCode); num > 0 {

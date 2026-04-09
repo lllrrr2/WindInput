@@ -253,7 +253,10 @@
         :hint="item.hint"
         :model-value="getHotkeyValue(item.field)"
         :default-value="getDefaultValue(item.field)"
+        :show-global="item.field === 'open_settings'"
+        :is-global="isGlobalHotkey(item.field)"
         @update:model-value="setHotkeyValue(item.field, $event)"
+        @update:global="setGlobalHotkey(item.field, $event)"
       />
     </div>
   </section>
@@ -337,6 +340,20 @@ function setHotkeyValue(field: string, value: string) {
     }
   }
   (props.formData.hotkeys as any)[field] = value;
+}
+
+function isGlobalHotkey(field: string): boolean {
+  return props.formData.hotkeys.global_hotkeys.includes(field);
+}
+
+function setGlobalHotkey(field: string, enabled: boolean) {
+  const list = props.formData.hotkeys.global_hotkeys;
+  const idx = list.indexOf(field);
+  if (enabled && idx < 0) {
+    list.push(field);
+  } else if (!enabled && idx >= 0) {
+    list.splice(idx, 1);
+  }
 }
 
 // --- 原有逻辑 ---

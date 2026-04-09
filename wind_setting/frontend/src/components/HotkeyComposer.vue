@@ -51,6 +51,17 @@
           @keydown="handleKeydown"
         />
       </div>
+      <label v-if="showGlobal" class="composer-global" :title="globalHint">
+        <input
+          type="checkbox"
+          :checked="isGlobal"
+          :disabled="!enabled"
+          @change="
+            $emit('update:global', ($event.target as HTMLInputElement).checked)
+          "
+        />
+        <span>全局</span>
+      </label>
       <button
         class="composer-reset-btn"
         :class="{ changed: hasChanged }"
@@ -79,15 +90,26 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const props = defineProps<{
-  label: string;
-  hint: string;
-  modelValue: string;
-  defaultValue: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    label: string;
+    hint: string;
+    modelValue: string;
+    defaultValue: string;
+    showGlobal?: boolean;
+    isGlobal?: boolean;
+    globalHint?: string;
+  }>(),
+  {
+    showGlobal: false,
+    isGlobal: false,
+    globalHint: "启用后即使未激活输入法也能触发此快捷键",
+  },
+);
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
+  "update:global": [value: boolean];
 }>();
 
 interface ParsedHotkey {
@@ -347,6 +369,26 @@ function restoreDefault() {
 .composer-key-input:disabled {
   cursor: not-allowed;
   background: #f3f4f6;
+}
+.composer-global {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #6b7280;
+  user-select: none;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.composer-global input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent-color, #2563eb);
+}
+.composer-global input:disabled {
+  cursor: not-allowed;
 }
 .composer-reset-btn {
   display: inline-flex;

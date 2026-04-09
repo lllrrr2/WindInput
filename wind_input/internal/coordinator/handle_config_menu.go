@@ -72,8 +72,14 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 			c.uiManager.ShowToolbarWithState(posX, posY, c.buildToolbarState())
 		}
 	} else {
-		// IME deactivated - unregister global hotkeys
-		c.uiManager.UnregisterGlobalHotkeys()
+		// IME deactivated - re-register only global_hotkeys list items (if any),
+		// unregister all if the list is empty
+		globalEntries := c.buildGlobalHotkeyEntries()
+		if len(globalEntries) > 0 {
+			c.uiManager.RegisterGlobalHotkeys(globalEntries)
+		} else {
+			c.uiManager.UnregisterGlobalHotkeys()
+		}
 
 		// IME deactivated - always hide toolbar
 		c.uiManager.SetToolbarVisible(false)
@@ -275,32 +281,78 @@ func (c *Coordinator) getStatusUpdate() *bridge.StatusUpdateData {
 	}
 }
 
+// handleToggleToolbarKey handles toggle_toolbar hotkey from TSF key event path.
+// Caller must hold c.mu.
+func (c *Coordinator) handleToggleToolbarKey() *bridge.KeyEventResult {
+	c.toolbarVisible = !c.toolbarVisible
+	c.logger.Debug("Toolbar visibility toggled via hotkey", "toolbarVisible", c.toolbarVisible)
+
+	if c.uiManager != nil {
+		if c.toolbarVisible && c.imeActivated {
+			toolbarWidth, toolbarHeight := 140, 30
+			var posX, posY int
+			if c.caretValid {
+				posX, posY = ui.GetToolbarPositionForCaret(
+					c.caretX, c.caretY,
+					ui.ScaleIntForDPI(toolbarWidth),
+					ui.ScaleIntForDPI(toolbarHeight),
+				)
+			} else {
+				posX, posY = ui.GetDefaultToolbarPosition(
+					ui.ScaleIntForDPI(toolbarWidth),
+					ui.ScaleIntForDPI(toolbarHeight),
+				)
+			}
+			c.uiManager.ShowToolbarWithState(posX, posY, c.buildToolbarState())
+		} else {
+			c.uiManager.SetToolbarVisible(false)
+		}
+	}
+
+	c.saveToolbarConfig()
+	c.broadcastState()
+	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+}
+
+// handleOpenSettingsKey handles open_settings hotkey from TSF key event path.
+// Caller must hold c.mu.
+func (c *Coordinator) handleOpenSettingsKey() *bridge.KeyEventResult {
+	c.logger.Debug("Opening settings via hotkey")
+	if c.uiManager != nil {
+		c.uiManager.OpenSettings()
+	}
+	return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+}
+
 // buildGlobalHotkeyEntries builds the list of global hotkey entries from config.
+// Only hotkeys listed in GlobalHotkeys are registered as system-wide global hotkeys.
 // Caller must hold c.mu.
 func (c *Coordinator) buildGlobalHotkeyEntries() []ui.GlobalHotkeyEntry {
 	if c.config == nil {
 		return nil
 	}
+
+	// 快捷键名称到配置值的映射
+	hotkeyMap := map[string]string{
+		"switch_engine":     c.config.Hotkeys.SwitchEngine,
+		"toggle_full_width": c.config.Hotkeys.ToggleFullWidth,
+		"toggle_punct":      c.config.Hotkeys.TogglePunct,
+		"toggle_toolbar":    c.config.Hotkeys.ToggleToolbar,
+		"open_settings":     c.config.Hotkeys.OpenSettings,
+		"add_word":          c.config.Hotkeys.AddWord,
+	}
+
 	var entries []ui.GlobalHotkeyEntry
 	id := 1
-	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.SwitchEngine, id, "switch_engine"); ok {
-		entries = append(entries, entry)
-		id++
-	}
-	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.ToggleFullWidth, id, "toggle_full_width"); ok {
-		entries = append(entries, entry)
-		id++
-	}
-	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.TogglePunct, id, "toggle_punct"); ok {
-		entries = append(entries, entry)
-		id++
-	}
-	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.ToggleToolbar, id, "toggle_toolbar"); ok {
-		entries = append(entries, entry)
-		id++
-	}
-	if entry, ok := ui.ParseHotkeyString(c.config.Hotkeys.OpenSettings, id, "open_settings"); ok {
-		entries = append(entries, entry)
+	for _, name := range c.config.Hotkeys.GlobalHotkeys {
+		value, exists := hotkeyMap[name]
+		if !exists {
+			continue
+		}
+		if entry, ok := ui.ParseHotkeyString(value, id, name); ok {
+			entries = append(entries, entry)
+			id++
+		}
 	}
 	return entries
 }

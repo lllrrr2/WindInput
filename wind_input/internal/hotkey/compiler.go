@@ -48,6 +48,12 @@ func (c *Compiler) Compile() (keyDownList, keyUpList []uint32) {
 	if hash, ok := c.parseHotkeyString(c.config.Hotkeys.AddWord); ok {
 		keyDownList = append(keyDownList, hash)
 	}
+	if hash, ok := c.parseHotkeyString(c.config.Hotkeys.ToggleToolbar); ok {
+		keyDownList = append(keyDownList, hash)
+	}
+	if hash, ok := c.parseHotkeyString(c.config.Hotkeys.OpenSettings); ok {
+		keyDownList = append(keyDownList, hash)
+	}
 
 	// 2. Select key groups (semicolon_quote, comma_period, lrshift, lrctrl)
 	// Note: These are only active when there are candidates, but we still

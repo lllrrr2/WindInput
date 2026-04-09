@@ -68,6 +68,7 @@ type HotkeyConfig struct {
 	ToggleToolbar   string   `yaml:"toggle_toolbar" json:"toggle_toolbar"`     // 显示/隐藏状态栏: 通用按键组合或 "none"
 	OpenSettings    string   `yaml:"open_settings" json:"open_settings"`       // 打开设置: 通用按键组合或 "none"
 	AddWord         string   `yaml:"add_word" json:"add_word"`                 // 快捷加词: 通用按键组合或 "none"
+	GlobalHotkeys   []string `yaml:"global_hotkeys" json:"global_hotkeys"`     // 注册为全局热键的快捷键名称列表
 }
 
 // UIConfig contains UI settings

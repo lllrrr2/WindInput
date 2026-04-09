@@ -79,6 +79,7 @@ export interface HotkeyConfig {
   toggle_toolbar: string; // 通用按键组合或 "none"
   open_settings: string; // 通用按键组合或 "none"
   add_word: string; // 快捷加词: 通用按键组合或 "none"
+  global_hotkeys: string[]; // 注册为全局热键的快捷键名称列表
 }
 
 // UI配置
@@ -327,6 +328,7 @@ export function getDefaultConfig(): Config {
       toggle_toolbar: "none",
       open_settings: "none",
       add_word: "ctrl+=",
+      global_hotkeys: [],
     },
     ui: {
       font_size: 18,

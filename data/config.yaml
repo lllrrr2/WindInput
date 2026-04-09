@@ -28,6 +28,7 @@ hotkeys:
   toggle_toolbar: ctrl+shift+\
   open_settings: ctrl+shift+]
   add_word: ctrl+equal
+  global_hotkeys: []
 
 ui:
   font_size: 18
