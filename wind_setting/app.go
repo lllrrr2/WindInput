@@ -23,12 +23,12 @@ type App struct {
 	addWordParams AddWordParams
 
 	// 编辑器
-	configEditor          *editor.ConfigEditor
-	phraseEditor          *editor.PhraseEditor // 用户短语编辑器
-	systemPhraseEditor    *editor.PhraseEditor // 系统短语编辑器（程序目录，只读）
+	configEditor           *editor.ConfigEditor
+	phraseEditor           *editor.PhraseEditor // 用户短语编辑器
+	systemPhraseEditor     *editor.PhraseEditor // 系统短语编辑器（程序目录，只读）
 	systemUserPhraseEditor *editor.PhraseEditor // 用户目录的系统短语（修改后的副本）
-	shadowEditor       *editor.ShadowEditor
-	userDictEditor     *editor.UserDictEditor
+	shadowEditor           *editor.ShadowEditor
+	userDictEditor         *editor.UserDictEditor
 
 	// 按方案缓存的编辑器（用于左右分栏 UI 按方案独立操作）
 	schemaUserDicts map[string]*editor.UserDictEditor
