@@ -394,14 +394,16 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 					continue
 				}
 				// 步骤 5：partial 前缀词组
-				// 覆盖全部音节的多字词（如 rug→如果）iq=3.0，其他 iq=1.0
 				iq := 1.0
+				coverage := float64(syllableCount) / float64(totalSyllableCount)
 				if charCount <= 1 {
 					iq = 1.5
 				} else if charCount >= totalSyllableCount {
-					iq = 3.0
+					// 全覆盖词组（如 rug→如果）：与精确匹配同级且视为完全覆盖，
+					// 确保覆盖完整输入的词组排在首音节单字之前（符合主流输入法行为）
+					iq = 4.0
+					coverage = 1.0
 				}
-				coverage := float64(syllableCount) / float64(totalSyllableCount)
 				c.Weight = e.rimeScore(c.Text, float64(c.Weight), iq, coverage, charCount)
 				c.ConsumedLength = len(input)
 				candidatesMap[c.Text] = &c

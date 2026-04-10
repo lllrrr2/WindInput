@@ -149,6 +149,8 @@ func (e *Engine) LoadBigram(path string) error {
 // SetUnigram 直接设置 Unigram 模型（接口类型）
 func (e *Engine) SetUnigram(m UnigramLookup) {
 	e.unigram = m
+	e.scorer = NewScorer(e.unigram, e.bigram)
+	e.rimeScorer = NewRimeScorer(e.unigram, e.bigram)
 }
 
 // GetUnigram 获取 Unigram 模型（接口类型）

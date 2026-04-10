@@ -329,18 +329,13 @@ func (s *RimeScorer) Score(normalizedWeight float64, initialQuality float64, cov
 // dictWeight: 词库原始权重（整数，将被归一化）
 // initialQuality: 来源基础偏移（见设计文档中的 initialQuality 值表）
 // coverage: 音节覆盖率 [0, 1]（consumedSyllables / totalSyllables）
-// charCount: 候选字符数（1=单字用 LogProb，>1 用 CharBasedScore）
+// charCount: 候选字符数
 func (s *RimeScorer) ScoreWithLM(text string, dictWeight float64, initialQuality float64, coverage float64, charCount int) float64 {
 	nw := NormalizeWeight(dictWeight)
-	// LM 加成
+	// LM 加成：统一使用 LogProb，它对多字词已内置 word-level → CharBasedScore 的 fallback，
+	// 确保 unigram 模型中的常见词组（如"日志"）获得词级频率加成，而非仅靠字级平均。
 	if s.unigram != nil && text != "" {
-		var lmScore float64
-		if charCount == 1 {
-			lmScore = s.unigram.LogProb(text)
-		} else {
-			lmScore = s.unigram.CharBasedScore(text)
-		}
-		nw += lmScore * 0.3
+		nw += s.unigram.LogProb(text) * 0.3
 	}
 	// 限制范围，防止极端值
 	if nw > 0 {

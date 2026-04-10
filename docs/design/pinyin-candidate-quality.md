@@ -139,3 +139,93 @@ Viterbi 造句在找不到多字词路径时，退化为高频单字组合：
 - `BinaryUnigramModel.LogProb`：同步应用 `CharBasedScore` fallback
 - `Lattice.calcLogProb`：多字词不在 Unigram 中时使用 `CharBasedScore` 替代原始权重归一化
 - `BigramModel` 回退惩罚从 `-4.0` 调整为 `-1.0`，避免过度惩罚
+
+## 问题 9：非首位子词组导致输入丢失
+
+### 现象
+输入 `hejiele` 时，候选中出现"接了"（start=1，对应 jie+le），选中后 `he` 被静默丢弃。
+输入 `nizhibuzhidao` 时，"知道"（start=3）、"不知道"（start=2）等非首位子词组的 `ConsumedLength` 包含前面不属于它们的音节。
+
+### 根因
+`lookupSubPhrasesEx` 枚举所有位置（start=0..n）的子词组，非首位子词组的 `ConsumedLength` 从位置 0 开始计算，会吞掉前面的音节。
+
+### 修复
+`lookupSubPhrasesEx` 只生成 start=0 的子词组。非首位词组由 Viterbi 组句提供（如"和解了"拆为"和解"+"了"），不需要独立候选。
+
+## 问题 10：Viterbi 组句中虚词组合排名偏高
+
+### 现象
+输入 `hejiele` 时，Viterbi 造句结果"和接了"排在"和解了"前面。原因是"接了"虽不是高频词，但"接"和"了"作为高频单字在 Bigram 模型中得分很高。
+
+### 根因
+Lattice 构建时，单字回退节点无差异化惩罚，高频虚词（了/的/着/过）和实义词（接/街/借）同等对待。
+
+### 修复
+- **虚词白名单差异化惩罚**：`singleCharPenalty` 从统一 -3.0 改为：虚词（了/的/我/你/不/是等 50+ 高频功能词）仅 -0.5，普通单字保持 -3.0
+- **实义词加分**：unigram 模型中存在的多字实义词（如"和解"）获得 +1.5 bonus
+- **V+助词惩罚**：以"了/的/着/过/得/地"结尾的多字词（如"接了"）额外 -1.0 惩罚
+- **charBasedPenalty**：不在 unigram 中的多字词额外 -2.0，区分估算频率与实际观测频率
+
+## 问题 11：完整音节前缀预测产生超范围候选
+
+### 现象
+输入 `ruguo` 首候选为"如果"，但翻页出现"如果爱"、"如果把"等超出输入音节数的词组。
+
+### 根因
+步骤 3 对已完成音节做 `LookupPrefix`，匹配到以 `ruguo` 开头的所有编码，包括 `ruguoai`（如果爱）、`ruguoba`（如果把）等超出输入的词组。
+
+### 修复
+移除步骤 3。尾部 partial 的前缀匹配由步骤 5 处理，步骤 5 已有 `charCount > totalSyllableCount` 过滤，不会产生超范围候选。
+
+## 问题 12：Viterbi 造句输出过多导致长句溢出
+
+### 现象
+长句输入时出现 3 个很长的造句候选，占据大量候选栏空间。主流输入法通常只保留 1 个最优长句。
+
+### 修复
+`ViterbiTopK` 参数从 3 改为 1，只保留最优路径。
+
+## 问题 13：退格键行为与主流输入法不一致
+
+### 现象
+已有部分确认（如"我"已上屏，剩余 `buzhidao`），按退格键删除的是 `buzhidao` 末尾字符而非撤销"我"的确认。
+
+### 修复
+`handleBackspace` 优先检查 `confirmedSegments`：有确认段时弹出最后一段并将其编码回填到缓冲区前端，而非删除缓冲区末尾字符。
+
+## 问题 14：前缀匹配的全覆盖词组排在单字后面
+
+### 现象
+输入 `rug`（ru + partial g），首候选是单字"如"而非词组"如果"。主流输入法中覆盖完整输入的词组应排首位。
+
+### 根因
+步骤 5 全覆盖词组（charCount >= totalSyllableCount）的 `initialQuality=3.0`、`coverage=syllableCount/total`，低于步骤 1 单字的 `iq=4.0`。评分公式 `exp(nw) + iq + coverage` 中 iq 差距 1.0 无法被 exp(nw) 弥补。
+
+### 修复
+步骤 5 全覆盖词组提升为 `iq=4.0`（与精确匹配同级）、`coverage=1.0`（视为完全覆盖输入），使词组 score 高于单字 0.5 分。
+
+## 问题 15：生产环境 LM 评分完全失效
+
+### 现象
+所有同类候选（如 `rug` 下的如歌/入宫/乳沟）权重完全相同（6000000），unigram 语言模型未生效。
+
+### 根因
+`schema/factory.go` 通过 `engine.SetUnigram(bm)` 加载 unigram 模型，但 `SetUnigram` 只设置了 `e.unigram` 字段，未同步更新 `rimeScorer`。`rimeScorer` 在引擎构造时以 `NewRimeScorer(nil, nil)` 初始化，之后从未被更新，导致 `ScoreWithLM` 中 `s.unigram == nil`，LM 加成被跳过。
+
+注意：`LoadUnigram`（仅在测试中使用）正确更新了 `rimeScorer`，因此测试中问题不会暴露。
+
+### 修复
+`SetUnigram` 同步重建 `scorer` 和 `rimeScorer`。
+
+## 问题 16：多字词评分使用字级估算而非词级频率
+
+### 现象
+输入 `rizhi` 首候选为"日至"而非常用词"日志"。两者权重仅差 ~10000（5077950 vs 5068055）。
+
+### 根因
+`RimeScorer.ScoreWithLM` 对多字词直接调用 `CharBasedScore`（单字频率平均值），绕过了 `LogProb`。`LogProb` 对多字词已内置 word-level → CharBasedScore 的 fallback 逻辑：如果词在 unigram 中存在则返回词级频率，否则 fallback 到字级平均。但 `ScoreWithLM` 未利用这一点。
+
+"日志"在 unigram 中是常见词（词级 LogProb 高），"日至"不在（fallback 到字级平均），但两者 CharBasedScore 相近（"至"和"志"字频相近），导致无法区分。
+
+### 修复
+`ScoreWithLM` 统一使用 `LogProb` 替代条件分支，使 unigram 中的常见词组获得词级频率加成。
