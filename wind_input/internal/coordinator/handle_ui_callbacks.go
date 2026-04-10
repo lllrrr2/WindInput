@@ -215,15 +215,71 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 	}
 
 	// 收集学习所需信息（在 clearState 前）
-	code := c.inputBuffer
 	isCommand := candidate.IsCommand
 	candidateSource := candidate.Source
 	engineMgr := c.engineMgr
-	confirmedSegs := c.confirmedSegments
 	isPinyin := engineMgr != nil && engineMgr.GetCurrentType() == engine.EngineTypePinyin
 	isMixed := engineMgr != nil && engineMgr.GetCurrentType() == engine.EngineTypeMixed
 
 	c.logger.Debug("Candidate selected via mouse click", "index", actualIndex)
+
+	// 拼音引擎分步确认：候选消耗的输入长度小于缓冲区长度时，
+	// 将已确认的文字暂存到 confirmedSegments 而非直接上屏，
+	// 与键盘空格/数字键选择行为一致。
+	if (isPinyin || (isMixed && candidate.ConsumedLength > 0)) && candidate.ConsumedLength > 0 && candidate.ConsumedLength < len(c.inputBuffer) {
+		consumedCode := c.inputBuffer[:candidate.ConsumedLength]
+		if !isCommand {
+			engineMgr.OnCandidateSelected(consumedCode, originalText, candidateSource)
+		}
+
+		remaining := c.inputBuffer[candidate.ConsumedLength:]
+		c.logger.Debug("Partial confirm via mouse click (pinyin)", "index", actualIndex, "text", text,
+			"consumed", candidate.ConsumedLength, "remaining", remaining,
+			"confirmedCount", len(c.confirmedSegments)+1)
+
+		// 推入确认栈，不上屏
+		c.confirmedSegments = append(c.confirmedSegments, ConfirmedSegment{
+			Text:         originalText,
+			ConsumedCode: consumedCode,
+		})
+
+		// 更新缓冲区为剩余部分，光标重置到末尾，重新触发候选更新
+		c.inputBuffer = remaining
+		c.inputCursorPos = len(remaining)
+		c.currentPage = 1
+		c.updateCandidates()
+		c.showUI()
+
+		// 通过 push pipe 更新 TSF 组合文本
+		compositionText := c.compositionText()
+		caretPos := c.displayCursorPos()
+		bridgeServer := c.bridgeServer
+		c.mu.Unlock()
+
+		if bridgeServer != nil {
+			bridgeServer.PushUpdateCompositionToActiveClient(compositionText, caretPos)
+		}
+		return
+	}
+
+	// 完全消费：触发学习回调
+	code := c.inputBuffer
+	confirmedSegs := c.confirmedSegments
+
+	if engineMgr != nil && !isCommand && originalText != "" {
+		if (isPinyin || isMixed) && len(confirmedSegs) > 0 {
+			var fullCode, fullText string
+			for _, seg := range confirmedSegs {
+				fullCode += seg.ConsumedCode
+				fullText += seg.Text
+			}
+			fullCode += code
+			fullText += originalText
+			engineMgr.OnCandidateSelected(fullCode, fullText, candidateSource)
+		} else {
+			engineMgr.OnCandidateSelected(code, originalText, candidateSource)
+		}
+	}
 
 	// 记录输入历史（用于加词推荐）
 	if c.inputHistory != nil && !isCommand {
@@ -241,6 +297,20 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 		c.inputHistory.Record(histText, histCode, "", 0)
 	}
 
+	// 拼接所有已确认段的文本 + 当前选中的候选
+	finalText := text
+	if (isPinyin || isMixed) && len(confirmedSegs) > 0 {
+		var allText string
+		for _, seg := range confirmedSegs {
+			t := seg.Text
+			if c.fullWidth {
+				t = transform.ToFullWidth(t)
+			}
+			allText += t
+		}
+		finalText = allText + text
+	}
+
 	// Clear state and hide UI
 	c.clearState()
 	c.hideUI()
@@ -249,26 +319,9 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 	bridgeServer := c.bridgeServer
 	c.mu.Unlock()
 
-	// 触发选词学习回调
-	if engineMgr != nil && !isCommand && originalText != "" {
-		if (isPinyin || isMixed) && len(confirmedSegs) > 0 {
-			// 分段输入：合并所有段的编码和文本，作为完整词组学习
-			var fullCode, fullText string
-			for _, seg := range confirmedSegs {
-				fullCode += seg.ConsumedCode
-				fullText += seg.Text
-			}
-			fullCode += code
-			fullText += originalText
-			engineMgr.OnCandidateSelected(fullCode, fullText, candidateSource)
-		} else {
-			engineMgr.OnCandidateSelected(code, originalText, candidateSource)
-		}
-	}
-
 	// Send text to TSF via push pipe (only to active client for security)
-	if bridgeServer != nil && text != "" {
-		bridgeServer.PushCommitTextToActiveClient(text)
+	if bridgeServer != nil && finalText != "" {
+		bridgeServer.PushCommitTextToActiveClient(finalText)
 	}
 }
 

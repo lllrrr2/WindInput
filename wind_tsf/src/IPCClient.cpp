@@ -1435,6 +1435,13 @@ void CIPCClient::SetClearCompositionCallback(ClearCompositionCallback callback)
     LeaveCriticalSection(&_asyncLock);
 }
 
+void CIPCClient::SetUpdateCompositionCallback(UpdateCompositionCallback callback)
+{
+    EnterCriticalSection(&_asyncLock);
+    _updateCompositionCallback = callback;
+    LeaveCriticalSection(&_asyncLock);
+}
+
 void CIPCClient::SetSyncConfigCallback(SyncConfigCallback callback)
 {
     EnterCriticalSection(&_asyncLock);
@@ -1787,6 +1794,33 @@ void CIPCClient::_AsyncReaderLoop()
                 if (callback)
                 {
                     callback();
+                }
+            }
+            else if (header.command == CMD_UPDATE_COMPOSITION)
+            {
+                // Parse update composition (from Go - mouse click partial confirm)
+                std::vector<uint8_t> payload;
+                if (header.length > 0 && bytesRead >= sizeof(IpcHeader) + header.length)
+                {
+                    payload.assign(buffer.begin() + sizeof(IpcHeader),
+                                   buffer.begin() + sizeof(IpcHeader) + header.length);
+                }
+
+                ServiceResponse response;
+                if (_ParseResponse(header, payload, response))
+                {
+                    _LogDebug(L"Async reader: update composition received, textLen=%zu, caret=%d",
+                              response.composition.length(), response.caretPos);
+
+                    // Call callback
+                    EnterCriticalSection(&_asyncLock);
+                    UpdateCompositionCallback callback = _updateCompositionCallback;
+                    LeaveCriticalSection(&_asyncLock);
+
+                    if (callback)
+                    {
+                        callback(response.composition, response.caretPos);
+                    }
                 }
             }
             else if (header.command == CMD_SYNC_CONFIG)

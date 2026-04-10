@@ -16,6 +16,7 @@ const GUID CLangBarItemButton::_guidLangBarItemButton = GUID_LBI_INPUTMODE;
 const UINT CLangBarItemButton::WM_UPDATE_STATUS = WM_USER + 100;
 const UINT CLangBarItemButton::WM_COMMIT_TEXT = WM_USER + 101;
 const UINT CLangBarItemButton::WM_CLEAR_COMPOSITION = WM_USER + 102;
+const UINT CLangBarItemButton::WM_UPDATE_COMPOSITION = WM_USER + 103;
 
 CLangBarItemButton::CLangBarItemButton(CTextService* pTextService)
     : _refCount(1)
@@ -523,6 +524,8 @@ LRESULT CALLBACK CLangBarItemButton::_MsgWndProc(HWND hwnd, UINT msg, WPARAM wPa
             // This ensures the composition text is cleared before inserting final text
             pThis->_pTextService->EndComposition();
             pThis->_pTextService->InsertText(pData->text);
+            // Reset KeyEventSink state so shortcut keys work again
+            pThis->_pTextService->ResetComposingState();
         }
 
         // Free the data allocated by sender
@@ -537,7 +540,23 @@ LRESULT CALLBACK CLangBarItemButton::_MsgWndProc(HWND hwnd, UINT msg, WPARAM wPa
         {
             WIND_LOG_DEBUG(L"MsgWndProc: Processing WM_CLEAR_COMPOSITION\n");
             pThis->_pTextService->EndComposition();
+            pThis->_pTextService->ResetComposingState();
         }
+        return 0;
+    }
+    else if (msg == WM_UPDATE_COMPOSITION)
+    {
+        UpdateCompositionData* pData = reinterpret_cast<UpdateCompositionData*>(lParam);
+        CLangBarItemButton* pThis = reinterpret_cast<CLangBarItemButton*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+        if (pThis != nullptr && pData != nullptr && pThis->_pTextService != nullptr)
+        {
+            WIND_LOG_DEBUG_FMT(L"MsgWndProc: Processing WM_UPDATE_COMPOSITION, textLen=%zu, caret=%d\n",
+                               pData->text.length(), pData->caretPos);
+            pThis->_pTextService->UpdateComposition(pData->text, pData->caretPos);
+        }
+
+        delete pData;
         return 0;
     }
 
@@ -832,6 +851,38 @@ void CLangBarItemButton::PostClearComposition()
     else
     {
         WIND_LOG_DEBUG(L"PostClearComposition: Message posted to UI thread\n");
+    }
+}
+
+void CLangBarItemButton::PostUpdateComposition(const std::wstring& text, int caretPos)
+{
+    if (_hMsgWnd == NULL)
+    {
+        WIND_LOG_WARN(L"PostUpdateComposition: No message window, using direct UpdateComposition\n");
+        if (_pTextService != nullptr)
+        {
+            _pTextService->UpdateComposition(text, caretPos);
+        }
+        return;
+    }
+
+    UpdateCompositionData* pData = new UpdateCompositionData();
+    pData->text = text;
+    pData->caretPos = caretPos;
+
+    if (!PostMessageW(_hMsgWnd, WM_UPDATE_COMPOSITION, 0, reinterpret_cast<LPARAM>(pData)))
+    {
+        delete pData;
+        WIND_LOG_WARN(L"PostUpdateComposition: PostMessage failed, using direct UpdateComposition\n");
+        if (_pTextService != nullptr)
+        {
+            _pTextService->UpdateComposition(text, caretPos);
+        }
+    }
+    else
+    {
+        WIND_LOG_DEBUG_FMT(L"PostUpdateComposition: Message posted to UI thread, textLen=%zu, caret=%d\n",
+                           text.length(), caretPos);
     }
 }
 

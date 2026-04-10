@@ -207,8 +207,9 @@ type Coordinator struct {
 // BridgeServer interface for broadcasting state to TSF clients
 type BridgeServer interface {
 	PushStateToAllClients(status *bridge.StatusUpdateData)
-	PushCommitTextToActiveClient(text string) // Only send to active client for security
-	PushClearCompositionToActiveClient()      // Clear inline composition on active client
+	PushCommitTextToActiveClient(text string)                      // Only send to active client for security
+	PushClearCompositionToActiveClient()                           // Clear inline composition on active client
+	PushUpdateCompositionToActiveClient(text string, caretPos int) // Update inline composition on active client (mouse partial confirm)
 	PushEnglishPairConfigToAllClients(enabled bool, pairs []string)
 	RestartService()
 	// GetActiveHostRender returns write/hide functions if the active process has host rendering.

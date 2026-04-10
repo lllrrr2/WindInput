@@ -77,6 +77,10 @@ public:
     // Used when mode is toggled via menu while there's an active composition
     void PostClearComposition();
 
+    // Thread-safe update composition from async thread (posts message to UI thread)
+    // Used for mouse click partial confirm in pinyin mode
+    void PostUpdateComposition(const std::wstring& text, int caretPos);
+
     // Force refresh the language bar icon (used when focus is gained)
     void ForceRefresh();
 
@@ -91,6 +95,7 @@ private:
     static const UINT WM_UPDATE_STATUS;
     static const UINT WM_COMMIT_TEXT;
     static const UINT WM_CLEAR_COMPOSITION;
+    static const UINT WM_UPDATE_COMPOSITION;
 
     // Packed status for message passing
     struct StatusUpdateData {
@@ -105,6 +110,12 @@ private:
     // Data for commit text message
     struct CommitTextData {
         std::wstring text;
+    };
+
+    // Data for update composition message
+    struct UpdateCompositionData {
+        std::wstring text;
+        int caretPos;
     };
 
     // Show popup menu manually (Windows 11 workaround)

@@ -314,6 +314,57 @@ func (s *Server) PushClearCompositionToActiveClient() {
 	s.logger.Debug("Clear composition push completed to active client", "processID", activeProcessID)
 }
 
+// PushUpdateCompositionToActiveClient sends an update composition command to the active TSF client
+// This is used for mouse click partial confirm in pinyin mode
+func (s *Server) PushUpdateCompositionToActiveClient(text string, caretPos int) {
+	// Get the active process ID
+	s.activeMu.RLock()
+	activeProcessID := s.activeProcessID
+	s.activeMu.RUnlock()
+
+	if activeProcessID == 0 {
+		s.logger.Debug("PushUpdateComposition: no active client recorded, skipping")
+		return
+	}
+
+	// Find the push pipe handle for the active process
+	s.pushMu.RLock()
+	handle, exists := s.pushClientsByPID[activeProcessID]
+	var writer *pipeWriter
+	if exists {
+		writer = s.pushClients[handle]
+	}
+	s.pushMu.RUnlock()
+
+	if !exists || writer == nil {
+		s.logger.Debug("PushUpdateComposition: no push pipe for active process",
+			"activeProcessID", activeProcessID)
+		return
+	}
+
+	// Encode the update composition message
+	encoded := s.codec.EncodeUpdateComposition(text, caretPos)
+
+	s.logger.Debug("Pushing update composition to active TSF client via push pipe",
+		"processID", activeProcessID)
+
+	if err := s.codec.WriteMessage(writer, encoded); err != nil {
+		s.logger.Warn("Failed to push update composition to active client",
+			"processID", activeProcessID, "error", err)
+
+		// Remove the failed client
+		s.pushMu.Lock()
+		delete(s.pushClients, handle)
+		delete(s.pushHandleToPID, handle)
+		delete(s.pushClientsByPID, activeProcessID)
+		s.pushMu.Unlock()
+		windows.CloseHandle(handle)
+		return
+	}
+
+	s.logger.Debug("Update composition push completed to active client", "processID", activeProcessID)
+}
+
 // PushEnglishPairConfigToAllClients pushes English auto-pair config to all TSF clients
 func (s *Server) PushEnglishPairConfigToAllClients(enabled bool, pairs []string) {
 	value := ipc.EncodeEnglishPairsValue(enabled, pairs)

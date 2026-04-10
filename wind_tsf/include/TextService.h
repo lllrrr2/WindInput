@@ -89,6 +89,9 @@ public:
     // End current composition
     void EndComposition();
 
+    // Reset KeyEventSink composing state (called after push pipe commit/clear)
+    void ResetComposingState();
+
     // Insert text and start new composition (for top code commit)
     BOOL InsertTextAndStartComposition(const std::wstring& insertText, const std::wstring& newComposition);
 

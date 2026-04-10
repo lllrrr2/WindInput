@@ -1666,6 +1666,23 @@ BOOL CTextService::_InitIPCClient()
         }
     });
 
+    // Set up update composition callback for mouse click partial confirm
+    _pIPCClient->SetUpdateCompositionCallback([pThis](const std::wstring& text, int caretPos) {
+        // This callback is called from the async reader thread
+        WIND_LOG_DEBUG_FMT(L"Update composition received from Go service, textLen=%zu, caret=%d\n",
+                           text.length(), caretPos);
+
+        if (pThis->_pLangBarItemButton != nullptr)
+        {
+            pThis->_pLangBarItemButton->PostUpdateComposition(text, caretPos);
+        }
+        else
+        {
+            // Fallback: direct UpdateComposition
+            pThis->UpdateComposition(text, caretPos);
+        }
+    });
+
     // Set up config sync callback for English auto-pair
     _pIPCClient->SetSyncConfigCallback([pThis](const std::string& key, const std::vector<uint8_t>& value) {
         if (pThis->_pKeyEventSink != nullptr)
@@ -3049,6 +3066,14 @@ void CTextService::EndComposition()
 
     pEditSession->Release();
     pContext->Release();
+}
+
+void CTextService::ResetComposingState()
+{
+    if (_pKeyEventSink != nullptr)
+    {
+        _pKeyEventSink->ResetComposingState();
+    }
 }
 
 // Insert text and start new composition (for top code commit)
