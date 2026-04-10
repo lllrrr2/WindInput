@@ -2,6 +2,8 @@
 package coordinator
 
 import (
+	"strings"
+
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/clipboard"
 )
@@ -23,6 +25,36 @@ func (c *Coordinator) handleCandidateCopy(index int) {
 		c.logger.Error("Failed to copy candidate to clipboard", "error", err)
 	} else {
 		c.logger.Debug("Candidate copied to clipboard", "len", len([]rune(text)))
+	}
+}
+
+// handleCandidateCopyBatch copies candidates to clipboard (debug only).
+// maxPages=0 means all candidates, maxPages=N means first N pages.
+func (c *Coordinator) handleCandidateCopyBatch(maxPages int) {
+	c.mu.Lock()
+
+	endIdx := len(c.candidates)
+	if maxPages > 0 && maxPages*c.candidatesPerPage < endIdx {
+		endIdx = maxPages * c.candidatesPerPage
+	}
+
+	if endIdx == 0 {
+		c.mu.Unlock()
+		return
+	}
+
+	texts := make([]string, 0, endIdx)
+	for i := 0; i < endIdx; i++ {
+		texts = append(texts, c.candidates[i].Text)
+	}
+	c.mu.Unlock()
+
+	result := strings.Join(texts, " ")
+
+	if err := clipboard.SetText(result); err != nil {
+		c.logger.Error("Failed to copy candidates batch to clipboard", "error", err)
+	} else {
+		c.logger.Debug("Candidates batch copied to clipboard", "count", len(texts), "maxPages", maxPages)
 	}
 }
 

@@ -2,6 +2,8 @@ package ui
 
 import (
 	"unsafe"
+
+	"github.com/huanfeng/wind_input/pkg/buildvariant"
 )
 
 // handleMouseMove processes mouse move events
@@ -245,6 +247,19 @@ func (w *CandidateWindow) handleRightClick(lParam uintptr) {
 		{ID: IDM_CANDIDATE_COPY, Text: "复制(C)"},
 	}
 
+	// Debug: add batch copy submenu
+	if buildvariant.IsDebug() {
+		items = append(items, MenuItem{
+			Text: "调试复制",
+			Children: []MenuItem{
+				{ID: IDM_CANDIDATE_COPYALL, Text: "复制所有候选"},
+				{ID: IDM_CANDIDATE_COPY1P, Text: "复制前1页候选"},
+				{ID: IDM_CANDIDATE_COPY2P, Text: "复制前2页候选"},
+				{ID: IDM_CANDIDATE_COPY3P, Text: "复制前3页候选"},
+			},
+		})
+	}
+
 	// Set menu open flag and target index
 	w.mu.Lock()
 	w.menuOpen = true
@@ -285,6 +300,22 @@ func (w *CandidateWindow) handleRightClick(lParam uintptr) {
 			case IDM_CANDIDATE_COPY:
 				if cb.OnCopy != nil {
 					cb.OnCopy(targetIndex)
+				}
+			case IDM_CANDIDATE_COPYALL:
+				if cb.OnCopyDebugBatch != nil {
+					cb.OnCopyDebugBatch(0)
+				}
+			case IDM_CANDIDATE_COPY1P:
+				if cb.OnCopyDebugBatch != nil {
+					cb.OnCopyDebugBatch(1)
+				}
+			case IDM_CANDIDATE_COPY2P:
+				if cb.OnCopyDebugBatch != nil {
+					cb.OnCopyDebugBatch(2)
+				}
+			case IDM_CANDIDATE_COPY3P:
+				if cb.OnCopyDebugBatch != nil {
+					cb.OnCopyDebugBatch(3)
 				}
 			}
 		}
