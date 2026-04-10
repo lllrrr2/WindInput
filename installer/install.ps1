@@ -1,4 +1,7 @@
 ﻿param(
+    [ValidateSet("all", "dll", "service", "setting")]
+    [string[]]$Module = @("all"),
+
     [switch]$DebugVariant
 )
 #Requires -RunAsAdministrator
@@ -39,6 +42,193 @@ if ($DebugVariant) {
 
 $InstallDir = if ($env:ProgramW6432) { Join-Path $env:ProgramW6432 $AppDirName } else { Join-Path $env:ProgramFiles $AppDirName }
 
+# 确定部署模式
+$DeployAll = $Module -contains "all"
+$DeployDll = $DeployAll -or ($Module -contains "dll")
+$DeployService = $DeployAll -or ($Module -contains "service")
+$DeploySetting = $DeployAll -or ($Module -contains "setting")
+
+$RandomSuffix = Get-Random -Maximum 99999999
+
+# 处理旧文件的辅助函数
+function Remove-OldFile {
+    param([string]$FilePath, [string]$FileName, [switch]$UnregisterCOM)
+
+    if (-not (Test-Path $FilePath)) { return }
+
+    if ($UnregisterCOM) {
+        & regsvr32 /u /s $FilePath 2>$null
+    }
+
+    try {
+        Remove-Item -Path $FilePath -Force -ErrorAction Stop
+    } catch {
+        $oldName = "${FileName}.old_${RandomSuffix}"
+        Write-Host "[WARN] Failed to delete old $FileName, renaming to $oldName" -ForegroundColor Yellow
+        try {
+            Rename-Item -Path $FilePath -NewName $oldName -Force -ErrorAction Stop
+        } catch {
+            $bakName = "$($FileName -replace '\.[^.]+$', '')_${RandomSuffix}$([System.IO.Path]::GetExtension($FileName)).bak"
+            Write-Host "[WARN] Failed to rename old $FileName, trying backup name..." -ForegroundColor Yellow
+            Rename-Item -Path $FilePath -NewName $bakName -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# ============================================================
+# 模块部署模式
+# ============================================================
+
+if (-not $DeployAll) {
+    # 检查安装目录是否存在
+    if (-not (Test-Path $InstallDir)) {
+        Write-Host "[错误] 安装目录不存在: $InstallDir" -ForegroundColor Red
+        Write-Host "请先进行完整安装（dev.ps1 选项 1 或 5）" -ForegroundColor Yellow
+        exit 1
+    }
+
+    $moduleNames = @()
+    if ($DeployDll) { $moduleNames += "TSF DLL" }
+    if ($DeployService) { $moduleNames += "GO 服务" }
+    if ($DeploySetting) { $moduleNames += "设置" }
+
+    Write-Host "======================================"
+    Write-Host "$DisplayName 模块部署"
+    Write-Host "======================================"
+    Write-Host ""
+    Write-Host "部署模块: $($moduleNames -join ', ')"
+    Write-Host "安装目录: $InstallDir"
+    Write-Host ""
+
+    # --- 部署 TSF DLL ---
+    if ($DeployDll) {
+        Write-Host "=== 部署 TSF DLL ==="
+
+        # 检查构建产物
+        foreach ($f in @($DllName, $DllNameX86)) {
+            if (-not (Test-Path (Join-Path $BuildDir $f))) {
+                Write-Host "[错误] 未找到 $f，请先构建" -ForegroundColor Red
+                exit 1
+            }
+        }
+
+        # 反注册旧 COM (x64)
+        $tsfDll = Join-Path $InstallDir $DllName
+        if (Test-Path $tsfDll) {
+            Write-Host "  - 反注册 x64 COM..."
+            & regsvr32 /u /s $tsfDll 2>$null
+        }
+
+        # 反注册旧 COM (x86)
+        $regsvr32X86 = Join-Path $env:SystemRoot "SysWOW64\regsvr32.exe"
+        $tsfDllX86 = Join-Path $InstallDir $DllNameX86
+        if (Test-Path $tsfDllX86) {
+            Write-Host "  - 反注册 x86 COM..."
+            & $regsvr32X86 /u /s $tsfDllX86 2>$null
+        }
+
+        # 删除旧文件
+        Remove-OldFile -FilePath (Join-Path $InstallDir $DllName) -FileName $DllName
+        Remove-OldFile -FilePath (Join-Path $InstallDir $DllNameX86) -FileName $DllNameX86
+
+        # 复制新文件
+        Write-Host "  - 复制新 DLL..."
+        Copy-Item -Path (Join-Path $BuildDir $DllName) -Destination $InstallDir -Force
+        Copy-Item -Path (Join-Path $BuildDir $DllNameX86) -Destination $InstallDir -Force
+
+        # 设置权限
+        $appPackagesSid = "*S-1-15-2-1"
+        & icacls (Join-Path $InstallDir $DllName) /grant "${appPackagesSid}:(RX)" /c | Out-Null
+        & icacls (Join-Path $InstallDir $DllNameX86) /grant "${appPackagesSid}:(RX)" /c | Out-Null
+
+        # 注册新 COM
+        Write-Host "  - 注册 x64 COM..."
+        & regsvr32 /s (Join-Path $InstallDir $DllName)
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[错误] COM x64 注册失败" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "  - 注册 x86 COM..."
+        & $regsvr32X86 /s (Join-Path $InstallDir $DllNameX86)
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[警告] COM x86 注册失败，32 位应用可能无法使用输入法" -ForegroundColor Yellow
+        }
+
+        Write-Host "[完成] TSF DLL 部署成功" -ForegroundColor Green
+        Write-Host ""
+    }
+
+    # --- 部署 GO 服务 ---
+    if ($DeployService) {
+        Write-Host "=== 部署 GO 服务 ==="
+
+        # 检查构建产物
+        if (-not (Test-Path (Join-Path $BuildDir $ExeName))) {
+            Write-Host "[错误] 未找到 $ExeName，请先构建" -ForegroundColor Red
+            exit 1
+        }
+
+        # 停止旧进程
+        Write-Host "  - 停止旧服务..."
+        Get-Process -Name $ServiceProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+
+        # 删除旧文件
+        Remove-OldFile -FilePath (Join-Path $InstallDir $ExeName) -FileName $ExeName
+
+        # 复制新文件
+        Write-Host "  - 复制新文件..."
+        Copy-Item -Path (Join-Path $BuildDir $ExeName) -Destination $InstallDir -Force
+
+        # 启动新服务
+        Write-Host "  - 启动新服务..."
+        Start-Process -FilePath (Join-Path $InstallDir $ExeName)
+
+        Write-Host "[完成] GO 服务部署成功" -ForegroundColor Green
+        Write-Host ""
+    }
+
+    # --- 部署设置 ---
+    if ($DeploySetting) {
+        Write-Host "=== 部署设置 ==="
+
+        # 检查构建产物
+        $settingExe = Join-Path $BuildDir $SettingName
+        if (-not (Test-Path $settingExe)) {
+            Write-Host "[错误] 未找到 $SettingName，请先构建" -ForegroundColor Red
+            exit 1
+        }
+
+        # 停止旧进程
+        Write-Host "  - 停止旧设置程序..."
+        Get-Process -Name $SettingProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+
+        # 删除旧文件
+        Remove-OldFile -FilePath (Join-Path $InstallDir $SettingName) -FileName $SettingName
+
+        # 复制新文件
+        Write-Host "  - 复制新文件..."
+        Copy-Item -Path $settingExe -Destination $InstallDir -Force
+
+        Write-Host "[完成] 设置部署成功" -ForegroundColor Green
+        Write-Host ""
+    }
+
+    # 清理备份文件
+    Get-ChildItem -Path $InstallDir -Filter "*.old_*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $InstallDir -Filter "*.bak" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+
+    Write-Host "======================================"
+    Write-Host "模块部署完成！"
+    Write-Host "======================================"
+    exit 0
+}
+
+# ============================================================
+# 完整安装模式（原有逻辑）
+# ============================================================
+
 Write-Host "======================================"
 Write-Host "$DisplayName 安装程序"
 Write-Host "======================================"
@@ -66,33 +256,6 @@ Write-Host "[3/12] 创建安装目录..."
 Write-Host "[4/12] 处理已有文件..."
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-}
-
-$RandomSuffix = Get-Random -Maximum 99999999
-
-# 处理旧文件的辅助函数
-function Remove-OldFile {
-    param([string]$FilePath, [string]$FileName, [switch]$UnregisterCOM)
-
-    if (-not (Test-Path $FilePath)) { return }
-
-    if ($UnregisterCOM) {
-        & regsvr32 /u /s $FilePath 2>$null
-    }
-
-    try {
-        Remove-Item -Path $FilePath -Force -ErrorAction Stop
-    } catch {
-        $oldName = "${FileName}.old_${RandomSuffix}"
-        Write-Host "[WARN] Failed to delete old $FileName, renaming to $oldName" -ForegroundColor Yellow
-        try {
-            Rename-Item -Path $FilePath -NewName $oldName -Force -ErrorAction Stop
-        } catch {
-            $bakName = "$($FileName -replace '\.[^.]+$', '')_${RandomSuffix}$([System.IO.Path]::GetExtension($FileName)).bak"
-            Write-Host "[WARN] Failed to rename old $FileName, trying backup name..." -ForegroundColor Yellow
-            Rename-Item -Path $FilePath -NewName $bakName -Force -ErrorAction SilentlyContinue
-        }
-    }
 }
 
 Remove-OldFile -FilePath (Join-Path $InstallDir $DllName) -FileName $DllName -UnregisterCOM
