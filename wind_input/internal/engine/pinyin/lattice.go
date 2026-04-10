@@ -9,6 +9,37 @@ import (
 	"github.com/huanfeng/wind_input/internal/dict"
 )
 
+// ============================================================
+// 虚词白名单与词性启发式
+// ============================================================
+
+// functionWords 高频虚词/功能词白名单。
+// 这些单字在造句中经常作为独立词出现（助词、代词、介词、连词、副词等），
+// 施加完整的 singleCharPenalty 会不公平地惩罚包含它们的合理路径。
+var functionWords = map[string]bool{
+	// 助词
+	"了": true, "的": true, "地": true, "得": true, "着": true, "过": true,
+	// 代词
+	"我": true, "你": true, "他": true, "她": true, "它": true, "们": true,
+	"这": true, "那": true,
+	// 介词/连词
+	"和": true, "与": true, "在": true, "把": true, "被": true, "让": true,
+	"从": true, "到": true, "对": true, "向": true, "跟": true,
+	// 副词
+	"不": true, "没": true, "也": true, "都": true, "就": true, "才": true,
+	"还": true, "又": true, "再": true, "很": true, "太": true, "最": true,
+	// 高频动词/判断词
+	"是": true, "有": true, "会": true, "能": true, "要": true, "可": true,
+	"去": true, "来": true, "做": true, "说": true, "看": true, "想": true,
+}
+
+// particleSuffixes V+助词模式的尾字。
+// 多字词以这些字结尾时（如"接了"、"看的"），通常是动词+语法助词的组合，
+// 而非独立语义词（如"和解"、"今天"），应在 Viterbi 中降权。
+var particleSuffixes = map[rune]bool{
+	'了': true, '的': true, '着': true, '过': true, '得': true, '地': true,
+}
+
 // LatticeNode 词网格节点
 type LatticeNode struct {
 	Start     int      // 在输入中的起始字节位置
@@ -37,8 +68,16 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 	logger := slog.Default()
 	traceEnabled := n >= 8
 
-	// 单字回退节点施加 LogProb 惩罚，确保多字词路径始终优于单字拼凑路径。
+	// 单字惩罚参数：
+	// - 普通单字施加完整惩罚，确保多字词路径优于单字拼凑
+	// - 虚词（了/的/和/我 等）施加轻微惩罚，因为它们天然以单字出现
 	const singleCharPenalty = -3.0
+	const functionWordPenalty = -0.5
+	// 多字词加成参数：
+	// - unigram 中的实体词（不以助词结尾）获得长度加分，反映语义确定性
+	// - 以助词结尾的多字词（如"接了""看的"）为 V+助词语法组合，施加惩罚
+	const contentWordBonus = 1.5
+	const verbParticlePenalty = -1.0
 
 	// CompositeDict 始终支持前缀搜索
 	ps := d
@@ -78,11 +117,24 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 				seen[key] = true
 
 				logProb := calcLogProb(cand, unigram)
-				// 单字节点统一施加惩罚，无论来自多音节查找还是单字回退。
-				// 避免 collectAndLookup 中的单字绕过阶段二的 singleCharPenalty，
-				// 导致高频单字路径（如 "和"+"接"+"了"）与多字词路径（如 "和解"+"了"）不公平竞争。
-				if len([]rune(cand.Text)) == 1 {
-					logProb += singleCharPenalty
+				runes := []rune(cand.Text)
+				charCount := len(runes)
+				if charCount == 1 {
+					// 方案二：虚词白名单 — 虚词施加轻微惩罚，其他单字施加完整惩罚
+					if functionWords[cand.Text] {
+						logProb += functionWordPenalty
+					} else {
+						logProb += singleCharPenalty
+					}
+				} else if charCount > 1 {
+					// 方案三：实体词加分 + V+助词惩罚
+					if particleSuffixes[runes[charCount-1]] {
+						// "接了""看的" 等 V+助词组合：降权
+						logProb += verbParticlePenalty
+					} else if unigram != nil && unigram.Contains(cand.Text) {
+						// unigram 中的实体词（如"和解""今天"）：加分
+						logProb += contentWordBonus
+					}
 				}
 				if traceEnabled && len([]rune(cand.Text)) > 1 {
 					logger.Debug("[LATTICE_TRACE] multichar_node",
@@ -143,9 +195,13 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 				seen[key] = true
 
 				logProb := calcLogProb(cand, unigram)
-				// 单字回退节点施加惩罚，防止高频单字拼凑出"前他""林歪"等伪词组
+				// 单字回退节点惩罚：虚词轻罚，其他重罚
 				if len([]rune(cand.Text)) == 1 {
-					logProb += singleCharPenalty
+					if functionWords[cand.Text] {
+						logProb += functionWordPenalty
+					} else {
+						logProb += singleCharPenalty
+					}
 				}
 
 				node := LatticeNode{

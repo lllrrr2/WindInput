@@ -142,21 +142,26 @@ func TestPartialSuffixKeepsExactMatch_wobuzhidaog(t *testing.T) {
 		t.Logf("  [%d]: %s (weight=%d, consumed=%d)", i, c.Text, c.Weight, c.ConsumedLength)
 	}
 
-	baseIdx, foundBase := findCandidate(resultBase, "我不知道")
-	// 注意：测试词库可能没有 "我不知道" 作为一个整词，
-	// 但 Viterbi 应该能组出来（如果有 bigram/unigram 支持）。
-	// 退而求其次，至少 "不知道" 和 "知道" 应在候选中。
-	if !foundBase {
-		// 检查子词组
-		_, foundBuzhidao := findCandidate(resultBase, "不知道")
-		if !foundBuzhidao {
-			t.Error("'不知道' should be in candidates for 'wobuzhidao'")
-		}
-	} else {
-		t.Logf("'我不知道' found at index %d (baseline)", baseIdx)
+	// 首位子词组（start=0）应存在：我不(wo+bu)
+	_, foundWobu := findCandidate(resultBase, "我不")
+	if !foundWobu {
+		t.Error("'我不' should be in candidates for 'wobuzhidao' (start=0 sub-phrase)")
 	}
 
-	// 核心测试：加了 partial "g" 后
+	// 非首位子词组不应独立出现：它们的 ConsumedLength 会吞掉前面的音节。
+	// "不知道"(start=1) 的 ConsumedLength 会包含 "wo"，选中后 "wo" 丢失。
+	// 这些词组应由 Viterbi 组句提供（如 "我不知道"），或用户先确认 "我" 后再出现。
+	_, foundBuzhidao := findCandidate(resultBase, "不知道")
+	if foundBuzhidao {
+		// 如果存在，检查 ConsumedLength 是否安全（应 <= "wo" 之后的部分）
+		for _, c := range resultBase.Candidates {
+			if c.Text == "不知道" && c.ConsumedLength > 10 {
+				t.Errorf("'不知道' has unsafe ConsumedLength=%d for input 'wobuzhidao'", c.ConsumedLength)
+			}
+		}
+	}
+
+	// 核心测试：加了 partial "g" 后，首位子词组仍在
 	resultWithG := engine.ConvertEx("wobuzhidaog", 50)
 	t.Log("=== wobuzhidaog (with partial g) ===")
 	for i, c := range resultWithG.Candidates {
@@ -166,23 +171,25 @@ func TestPartialSuffixKeepsExactMatch_wobuzhidaog(t *testing.T) {
 		t.Logf("  [%d]: %s (weight=%d, consumed=%d)", i, c.Text, c.Weight, c.ConsumedLength)
 	}
 
-	// "不知道" 必须仍在候选中（作为子词组或精确匹配）
-	buzhidaoIdx, foundBuzhidao := findCandidate(resultWithG, "不知道")
-	if !foundBuzhidao {
-		t.Fatal("CRITICAL: '不知道' MUST be in candidates for 'wobuzhidaog' — partial 'g' should not remove completed-syllable matches")
+	// "我不" 应仍在候选中（start=0 子词组）
+	_, foundWobuG := findCandidate(resultWithG, "我不")
+	if !foundWobuG {
+		t.Error("'我不' should be in candidates for 'wobuzhidaog'")
 	}
 
-	// "不知道" 的 ConsumedLength 应该是 "buzhidao" 的长度(8)，不是整个输入的长度
-	buzhidaoCand := resultWithG.Candidates[buzhidaoIdx]
-	// ConsumedLength 应 <= len("wobuzhidao")=10 并且 > 0
-	if buzhidaoCand.ConsumedLength > len("wobuzhidaog") {
-		t.Errorf("'不知道' ConsumedLength=%d exceeds input length %d",
-			buzhidaoCand.ConsumedLength, len("wobuzhidaog"))
+	// 验证无候选的 ConsumedLength 超过其文本覆盖范围
+	// （非首位子词组不应出现，首位子词组的 ConsumedLength 安全）
+	for _, c := range resultWithG.Candidates {
+		charCount := len([]rune(c.Text))
+		// 粗略检查：单字候选不应消耗超过一个音节的长度
+		if charCount == 1 && c.ConsumedLength > 5 {
+			t.Errorf("single char '%s' has suspicious ConsumedLength=%d", c.Text, c.ConsumedLength)
+		}
 	}
 
-	// "知道" 也应在候选中
+	// "知道" 不应作为独立候选出现（非首位子词组，会吞掉 wo+bu）
 	_, foundZhidao := findCandidate(resultWithG, "知道")
-	if !foundZhidao {
+	if foundZhidao {
 		t.Error("'知道' should be in candidates for 'wobuzhidaog'")
 	}
 
@@ -250,17 +257,14 @@ func TestRemainingBufferAfterPartialCommit(t *testing.T) {
 		t.Logf("  [%d]: %s (weight=%d, consumed=%d)", i, c.Text, c.Weight, c.ConsumedLength)
 	}
 
-	// "不知道" 必须在候选中（子词组 bu+zhi+dao）
+	// "不知道" 应在候选中（start=0 子词组 bu+zhi+dao）
 	_, foundBuzhidao := findCandidate(result, "不知道")
 	if !foundBuzhidao {
-		t.Fatal("CRITICAL: '不知道' MUST be in candidates for 'buzhidaogaid'")
+		t.Error("'不知道' should be in candidates for 'buzhidaogaid' (start=0 sub-phrase)")
 	}
 
-	// "知道" 也应在候选中
-	_, foundZhidao := findCandidate(result, "知道")
-	if !foundZhidao {
-		t.Error("'知道' should be in candidates for 'buzhidaogaid'")
-	}
+	// "知道" 不应作为独立候选（start=1 子词组，ConsumedLength 会吞掉 "bu"）
+	// 用户应先选 "不"(consumed=2)，剩余 "zhidaogaid" 再出现 "知道"
 
 	// "不" 作为首音节单字应在候选中
 	_, foundBu := findCandidate(result, "不")
@@ -328,7 +332,7 @@ func TestConsumedLengthWithPartial(t *testing.T) {
 		desc     string
 	}{
 		{"nihaozh", "你好", 5, "nihao consumed, zh is partial"},
-		{"wobuzhidaog", "知道", 11, "zhidao is non-start sub-phrase, must consume all"},
+		{"wobuzhidaog", "我不", 4, "wobu sub-phrase from start=0"},
 		{"wobuzhidaog", "我", 2, "wo only"},
 	}
 

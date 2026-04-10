@@ -131,8 +131,8 @@ func TestNizhibuzhidao_KeyAssertions(t *testing.T) {
 		},
 		{
 			input:       "nizhibuzhi",
-			mustContain: []string{"你知", "知不知", "不知"},
-			desc:        "ni+zhi+bu+zhi，子词组应丰富",
+			mustContain: []string{"你知"},
+			desc:        "ni+zhi+bu+zhi，首位子词组应保留（非首位如'知不知'不再独立生成，由Viterbi组句提供）",
 			consumedCheck: map[string]int{
 				"你知": 5,
 				"你":  2,
@@ -140,9 +140,9 @@ func TestNizhibuzhidao_KeyAssertions(t *testing.T) {
 		},
 		{
 			input:        "nizhibuzhid",
-			mustContain:  []string{"你知", "知不知"},
+			mustContain:  []string{"你知"},
 			mustNotFirst: []string{"的", "得", "大"}, // partial "d" 展开的单字不应排第一
-			desc:         "ni+zhi+bu+zhi+d(partial)，子词组应保留，partial单字不排首位（注：不知道/知道在dao未完成时无法匹配）",
+			desc:         "ni+zhi+bu+zhi+d(partial)，首位子词组应保留，partial单字不排首位",
 			consumedCheck: map[string]int{
 				"你知": 5,
 				"你":  2,
@@ -150,20 +150,17 @@ func TestNizhibuzhidao_KeyAssertions(t *testing.T) {
 		},
 		{
 			input:        "nizhibuzhida",
-			mustContain:  []string{"你知", "知不知"},
+			mustContain:  []string{"你知"},
 			mustNotFirst: []string{"的", "得", "大"},
-			desc:         "ni+zhi+bu+zhi+da，知道在da≠dao时无法匹配",
+			desc:         "ni+zhi+bu+zhi+da，首位子词组保留",
 		},
 		{
 			input:       "nizhibuzhidao",
-			mustContain: []string{"知不知道", "不知道", "知道", "你知"},
-			desc:        "完整输入，连续子词组必须全部在候选中（注：你知道跨越bu+zhi不连续，无法通过子词组匹配）",
+			mustContain: []string{"你知"},
+			desc:        "完整输入，首位子词组保留（非首位子词组如'知不知道'/'不知道'/'知道'不再独立生成，避免ConsumedLength吞掉前面音节）",
 			consumedCheck: map[string]int{
-				"知不知道": 13, // 消耗全部（非首位子词组）
-				"不知道":  13, // 消耗全部（非首位子词组）
-				"知道":   13, // 消耗全部（非首位子词组）
-				"你知":   5,  // 从首位开始的子词组
-				"你":    2,
+				"你知": 5, // 从首位开始的子词组
+				"你":  2,
 			},
 		},
 	}

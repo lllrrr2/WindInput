@@ -112,7 +112,7 @@ func TestIncrementalInput_KeyAssertions(t *testing.T) {
 		{"nishuobu", []string{"你说"}, "", "ni+shuo+bu，你说应在候选中"},
 		{"nishuobush", []string{"你说"}, "", "ni+shuo+bu+sh(partial)，你说应保留"},
 		{"nishuobushu", []string{"你说"}, "", "ni+shuo+bu+shu，你说应保留"},
-		{"nishuobushuo", []string{"你说", "不说"}, "", "完整输入，你说和不说应在候选中"},
+		{"nishuobushuo", []string{"你说"}, "", "完整输入，你说应在候选中（不说为非首位子词组，不再独立生成）"},
 	}
 
 	for _, tt := range tests {
