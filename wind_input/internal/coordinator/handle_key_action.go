@@ -219,53 +219,47 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleBackspace() *bridge.KeyEventResult {
+	// 优先撤销确认段：当有已确认的分段时（如用户选了"我们"后剩余"de"），
+	// 退格应回退上一步确认（恢复"womende"），而非删除缓冲末字符。
+	// 这与主流拼音输入法（搜狗、百度、微软拼音）行为一致。
+	if len(c.confirmedSegments) > 0 {
+		lastSeg := c.confirmedSegments[len(c.confirmedSegments)-1]
+		c.confirmedSegments = c.confirmedSegments[:len(c.confirmedSegments)-1]
+		c.inputBuffer = lastSeg.ConsumedCode + c.inputBuffer
+		c.inputCursorPos = len(c.inputBuffer) // 光标移到末尾
+		c.logger.Debug("Backspace: undo confirmed segment",
+			"restored", lastSeg.ConsumedCode, "buffer", c.inputBuffer,
+			"remainingSegments", len(c.confirmedSegments))
+
+		c.updateCandidates()
+		c.showUI()
+
+		if c.config != nil && c.config.UI.InlinePreedit {
+			return &bridge.KeyEventResult{
+				Type:     bridge.ResponseTypeUpdateComposition,
+				Text:     c.compositionText(),
+				CaretPos: c.displayCursorPos(),
+			}
+		}
+		return &bridge.KeyEventResult{
+			Type:     bridge.ResponseTypeUpdateComposition,
+			Text:     "",
+			CaretPos: 0,
+		}
+	}
+
 	if len(c.inputBuffer) > 0 && c.inputCursorPos > 0 {
-		// 在光标位置删除前一个字符
+		// 无确认段时，在光标位置删除前一个字符
 		c.inputBuffer = c.inputBuffer[:c.inputCursorPos-1] + c.inputBuffer[c.inputCursorPos:]
 		c.inputCursorPos--
 		c.logger.Debug("Input buffer after backspace", "buffer", c.inputBuffer, "cursor", c.inputCursorPos)
 
-		if len(c.inputBuffer) == 0 && len(c.confirmedSegments) == 0 {
+		if len(c.inputBuffer) == 0 {
 			c.clearState()
 			c.hideUI()
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
 		}
 
-		// inputBuffer 为空但仍有确认段时，回退到上一个确认段
-		if len(c.inputBuffer) == 0 && len(c.confirmedSegments) > 0 {
-			return c.popConfirmedSegment()
-		}
-
-		c.updateCandidates()
-		c.showUI()
-
-		// Handle Inline Preedit
-		if c.config != nil && c.config.UI.InlinePreedit {
-			return &bridge.KeyEventResult{
-				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.compositionText(),
-				CaretPos: c.displayCursorPos(),
-			}
-		}
-
-		// When InlinePreedit is disabled, still use UpdateComposition with empty text
-		// so that TSF knows there's an active composition
-		return &bridge.KeyEventResult{
-			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     "",
-			CaretPos: 0,
-		}
-	}
-
-	// 光标在编码最左边按退格，且有确认段 → 弹出最后确认段，拼接到当前 buffer 前面
-	if len(c.inputBuffer) > 0 && c.inputCursorPos == 0 && len(c.confirmedSegments) > 0 {
-		lastSeg := c.confirmedSegments[len(c.confirmedSegments)-1]
-		c.confirmedSegments = c.confirmedSegments[:len(c.confirmedSegments)-1]
-		c.inputBuffer = lastSeg.ConsumedCode + c.inputBuffer
-		c.inputCursorPos = len(lastSeg.ConsumedCode)
-		c.logger.Debug("Backspace at cursor 0: pop confirmed segment",
-			"restored", lastSeg.ConsumedCode, "buffer", c.inputBuffer)
-
 		c.updateCandidates()
 		c.showUI()
 
@@ -281,11 +275,6 @@ func (c *Coordinator) handleBackspace() *bridge.KeyEventResult {
 			Text:     "",
 			CaretPos: 0,
 		}
-	}
-
-	// inputBuffer 为空且有确认段 → 弹出最后确认段恢复编码
-	if len(c.inputBuffer) == 0 && len(c.confirmedSegments) > 0 {
-		return c.popConfirmedSegment()
 	}
 
 	if len(c.inputBuffer) == 0 {
