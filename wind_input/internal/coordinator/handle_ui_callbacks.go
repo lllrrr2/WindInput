@@ -172,6 +172,10 @@ func (c *Coordinator) setupCandidateCallbacks() {
 			// Run in goroutine to avoid blocking UI thread
 			go c.handleCandidateResetDefault(index)
 		},
+		OnCopy: func(index int) {
+			// Run in goroutine to avoid blocking UI thread
+			go c.handleCandidateCopy(index)
+		},
 		OnOpenSettings: func() {
 			// Run in goroutine to avoid blocking UI thread
 			go c.handleCandidateOpenSettings()

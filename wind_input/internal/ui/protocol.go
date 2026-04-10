@@ -33,6 +33,7 @@ type CandidateCallback struct {
 	OnMoveTop         func(index int)                     // Called when user selects "Move to Top" from context menu
 	OnDelete          func(index int)                     // Called when user selects "Delete" from context menu
 	OnResetDefault    func(index int)                     // Called when user selects "Reset to Default" from context menu
+	OnCopy            func(index int)                     // Called when user selects "Copy" from context menu
 	OnOpenSettings    func()                              // Called when user selects "Settings" from context menu
 	OnAbout           func()                              // Called when user selects "About" from context menu
 	OnShowUnifiedMenu func(screenX, screenY int)          // Called when user right-clicks blank area to show unified menu

@@ -241,6 +241,8 @@ func (w *CandidateWindow) handleRightClick(lParam uintptr) {
 		{ID: IDM_CANDIDATE_RESET, Text: "恢复默认(R)", Disabled: !hasShadow},
 		{Separator: true},
 		{ID: IDM_CANDIDATE_DELETE, Text: "删除词条(X)", Disabled: disableDelete},
+		{Separator: true},
+		{ID: IDM_CANDIDATE_COPY, Text: "复制(C)"},
 	}
 
 	// Set menu open flag and target index
@@ -279,6 +281,10 @@ func (w *CandidateWindow) handleRightClick(lParam uintptr) {
 			case IDM_CANDIDATE_DELETE:
 				if cb.OnDelete != nil {
 					cb.OnDelete(targetIndex)
+				}
+			case IDM_CANDIDATE_COPY:
+				if cb.OnCopy != nil {
+					cb.OnCopy(targetIndex)
 				}
 			}
 		}
