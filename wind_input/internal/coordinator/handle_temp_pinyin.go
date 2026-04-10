@@ -11,39 +11,44 @@ import (
 	"github.com/huanfeng/wind_input/internal/ui"
 )
 
-// isTempPinyinTrigger 检查按键是否应触发临时拼音模式
-func (c *Coordinator) isTempPinyinTrigger(key string, keyCode int) bool {
+// getTempPinyinTriggerKey 检查按键是否应触发临时拼音模式，返回匹配的触发键类型，空串表示不触发
+func (c *Coordinator) getTempPinyinTriggerKey(key string, keyCode int) string {
 	// 仅码表类型引擎下生效（如五笔）
 	if c.engineMgr == nil || !c.engineMgr.IsCurrentEngineType(schema.EngineTypeCodeTable) {
-		return false
+		return ""
 	}
 	// 检查当前码表方案是否开启了临时拼音
 	if !c.engineMgr.IsTempPinyinEnabled() {
-		return false
+		return ""
 	}
 	// 仅输入缓冲区为空时触发
 	if len(c.inputBuffer) > 0 {
-		return false
+		return ""
 	}
 	if c.config == nil {
-		return false
+		return ""
 	}
 
 	for _, tk := range c.config.Input.TempPinyin.TriggerKeys {
 		switch tk {
 		case "backtick":
 			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
-				return true
+				return "backtick"
 			}
 		case "semicolon":
 			// 仅在输入缓冲区为空且无候选时触发
 			// 有候选时 semicolon 仍用于二三候选选择
 			if (key == ";" || uint32(keyCode) == ipc.VK_OEM_1) && len(c.candidates) == 0 {
-				return true
+				return "semicolon"
+			}
+		case "z":
+			// z 键触发：仅在无候选时触发，z 同时作为拼音首字母
+			if key == "z" && len(c.candidates) == 0 {
+				return "z"
 			}
 		}
 	}
-	return false
+	return ""
 }
 
 // isTempPinyinTriggerKeyMatch 仅检查按键是否匹配临时拼音触发键（不检查状态条件）
@@ -61,13 +66,18 @@ func (c *Coordinator) isTempPinyinTriggerKeyMatch(key string, keyCode int) bool 
 			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
 				return true
 			}
+		case "z":
+			if key == "z" {
+				return true
+			}
 		}
 	}
 	return false
 }
 
 // enterTempPinyinMode 进入临时拼音模式
-func (c *Coordinator) enterTempPinyinMode() *bridge.KeyEventResult {
+// triggerKey 标识触发键类型（"backtick"/"semicolon"/"z"）
+func (c *Coordinator) enterTempPinyinMode(triggerKey string) *bridge.KeyEventResult {
 	// 确保拼音引擎已加载
 	if c.engineMgr != nil {
 		if err := c.engineMgr.EnsurePinyinLoaded(); err != nil {
@@ -79,18 +89,25 @@ func (c *Coordinator) enterTempPinyinMode() *bridge.KeyEventResult {
 	}
 
 	c.tempPinyinMode = true
+	c.tempPinyinTriggerKey = triggerKey
 	c.tempPinyinBuffer = ""
 
-	c.logger.Debug("Entered temp pinyin mode")
+	c.logger.Debug("Entered temp pinyin mode", "triggerKey", triggerKey)
 
 	// 显示初始 UI（仅前缀标识）
 	c.showTempPinyinUI()
 
+	prefix := c.tempPinyinPrefix()
 	return &bridge.KeyEventResult{
 		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     "`",
-		CaretPos: 1,
+		Text:     prefix,
+		CaretPos: len(prefix),
 	}
+}
+
+// tempPinyinPrefix 返回临时拼音模式的前缀显示字符
+func (c *Coordinator) tempPinyinPrefix() string {
+	return "`"
 }
 
 // handleTempPinyinKey 处理临时拼音模式下的按键
@@ -449,6 +466,7 @@ func (c *Coordinator) selectTempPinyinCandidate(index int) *bridge.KeyEventResul
 func (c *Coordinator) exitTempPinyinMode(commit bool, text string) *bridge.KeyEventResult {
 	c.tempPinyinMode = false
 	c.tempPinyinBuffer = ""
+	c.tempPinyinTriggerKey = ""
 	c.preeditDisplay = ""
 	c.candidates = nil
 	c.currentPage = 1
@@ -520,11 +538,12 @@ func (c *Coordinator) showTempPinyinUI() {
 	}
 
 	// 构建预编辑文本
-	preedit := "`" + c.preeditDisplay
+	prefix := c.tempPinyinPrefix()
+	preedit := prefix + c.preeditDisplay
 	if c.preeditDisplay == "" && c.tempPinyinBuffer != "" {
-		preedit = "`" + c.tempPinyinBuffer
+		preedit = prefix + c.tempPinyinBuffer
 	} else if c.tempPinyinBuffer == "" {
-		preedit = "`"
+		preedit = prefix
 	}
 
 	c.uiManager.ShowCandidates(

@@ -214,7 +214,10 @@
           <label>临时拼音触发键</label>
           <p class="setting-hint">码表模式下按触发键临时切换拼音输入</p>
         </div>
-        <div class="setting-control">
+        <div
+          class="setting-control"
+          style="flex-direction: column; align-items: flex-start"
+        >
           <div class="checkbox-group">
             <label
               class="checkbox-item"
@@ -238,6 +241,31 @@
               />
               <span>{{ tk.label }}</span>
             </label>
+          </div>
+          <div style="margin-top: 4px">
+            <div class="checkbox-group">
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  :checked="
+                    formData.input.temp_pinyin.trigger_keys.includes('z')
+                  "
+                  @change="
+                    toggleArrayValue(
+                      formData.input.temp_pinyin.trigger_keys,
+                      'z',
+                    )
+                  "
+                />
+                <span>z 键</span>
+              </label>
+            </div>
+            <p
+              v-if="formData.input.temp_pinyin.trigger_keys.includes('z')"
+              class="setting-hint warning-hint"
+            >
+              z 开头的编码将无法输入
+            </p>
           </div>
         </div>
       </div>

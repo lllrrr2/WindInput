@@ -346,8 +346,8 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	}
 
 	// 检查是否应触发临时拼音模式（Shift 时不触发，Shift+` 应输出 ~）
-	if !hasShift && c.isTempPinyinTrigger(key, data.KeyCode) {
-		return c.enterTempPinyinMode()
+	if triggerKey := c.getTempPinyinTriggerKey(key, data.KeyCode); !hasShift && triggerKey != "" {
+		return c.enterTempPinyinMode(triggerKey)
 	}
 
 	// 中文模式下，Shift+字母处理（CapsLock OFF 时）

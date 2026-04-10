@@ -115,10 +115,11 @@ type caretState struct {
 
 // tempModeState 临时输入模式（临时英文/临时拼音）状态
 type tempModeState struct {
-	tempEnglishMode   bool   // 是否处于临时英文模式
-	tempEnglishBuffer string // 临时英文缓冲区
-	tempPinyinMode    bool   // 是否处于临时拼音模式
-	tempPinyinBuffer  string // 临时拼音输入缓冲区
+	tempEnglishMode      bool   // 是否处于临时英文模式
+	tempEnglishBuffer    string // 临时英文缓冲区
+	tempPinyinMode       bool   // 是否处于临时拼音模式
+	tempPinyinBuffer     string // 临时拼音输入缓冲区
+	tempPinyinTriggerKey string // 临时拼音触发键类型（"backtick"/"semicolon"/"z"）
 }
 
 // addWordState 快捷加词模式状态

@@ -117,7 +117,7 @@ type InputConfig struct {
 
 // TempPinyinConfig 临时拼音模式配置
 type TempPinyinConfig struct {
-	TriggerKeys []string `yaml:"trigger_keys" json:"trigger_keys"` // 触发键: "backtick", "semicolon"
+	TriggerKeys []string `yaml:"trigger_keys" json:"trigger_keys"` // 触发键: "backtick", "semicolon", "z"
 }
 
 // AutoPairConfig 自动标点配对配置

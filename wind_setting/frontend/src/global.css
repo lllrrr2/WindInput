@@ -222,6 +222,11 @@ body {
   margin-top: 2px;
   text-align: left;
 }
+
+.setting-hint.warning-hint {
+  color: #d97706;
+  margin-top: 6px;
+}
 .setting-control {
   flex-shrink: 0;
   display: flex;
