@@ -217,22 +217,23 @@ func TestEngineConvertExRanking(t *testing.T) {
 	}
 }
 
-// TestEngineConvertExPrefixPrediction 测试前缀预测："wome" 应包含 "我们"
+// TestEngineConvertExPrefixPrediction 测试前缀预测：
+// "wom"（m 为 partial）应通过步骤 5 前缀匹配找到 "我们"(women)；
+// "wome"（me 为完整音节）不应前缀预测超出输入音节的词组。
 func TestEngineConvertExPrefixPrediction(t *testing.T) {
 	d := createTestDictForEx(t)
 	engine := NewEngine(d, nil)
 
-	// 输入 "wome"（还没输完 "women"），应该通过前缀匹配找到 "我们"
-	result := engine.ConvertEx("wome", 10)
+	// "wom"：wo(exact) + m(partial)，步骤 5 前缀匹配应找到 "我们"
+	result := engine.ConvertEx("wom", 10)
 
 	for i, c := range result.Candidates {
 		if i >= 5 {
 			break
 		}
-		t.Logf("wome candidate[%d]: %s (weight=%d)", i, c.Text, c.Weight)
+		t.Logf("wom candidate[%d]: %s (weight=%d)", i, c.Text, c.Weight)
 	}
 
-	// "我们" 应该在候选列表中
 	found := false
 	foundIdx := -1
 	for i, c := range result.Candidates {
@@ -247,10 +248,9 @@ func TestEngineConvertExPrefixPrediction(t *testing.T) {
 		for _, c := range result.Candidates {
 			texts = append(texts, c.Text)
 		}
-		t.Fatalf("ConvertEx('wome') should contain '我们', got %v", texts)
+		t.Fatalf("ConvertEx('wom') should contain '我们', got %v", texts)
 	}
 
-	// "我们" 应该排在前3名
 	if foundIdx > 2 {
 		t.Errorf("'我们' should be in top 3, but at position %d", foundIdx)
 	}
@@ -1337,7 +1337,9 @@ func TestMixedAbbrev_nihao(t *testing.T) {
 	}
 }
 
-// TestPartialSuffix_nihaozh "nihaozh" 应有"你好"和 zh 相关候选
+// TestPartialSuffix_nihaozh "nihaozh" 应有"你好"，但不应包含仅对应 "zh" 的单字候选
+// 因为这些单字的 ConsumedLength 会消耗整个输入（包括 "nihao"），导致输入丢失。
+// 用户应先选 "你好"(consumed=5)，剩余 "zh" 再展开单字。
 func TestPartialSuffix_nihaozh(t *testing.T) {
 	d := createTestDictForEx(t)
 	engine := NewEngine(d, nil)
@@ -1351,11 +1353,14 @@ func TestPartialSuffix_nihaozh(t *testing.T) {
 		t.Logf("nihaozh candidate[%d]: %s (weight=%d, consumed=%d)", i, c.Text, c.Weight, c.ConsumedLength)
 	}
 
-	// 应包含 "你好"（前缀匹配 nihao）
+	// 应包含 "你好"（精确匹配 nihao，consumed=5，留 "zh" 在缓冲）
 	foundNihao := false
 	for _, c := range result.Candidates {
 		if c.Text == "你好" {
 			foundNihao = true
+			if c.ConsumedLength != 5 {
+				t.Errorf("'你好' ConsumedLength should be 5, got %d", c.ConsumedLength)
+			}
 			break
 		}
 	}
@@ -1363,22 +1368,13 @@ func TestPartialSuffix_nihaozh(t *testing.T) {
 		t.Error("ConvertEx('nihaozh') should contain '你好'")
 	}
 
-	// 应包含 zh 开头的字（如"中"、"知"等）
-	foundZhChar := false
-	zhChars := []string{"中", "知", "之", "真", "正", "张", "找", "这", "周", "住"}
+	// 不应包含仅对应尾部 partial "zh" 的单字候选（如"中","知"），
+	// 因为它们的 ConsumedLength 会消耗整个 "nihaozh"，导致 "nihao" 丢失。
+	zhChars := map[string]bool{"中": true, "知": true, "之": true, "真": true, "正": true, "张": true, "找": true, "这": true, "周": true, "住": true}
 	for _, c := range result.Candidates {
-		for _, zh := range zhChars {
-			if c.Text == zh {
-				foundZhChar = true
-				break
-			}
+		if zhChars[c.Text] && len([]rune(c.Text)) == 1 && c.ConsumedLength > 5 {
+			t.Errorf("single char '%s' should not appear with ConsumedLength=%d (would lose 'nihao')", c.Text, c.ConsumedLength)
 		}
-		if foundZhChar {
-			break
-		}
-	}
-	if !foundZhChar {
-		t.Error("ConvertEx('nihaozh') should contain zh-prefix chars like '中','知' etc.")
 	}
 }
 

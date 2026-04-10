@@ -265,30 +265,9 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 		}
 	}
 
-	// ── 步骤 3：前缀匹配（输入 "wome" 时找到 "women"→我们） ──
-	// 当有显式分隔符时跳过：queryInput 去掉了 '，会把 "xi'ande" 当作 "xiande"
-	// 匹配到 "显得比"(xiandebi) 等不尊重分隔符边界的结果
-	if contiguousCount > 0 && !hasExplicitSep {
-		{
-			prefixLimit := 50
-			if maxCandidates > 0 {
-				prefixLimit = maxCandidates * 2
-			}
-			prefixResults := e.dict.LookupPrefix(queryInput, prefixLimit)
-			for _, cand := range prefixResults {
-				if _, exists := candidatesMap[cand.Text]; exists {
-					continue
-				}
-				c := cand
-				charCount := len([]rune(c.Text))
-				coverage := float64(contiguousCount) / float64(totalSyllableCount)
-				c.Weight = e.rimeScore(c.Text, float64(c.Weight), 2.0, coverage, charCount)
-				c.ConsumedLength = len(input)
-				candidatesMap[c.Text] = &c
-			}
-			e.logger.Debug("prefix match", "input", input, "results", len(prefixResults))
-		}
-	}
+	// 步骤 3 已移除：原逻辑对完整音节做 LookupPrefix，会产生超出输入音节的候选
+	// （如 "ruguo" → "如果爱"），不符合主流拼音输入法行为。
+	// 尾部 partial 的前缀匹配由步骤 5 处理（如 "nihaoz" → "你好啊"）。
 
 	// ── 步骤 2：子词组查找（如 "nihaoshijie" → 查找 "你好"、"世界" 等子词组） ──
 	// 直接使用 Parser 已解析的 completedSyllables，不再冗余重建 DAG。
@@ -405,11 +384,22 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 				}
 				c := cand
 				charCount := len([]rune(c.Text))
+				// 过滤不安全或超出输入范围的前缀候选：
+				// 1. 单字+前有完成音节 → ConsumedLength 会吞掉前面音节
+				// 2. 字数超过输入音节数 → 超出输入范围的联想预测（如 rug→如果把）
+				if contiguousCount > 0 && charCount <= 1 {
+					continue
+				}
+				if charCount > totalSyllableCount {
+					continue
+				}
 				// 步骤 5：partial 前缀词组
-				// 单字 initialQuality=1.5，多字词 initialQuality=1.0
-				iq := 1.5
-				if charCount > 1 {
-					iq = 1.0
+				// 覆盖全部音节的多字词（如 rug→如果）iq=3.0，其他 iq=1.0
+				iq := 1.0
+				if charCount <= 1 {
+					iq = 1.5
+				} else if charCount >= totalSyllableCount {
+					iq = 3.0
 				}
 				coverage := float64(syllableCount) / float64(totalSyllableCount)
 				c.Weight = e.rimeScore(c.Text, float64(c.Weight), iq, coverage, charCount)
@@ -417,39 +407,41 @@ func (e *Engine) convertCore(input string, maxCandidates int, skipFilter bool) *
 				candidatesMap[c.Text] = &c
 			}
 		}
-		// 按完整音节前缀查找单字
-		// 每个音节限制候选数量，避免单字符输入（如 "s"）展开过多候选导致超时
-		// 每音节取 top 5（按词频降序，dict.Lookup 已排序），确保各音节高频字都能入选
-		const maxPerSyllable = 5
-		possibles := e.syllableTrie.GetPossibleSyllables(partial)
-		for _, syllable := range possibles {
-			charResults := e.dict.Lookup(syllable)
-			added := 0
-			for _, cand := range charResults {
-				if added >= maxPerSyllable {
-					break
+		// 按完整音节前缀查找单字：仅在纯 partial 输入时运行（如 "g" 或 "s"）。
+		// 当前面有连续完成音节时（如 "rug" = ru+g），单字展开的 ConsumedLength
+		// 只能设为 len(input)（从头消耗），会吞掉前面不属于该单字的音节。
+		// 用户应先确认前面的音节候选，再处理剩余的 partial。
+		if contiguousCount == 0 {
+			const maxPerSyllable = 5
+			possibles := e.syllableTrie.GetPossibleSyllables(partial)
+			for _, syllable := range possibles {
+				charResults := e.dict.Lookup(syllable)
+				added := 0
+				for _, cand := range charResults {
+					if added >= maxPerSyllable {
+						break
+					}
+					if _, exists := candidatesMap[cand.Text]; exists {
+						continue
+					}
+					c := cand
+					charCount := len([]rune(c.Text))
+					otherSyllableCount := len(completedSyllables)
+					if otherSyllableCount == 0 && len(allSyllables) > 1 {
+						otherSyllableCount = len(allSyllables) - 1
+					}
+					// 步骤 5：partial 展开单字，initialQuality=0.0（coverage 也清零，是最低优先级候选）
+					iq := 0.0
+					coverageVal := 0.0
+					if otherSyllableCount == 0 {
+						// 纯 partial 输入时给予少量 coverage
+						coverageVal = 1.0 / float64(totalSyllableCount)
+					}
+					c.Weight = e.rimeScore(c.Text, float64(c.Weight), iq, coverageVal, charCount)
+					c.ConsumedLength = len(input)
+					candidatesMap[c.Text] = &c
+					added++
 				}
-				if _, exists := candidatesMap[cand.Text]; exists {
-					continue
-				}
-				c := cand
-				charCount := len([]rune(c.Text))
-				otherSyllableCount := len(completedSyllables)
-				if otherSyllableCount == 0 && len(allSyllables) > 1 {
-					otherSyllableCount = len(allSyllables) - 1
-				}
-				// 步骤 5：partial 展开单字，initialQuality=0.0（coverage 也清零，是最低优先级候选）
-				// 有其他完整音节时 coverage=0 额外压制高频字跨层级
-				iq := 0.0
-				coverageVal := 0.0
-				if otherSyllableCount == 0 {
-					// 纯 partial 输入时给予少量 coverage
-					coverageVal = 1.0 / float64(totalSyllableCount)
-				}
-				c.Weight = e.rimeScore(c.Text, float64(c.Weight), iq, coverageVal, charCount)
-				c.ConsumedLength = len(input)
-				candidatesMap[c.Text] = &c
-				added++
 			}
 		}
 	}

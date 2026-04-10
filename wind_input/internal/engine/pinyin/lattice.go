@@ -37,6 +37,9 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 	logger := slog.Default()
 	traceEnabled := n >= 8
 
+	// 单字回退节点施加 LogProb 惩罚，确保多字词路径始终优于单字拼凑路径。
+	const singleCharPenalty = -3.0
+
 	// CompositeDict 始终支持前缀搜索
 	ps := d
 	hasPrefixSearch := true
@@ -75,6 +78,12 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 				seen[key] = true
 
 				logProb := calcLogProb(cand, unigram)
+				// 单字节点统一施加惩罚，无论来自多音节查找还是单字回退。
+				// 避免 collectAndLookup 中的单字绕过阶段二的 singleCharPenalty，
+				// 导致高频单字路径（如 "和"+"接"+"了"）与多字词路径（如 "和解"+"了"）不公平竞争。
+				if len([]rune(cand.Text)) == 1 {
+					logProb += singleCharPenalty
+				}
 				if traceEnabled && len([]rune(cand.Text)) > 1 {
 					logger.Debug("[LATTICE_TRACE] multichar_node",
 						"word", cand.Text, "code", code,
@@ -113,8 +122,6 @@ func BuildLattice(input string, st *SyllableTrie, d *dict.CompositeDict, unigram
 	}
 
 	// 为每个单音节添加单字节点（确保至少有通路）
-	// 单字回退节点施加 LogProb 惩罚，确保多字词路径始终优于单字拼凑路径。
-	const singleCharPenalty = -3.0
 	for startPos := 0; startPos < n; startPos++ {
 		if startPos >= len(dag.nodes) {
 			continue
@@ -170,8 +177,12 @@ func calcLogProb(cand candidate.Candidate, unigram UnigramLookup) float64 {
 		return unigram.LogProb(cand.Text)
 	}
 
-	// 多字词不在 unigram 模型中：使用字符平均 LogProb 估算
-	return unigram.CharBasedScore(cand.Text)
+	// 多字词不在 unigram 模型中：使用字符平均 LogProb 估算，
+	// 并施加惩罚以区分"估算概率"与"实测概率"。
+	// 高频字组合（如"接了"="接"+"了"）的 CharBasedScore 可能虚高，
+	// 不应与 unigram 中有真实频率的词（如"和解"）平级竞争。
+	const charBasedPenalty = -2.0
+	return unigram.CharBasedScore(cand.Text) + charBasedPenalty
 }
 
 // GetNodesEndingAt 获取结束于指定位置的所有节点
