@@ -3,6 +3,91 @@
 #include "IPCClient.h"
 #include "Globals.h"
 #include <olectl.h>  // For CONNECT_E_* constants
+#include <dwrite.h>
+
+#pragma comment(lib, "dwrite.lib")
+
+// DirectWrite factory (lazy-initialized, per-process lifetime)
+static IDWriteFactory* g_pDWriteFactory = nullptr;
+
+static bool EnsureDWriteFactory()
+{
+    if (!g_pDWriteFactory)
+    {
+        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
+            __uuidof(IDWriteFactory),
+            reinterpret_cast<IUnknown**>(&g_pDWriteFactory))))
+            return false;
+    }
+    return true;
+}
+
+// Minimal IDWriteTextRenderer that delegates DrawGlyphRun to IDWriteBitmapRenderTarget.
+// Matches the Go-side rendering path for consistent text quality.
+class IconTextRenderer : public IDWriteTextRenderer
+{
+public:
+    IconTextRenderer(IDWriteBitmapRenderTarget* pTarget, IDWriteRenderingParams* pParams, COLORREF color)
+        : _refCount(1), _pTarget(pTarget), _pParams(pParams), _color(color) {}
+
+    // IUnknown
+    STDMETHOD(QueryInterface)(REFIID riid, void** ppv) override
+    {
+        if (IsEqualIID(riid, IID_IUnknown) ||
+            IsEqualIID(riid, __uuidof(IDWriteTextRenderer)) ||
+            IsEqualIID(riid, __uuidof(IDWritePixelSnapping)))
+        {
+            *ppv = this;
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+    STDMETHOD_(ULONG, AddRef)() override { return InterlockedIncrement(&_refCount); }
+    STDMETHOD_(ULONG, Release)() override
+    {
+        ULONG c = InterlockedDecrement(&_refCount);
+        if (c == 0) delete this;
+        return c;
+    }
+
+    // IDWritePixelSnapping
+    STDMETHOD(IsPixelSnappingDisabled)(void*, BOOL* isDisabled) override
+    {
+        *isDisabled = FALSE;  // Pixel snapping enabled for sharp small text
+        return S_OK;
+    }
+    STDMETHOD(GetCurrentTransform)(void*, DWRITE_MATRIX* transform) override
+    {
+        *transform = { 1.0f, 0, 0, 1.0f, 0, 0 };  // Identity
+        return S_OK;
+    }
+    STDMETHOD(GetPixelsPerDip)(void*, FLOAT* pixelsPerDip) override
+    {
+        *pixelsPerDip = 1.0f;
+        return S_OK;
+    }
+
+    // IDWriteTextRenderer
+    STDMETHOD(DrawGlyphRun)(void*, FLOAT baselineOriginX, FLOAT baselineOriginY,
+        DWRITE_MEASURING_MODE measuringMode, const DWRITE_GLYPH_RUN* glyphRun,
+        const DWRITE_GLYPH_RUN_DESCRIPTION*, IUnknown*) override
+    {
+        RECT blackBoxRect;
+        return _pTarget->DrawGlyphRun(baselineOriginX, baselineOriginY,
+            measuringMode, glyphRun, _pParams, _color, &blackBoxRect);
+    }
+    STDMETHOD(DrawUnderline)(void*, FLOAT, FLOAT, const DWRITE_UNDERLINE*, IUnknown*) override { return S_OK; }
+    STDMETHOD(DrawStrikethrough)(void*, FLOAT, FLOAT, const DWRITE_STRIKETHROUGH*, IUnknown*) override { return S_OK; }
+    STDMETHOD(DrawInlineObject)(void*, FLOAT, FLOAT, IDWriteInlineObject*, BOOL, BOOL, IUnknown*) override { return S_OK; }
+
+private:
+    LONG _refCount;
+    IDWriteBitmapRenderTarget* _pTarget;
+    IDWriteRenderingParams* _pParams;
+    COLORREF _color;
+};
 
 // GUID_LBI_INPUTMODE - 用于在 Windows 10/11 输入指示器显示模式图标
 // {2C77A81E-41CC-4178-A3A7-5F8A987568E1}
@@ -331,28 +416,102 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
     // (e.g., "中", "英", "A", "拼", "五", "双")
     const wchar_t* text = _inputTypeLabel;
 
-    // Draw white text on opaque black background for proper anti-aliasing
-    // TF_LBI_STYLE_TEXTCOLORICON will recolor the icon based on system theme
-    SetBkMode(hdcMem, TRANSPARENT);
-    SetTextColor(hdcMem, RGB(255, 255, 255));
+    // Draw white text on black using DirectWrite GDI-interop path
+    // (IDWriteBitmapRenderTarget + IDWriteTextRenderer — same as Go-side candidate window)
+    bool textRendered = false;
+    float fontSizeDIP = (float)(iconSize - 2);
 
-    // Large font to fill most of the icon area
-    int fontSize = iconSize - 2;
-    HFONT hFont = CreateFontW(
-        -fontSize, 0, 0, 0, FW_MEDIUM,
-        FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS,
-        ANTIALIASED_QUALITY,  // Grayscale AA, avoid ClearType subpixel artifacts
-        DEFAULT_PITCH | FF_DONTCARE,
-        L"Microsoft YaHei"
-    );
-
-    if (hFont == NULL)
+    if (EnsureDWriteFactory())
     {
-        // Fallback to SimHei
-        hFont = CreateFontW(
+        IDWriteGdiInterop* pGdiInterop = nullptr;
+        HRESULT hr = g_pDWriteFactory->GetGdiInterop(&pGdiInterop);
+        if (SUCCEEDED(hr))
+        {
+            IDWriteBitmapRenderTarget* pBitmapTarget = nullptr;
+            hr = pGdiInterop->CreateBitmapRenderTarget(NULL, iconSize, iconSize, &pBitmapTarget);
+            if (SUCCEEDED(hr))
+            {
+                // 1 DIP = 1 pixel (bitmap is already DPI-scaled)
+                pBitmapTarget->SetPixelsPerDip(1.0f);
+
+                // Fill bitmap target with black background
+                HDC hdcBitmap = pBitmapTarget->GetMemoryDC();
+                RECT rcFill = { 0, 0, iconSize, iconSize };
+                FillRect(hdcBitmap, &rcFill, (HBRUSH)GetStockObject(BLACK_BRUSH));
+
+                // Grayscale rendering params: disable ClearType to avoid subpixel
+                // color artifacts in luminance-to-alpha conversion for icon rendering
+                IDWriteRenderingParams* pRenderParams = nullptr;
+                {
+                    IDWriteRenderingParams* pDefault = nullptr;
+                    g_pDWriteFactory->CreateRenderingParams(&pDefault);
+                    if (pDefault)
+                    {
+                        g_pDWriteFactory->CreateCustomRenderingParams(
+                            pDefault->GetGamma(),
+                            pDefault->GetEnhancedContrast(),
+                            0.0f,  // clearTypeLevel = 0: force grayscale AA
+                            pDefault->GetPixelGeometry(),
+                            DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+                            &pRenderParams
+                        );
+                        pDefault->Release();
+                    }
+                }
+
+                // Create text format and layout
+                IDWriteTextFormat* pTextFormat = nullptr;
+                hr = g_pDWriteFactory->CreateTextFormat(
+                    L"Microsoft YaHei UI",
+                    nullptr,
+                    DWRITE_FONT_WEIGHT_LIGHT,
+                    DWRITE_FONT_STYLE_NORMAL,
+                    DWRITE_FONT_STRETCH_NORMAL,
+                    fontSizeDIP,
+                    L"zh-cn",
+                    &pTextFormat
+                );
+
+                if (SUCCEEDED(hr))
+                {
+                    pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+                    pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+                    IDWriteTextLayout* pLayout = nullptr;
+                    hr = g_pDWriteFactory->CreateTextLayout(
+                        text, (UINT32)wcslen(text), pTextFormat,
+                        (float)iconSize, (float)iconSize, &pLayout);
+
+                    if (SUCCEEDED(hr))
+                    {
+                        // Render via IconTextRenderer → BitmapRenderTarget::DrawGlyphRun
+                        IconTextRenderer* pRenderer = new IconTextRenderer(
+                            pBitmapTarget, pRenderParams, RGB(255, 255, 255));
+                        pLayout->Draw(nullptr, pRenderer, 0, 0);
+                        pRenderer->Release();
+
+                        // Copy rendered text from bitmap target to our DIB section
+                        BitBlt(hdcMem, 0, 0, iconSize, iconSize, hdcBitmap, 0, 0, SRCCOPY);
+                        textRendered = true;
+
+                        pLayout->Release();
+                    }
+                    pTextFormat->Release();
+                }
+                if (pRenderParams) pRenderParams->Release();
+                pBitmapTarget->Release();
+            }
+            pGdiInterop->Release();
+        }
+    }
+
+    // GDI fallback if DirectWrite unavailable
+    if (!textRendered)
+    {
+        SetBkMode(hdcMem, TRANSPARENT);
+        SetTextColor(hdcMem, RGB(255, 255, 255));
+        int fontSize = iconSize - 2;
+        HFONT hFont = CreateFontW(
             -fontSize, 0, 0, 0, FW_MEDIUM,
             FALSE, FALSE, FALSE,
             DEFAULT_CHARSET,
@@ -360,25 +519,17 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
             CLIP_DEFAULT_PRECIS,
             ANTIALIASED_QUALITY,
             DEFAULT_PITCH | FF_DONTCARE,
-            L"SimHei"
+            L"Microsoft YaHei"
         );
-    }
+        if (hFont == NULL)
+            hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 
-    if (hFont == NULL)
-    {
-        // Final fallback to system font
-        hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-    }
-
-    HFONT hOldFont = (HFONT)SelectObject(hdcMem, hFont);
-
-    RECT rc = { 0, 0, iconSize, iconSize };
-    DrawTextW(hdcMem, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
-    SelectObject(hdcMem, hOldFont);
-    if (hFont != GetStockObject(DEFAULT_GUI_FONT))
-    {
-        DeleteObject(hFont);
+        HFONT hOldFont = (HFONT)SelectObject(hdcMem, hFont);
+        RECT rc = { 0, 0, iconSize, iconSize };
+        DrawTextW(hdcMem, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(hdcMem, hOldFont);
+        if (hFont != GetStockObject(DEFAULT_GUI_FONT))
+            DeleteObject(hFont);
     }
 
     // Convert white-on-black text to alpha mask for theme-aware rendering
