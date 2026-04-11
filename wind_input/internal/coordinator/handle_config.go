@@ -144,6 +144,9 @@ func (c *Coordinator) UpdateInputConfig(inputConfig *config.InputConfig) {
 	// 根据配对表更新引号配对状态
 	c.updatePairedQuotes(inputConfig.AutoPair.ChinesePairs)
 
+	// 更新自定义标点映射
+	c.punctConverter.SetCustomMappings(inputConfig.PunctCustom.Enabled, inputConfig.PunctCustom.Mappings)
+
 	// 推送英文配对配置到 C++ 侧
 	if c.bridgeServer != nil {
 		go c.bridgeServer.PushEnglishPairConfigToAllClients(

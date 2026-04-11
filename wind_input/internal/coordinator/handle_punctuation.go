@@ -140,24 +140,7 @@ func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) 
 			}
 
 			// Convert punctuation
-			punctText := string(r)
-			if c.chinesePunctuation {
-				// 数字后智能标点：句号→点号、逗号→英文逗号
-				if c.shouldSmartPunct(r, afterDigit, prevChar) {
-					punctText = string(r)
-				} else {
-					var converted bool
-					punctText, converted = c.punctConverter.ToChinesePunctStr(r)
-					if !converted {
-						punctText = string(r)
-					}
-				}
-			}
-
-			// Apply full-width conversion to punctuation if enabled
-			if c.fullWidth {
-				punctText = transform.ToFullWidth(punctText)
-			}
+			punctText := c.convertPunct(r, afterDigit, prevChar)
 
 			c.clearState()
 			c.hideUI()
@@ -195,24 +178,7 @@ func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) 
 	}
 
 	// No input buffer - directly handle punctuation
-	punctText := string(r)
-	if c.chinesePunctuation {
-		// 数字后智能标点：句号→点号、逗号→英文逗号
-		if c.shouldSmartPunct(r, afterDigit, prevChar) {
-			punctText = string(r)
-		} else {
-			var converted bool
-			punctText, converted = c.punctConverter.ToChinesePunctStr(r)
-			if !converted {
-				punctText = string(r)
-			}
-		}
-	}
-
-	// Apply full-width conversion if enabled
-	if c.fullWidth {
-		punctText = transform.ToFullWidth(punctText)
-	}
+	punctText := c.convertPunct(r, afterDigit, prevChar)
 
 	// 自动配对：检查转换后的标点是否需要配对
 	if tracker := c.getAutoPairTracker(); tracker != nil {
@@ -727,4 +693,40 @@ func (c *Coordinator) updatePairedQuotes(chinesePairs []string) {
 		}
 	}
 	c.punctConverter.SetPairedQuotes(singlePaired, doublePaired)
+}
+
+// convertPunct 统一标点转换逻辑：自定义映射 > 中文标点转换 > 全角转换
+// 返回最终输出的标点文本
+func (c *Coordinator) convertPunct(r rune, afterDigit bool, prevChar rune) string {
+	smartPunct := c.chinesePunctuation && c.shouldSmartPunct(r, afterDigit, prevChar)
+	isChinesePunct := c.chinesePunctuation && !smartPunct
+
+	// 自定义标点映射优先
+	if c.config != nil && c.config.Input.PunctCustom.Enabled {
+		colIdx := -1
+		if isChinesePunct && c.fullWidth {
+			colIdx = 2 // 中文全角
+		} else if isChinesePunct {
+			colIdx = 0 // 中文半角
+		} else if c.fullWidth {
+			colIdx = 1 // 英文全角
+		}
+		if colIdx >= 0 {
+			if text, ok := c.punctConverter.LookupCustom(r, colIdx); ok {
+				return text
+			}
+		}
+	}
+
+	// 默认转换逻辑
+	punctText := string(r)
+	if isChinesePunct {
+		if converted, ok := c.punctConverter.ToChinesePunctStr(r); ok {
+			punctText = converted
+		}
+	}
+	if c.fullWidth {
+		punctText = transform.ToFullWidth(punctText)
+	}
+	return punctText
 }

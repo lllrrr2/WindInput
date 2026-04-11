@@ -77,6 +77,95 @@
           </label>
         </div>
       </div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>自定义标点映射</label>
+          <p class="setting-hint">自定义英文标点对应的中文标点、全角符号</p>
+        </div>
+        <div class="setting-control inline-control">
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              v-model="formData.input.punct_custom.enabled"
+            />
+            启用
+          </label>
+          <button
+            class="btn btn-sm"
+            :disabled="!formData.input.punct_custom.enabled"
+            @click="openPunctCustomDialog()"
+          >
+            配置
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 自定义标点映射对话框 -->
+    <div
+      class="dialog-overlay"
+      v-if="showPunctCustomDialog"
+      @click.self="cancelPunctCustom()"
+    >
+      <div class="dialog-box dialog-sectioned dialog-wide">
+        <div class="dialog-header">
+          <h3>自定义标点设置</h3>
+          <button class="dialog-close" @click="cancelPunctCustom()">×</button>
+        </div>
+        <div class="dialog-body">
+          <p class="dialog-hint">双击单元格修改，长度 1-8</p>
+          <div class="punct-table-wrap">
+            <table class="punct-table">
+              <thead>
+                <tr>
+                  <th class="col-src">英文半角</th>
+                  <th>中文半角</th>
+                  <th>英文全角</th>
+                  <th>中文全角</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, ri) in punctEditRows" :key="row.key">
+                  <td class="col-src">{{ row.src }}</td>
+                  <td
+                    v-for="(_, ci) in 3"
+                    :key="ci"
+                    class="col-edit"
+                    :class="{
+                      editing:
+                        editingCell?.row === ri && editingCell?.col === ci,
+                      modified: row.values[ci] !== row.defaults[ci],
+                    }"
+                    @dblclick="startEditCell(ri, ci)"
+                  >
+                    <input
+                      v-if="editingCell?.row === ri && editingCell?.col === ci"
+                      class="cell-input"
+                      v-model="editingCell.value"
+                      maxlength="8"
+                      @keydown.enter="commitEditCell()"
+                      @keydown.escape="cancelEditCell()"
+                      @blur="commitEditCell()"
+                      ref="cellInputRef"
+                    />
+                    <span v-else class="cell-text">{{ row.values[ci] }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-sm" @click="resetPunctCustomDefaults()">
+            恢复默认
+          </button>
+          <span class="dialog-footer-spacer"></span>
+          <button class="btn btn-sm" @click="cancelPunctCustom()">取消</button>
+          <button class="btn btn-sm btn-primary" @click="confirmPunctCustom()">
+            确定
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 标点配对 -->
@@ -275,7 +364,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import type { Config } from "../api/settings";
 
 const props = defineProps<{
@@ -359,6 +448,179 @@ function setAllPairs(enabled: boolean) {
   } else {
     props.formData.input.auto_pair[key] = [];
   }
+}
+
+// ========== 自定义标点映射 ==========
+
+interface PunctRow {
+  src: string;
+  key: string;
+  defaults: [string, string, string];
+  values: [string, string, string];
+}
+
+// 默认标点映射表（完整 34 行）
+const defaultPunctTable: {
+  src: string;
+  key: string;
+  defaults: [string, string, string];
+}[] = [
+  { src: "!", key: "!", defaults: ["！", "！", "！"] },
+  { src: "@", key: "@", defaults: ["@", "＠", "＠"] },
+  { src: "#", key: "#", defaults: ["#", "＃", "＃"] },
+  { src: "$", key: "$", defaults: ["￥", "＄", "￥"] },
+  { src: "%", key: "%", defaults: ["%", "％", "％"] },
+  { src: "^", key: "^", defaults: ["……", "＾", "……"] },
+  { src: "&", key: "&", defaults: ["&", "＆", "＆"] },
+  { src: "*", key: "*", defaults: ["*", "＊", "＊"] },
+  { src: "(", key: "(", defaults: ["（", "（", "（"] },
+  { src: ")", key: ")", defaults: ["）", "）", "）"] },
+  { src: "_", key: "_", defaults: ["——", "＿", "——"] },
+  { src: "-", key: "-", defaults: ["-", "－", "－"] },
+  { src: "+", key: "+", defaults: ["+", "＋", "＋"] },
+  { src: "=", key: "=", defaults: ["=", "＝", "＝"] },
+  { src: "[", key: "[", defaults: ["【", "［", "【"] },
+  { src: "]", key: "]", defaults: ["】", "］", "】"] },
+  { src: "{", key: "{", defaults: ["｛", "｛", "｛"] },
+  { src: "}", key: "}", defaults: ["｝", "｝", "｝"] },
+  { src: "\\", key: "\\", defaults: ["、", "＼", "、"] },
+  { src: "|", key: "|", defaults: ["|", "｜", "｜"] },
+  { src: ";", key: ";", defaults: ["；", "；", "；"] },
+  { src: ":", key: ":", defaults: ["：", "：", "："] },
+  { src: '" 第一次', key: '"1', defaults: ["\u201C", "\uFF02", "\u201C"] },
+  { src: '" 第二次', key: '"2', defaults: ["\u201D", "\uFF02", "\u201D"] },
+  { src: "' 第一次", key: "'1", defaults: ["\u2018", "\uFF07", "\u2018"] },
+  { src: "' 第二次", key: "'2", defaults: ["\u2019", "\uFF07", "\u2019"] },
+  { src: ",", key: ",", defaults: ["，", "，", "，"] },
+  { src: ".", key: ".", defaults: ["。", "．", "。"] },
+  { src: "<", key: "<", defaults: ["《", "＜", "《"] },
+  { src: ">", key: ">", defaults: ["》", "＞", "》"] },
+  { src: "/", key: "/", defaults: ["/", "／", "／"] },
+  { src: "?", key: "?", defaults: ["？", "？", "？"] },
+  { src: "~", key: "~", defaults: ["～", "～", "～"] },
+  { src: "`", key: "`", defaults: ["·", "｀", "·"] },
+];
+
+const showPunctCustomDialog = ref(false);
+const punctEditRows = ref<PunctRow[]>([]);
+const editingCell = ref<{ row: number; col: number; value: string } | null>(
+  null,
+);
+const cellInputRef = ref<HTMLInputElement[] | null>(null);
+// 快照：打开对话框时保存，用于取消恢复
+let punctCustomSnapshot: Record<string, string[]> | null = null;
+
+function ensurePunctCustom() {
+  if (!props.formData.input.punct_custom) {
+    props.formData.input.punct_custom = { enabled: false, mappings: {} };
+  }
+  if (!props.formData.input.punct_custom.mappings) {
+    props.formData.input.punct_custom.mappings = {};
+  }
+}
+
+function buildEditRows(): PunctRow[] {
+  ensurePunctCustom();
+  const mappings = props.formData.input.punct_custom.mappings || {};
+  return defaultPunctTable.map((def) => {
+    const custom = mappings[def.key];
+    const values: [string, string, string] = [
+      custom?.[0] || def.defaults[0],
+      custom?.[1] || def.defaults[1],
+      custom?.[2] || def.defaults[2],
+    ];
+    return {
+      src: def.src,
+      key: def.key,
+      defaults: [...def.defaults] as [string, string, string],
+      values,
+    };
+  });
+}
+
+function openPunctCustomDialog() {
+  ensurePunctCustom();
+  // 快照当前配置
+  punctCustomSnapshot = JSON.parse(
+    JSON.stringify(props.formData.input.punct_custom.mappings || {}),
+  );
+  punctEditRows.value = buildEditRows();
+  editingCell.value = null;
+  showPunctCustomDialog.value = true;
+}
+
+function startEditCell(row: number, col: number) {
+  editingCell.value = {
+    row,
+    col,
+    value: punctEditRows.value[row].values[col],
+  };
+  nextTick(() => {
+    const inputs = cellInputRef.value;
+    if (inputs && inputs.length > 0) {
+      inputs[0].focus();
+      inputs[0].select();
+    }
+  });
+}
+
+function commitEditCell() {
+  if (!editingCell.value) return;
+  const { row, col, value } = editingCell.value;
+  const trimmed = value.trim();
+  if (trimmed.length > 0 && trimmed.length <= 8) {
+    punctEditRows.value[row].values[col] = trimmed;
+  }
+  // 空值恢复默认
+  if (trimmed.length === 0) {
+    punctEditRows.value[row].values[col] =
+      punctEditRows.value[row].defaults[col];
+  }
+  editingCell.value = null;
+}
+
+function cancelEditCell() {
+  editingCell.value = null;
+}
+
+function confirmPunctCustom() {
+  // 从编辑行提取覆盖项（与默认不同的值才存储）
+  const mappings: Record<string, string[]> = {};
+  for (const row of punctEditRows.value) {
+    const overrides: string[] = ["", "", ""];
+    let hasOverride = false;
+    for (let i = 0; i < 3; i++) {
+      if (row.values[i] !== row.defaults[i]) {
+        overrides[i] = row.values[i];
+        hasOverride = true;
+      }
+    }
+    if (hasOverride) {
+      mappings[row.key] = overrides;
+    }
+  }
+  props.formData.input.punct_custom.mappings = mappings;
+  punctCustomSnapshot = null;
+  showPunctCustomDialog.value = false;
+}
+
+function cancelPunctCustom() {
+  // 恢复快照
+  if (punctCustomSnapshot !== null) {
+    props.formData.input.punct_custom.mappings = punctCustomSnapshot;
+    punctCustomSnapshot = null;
+  }
+  showPunctCustomDialog.value = false;
+}
+
+function resetPunctCustomDefaults() {
+  punctEditRows.value = defaultPunctTable.map((def) => ({
+    src: def.src,
+    key: def.key,
+    defaults: [...def.defaults] as [string, string, string],
+    values: [...def.defaults] as [string, string, string],
+  }));
+  editingCell.value = null;
 }
 
 const filterModeOptions = [
@@ -500,5 +762,88 @@ onUnmounted(() => {
   font-size: 12px;
   color: #9ca3af;
   margin-top: 3px;
+}
+
+/* ========== 自定义标点对话框 ========== */
+.dialog-wide {
+  min-width: 520px;
+  max-width: 600px;
+}
+.dialog-hint {
+  font-size: 12px;
+  color: var(--text-secondary, #9ca3af);
+  margin: 0 0 10px;
+}
+.punct-table-wrap {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+}
+.punct-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+.punct-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.punct-table th {
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-primary, #374151);
+  font-weight: 600;
+  padding: 8px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  font-size: 12px;
+}
+.punct-table td {
+  padding: 5px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-color, #f3f4f6);
+  white-space: nowrap;
+}
+.punct-table tbody tr:hover {
+  background: var(--bg-hover, #f9fafb);
+}
+.col-src {
+  width: 90px;
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+  user-select: none;
+}
+.col-edit {
+  cursor: default;
+  position: relative;
+}
+.col-edit.modified {
+  color: var(--accent-color, #2563eb);
+  font-weight: 500;
+}
+.col-edit.editing {
+  padding: 2px 4px;
+}
+.cell-text {
+  display: inline-block;
+  min-width: 20px;
+  min-height: 18px;
+}
+.cell-input {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--accent-color, #2563eb);
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+  box-sizing: border-box;
+  background: var(--bg-card, #fff);
+  color: var(--text-primary, #1f2937);
+}
+.dialog-footer-spacer {
+  flex: 1;
 }
 </style>

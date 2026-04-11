@@ -130,6 +130,13 @@ export interface InputConfig {
   pinyin_separator: string; // 拼音分隔符: "auto", "quote", "backtick", "none"
   temp_pinyin: TempPinyinConfig;
   auto_pair: AutoPairConfig;
+  punct_custom: PunctCustomConfig;
+}
+
+// 自定义标点映射配置
+export interface PunctCustomConfig {
+  enabled: boolean;
+  mappings: Record<string, string[]>;
 }
 
 // 高级配置
@@ -366,6 +373,10 @@ export function getDefaultConfig(): Config {
         blacklist: [],
         chinese_pairs: ["（）", "【】", "｛｝", "《》", "〈〉"],
         english_pairs: ["()", "[]", "{}", "<>"],
+      },
+      punct_custom: {
+        enabled: false,
+        mappings: {},
       },
     },
     advanced: {

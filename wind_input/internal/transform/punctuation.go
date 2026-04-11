@@ -72,6 +72,9 @@ type PunctuationConverter struct {
 	// 已配对的引号：这些引号始终输出左引号，由配对逻辑负责补全右引号
 	pairedSingleQuote bool
 	pairedDoubleQuote bool
+	// 自定义标点映射
+	customEnabled  bool
+	customMappings map[string][]string // key=源字符, value=[中文半角,英文全角,中文全角]
 }
 
 // NewPunctuationConverter creates a new punctuation converter
@@ -87,6 +90,59 @@ func NewPunctuationConverter() *PunctuationConverter {
 func (c *PunctuationConverter) SetPairedQuotes(singlePaired, doublePaired bool) {
 	c.pairedSingleQuote = singlePaired
 	c.pairedDoubleQuote = doublePaired
+}
+
+// SetCustomMappings 设置自定义标点映射
+func (c *PunctuationConverter) SetCustomMappings(enabled bool, mappings map[string][]string) {
+	c.customEnabled = enabled
+	c.customMappings = mappings
+}
+
+// LookupCustom 查找自定义映射。colIdx: 0=中文半角, 1=英文全角, 2=中文全角
+// 对于引号，根据当前交替状态选择 "1/"2 或 '1/'2 作为 key
+// 找到非空结果时切换引号状态并返回 (result, true)；未找到返回 ("", false) 且不切换状态
+func (c *PunctuationConverter) LookupCustom(r rune, colIdx int) (string, bool) {
+	if !c.customEnabled || c.customMappings == nil {
+		return "", false
+	}
+
+	var key string
+	isQuote := false
+	switch r {
+	case '"':
+		isQuote = true
+		if c.doubleQuoteLeft {
+			key = `"1`
+		} else {
+			key = `"2`
+		}
+	case '\'':
+		isQuote = true
+		if c.singleQuoteLeft {
+			key = `'1`
+		} else {
+			key = `'2`
+		}
+	default:
+		key = string(r)
+	}
+
+	vals, ok := c.customMappings[key]
+	if !ok || colIdx >= len(vals) || vals[colIdx] == "" {
+		return "", false
+	}
+
+	// 找到自定义映射，切换引号状态
+	if isQuote {
+		switch r {
+		case '"':
+			c.doubleQuoteLeft = !c.doubleQuoteLeft
+		case '\'':
+			c.singleQuoteLeft = !c.singleQuoteLeft
+		}
+	}
+
+	return vals[colIdx], true
 }
 
 // Reset resets the converter state (e.g., when switching modes)

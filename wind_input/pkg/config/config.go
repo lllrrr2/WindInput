@@ -113,6 +113,13 @@ type InputConfig struct {
 	CapsLockBehavior     CapsLockBehaviorConfig `yaml:"capslock_behavior" json:"capslock_behavior"`
 	TempPinyin           TempPinyinConfig       `yaml:"temp_pinyin" json:"temp_pinyin"`
 	AutoPair             AutoPairConfig         `yaml:"auto_pair" json:"auto_pair"`
+	PunctCustom          PunctCustomConfig      `yaml:"punct_custom" json:"punct_custom"`
+}
+
+// PunctCustomConfig 自定义标点映射配置
+type PunctCustomConfig struct {
+	Enabled  bool                `yaml:"enabled" json:"enabled"`                       // 总开关
+	Mappings map[string][]string `yaml:"mappings,omitempty" json:"mappings,omitempty"` // key=源字符(引号用"1/"2/'1/'2), value=[中文半角,英文全角,中文全角], 空串=默认
 }
 
 // TempPinyinConfig 临时拼音模式配置

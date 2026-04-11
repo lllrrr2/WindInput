@@ -411,6 +411,9 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 	// 根据配对表设置引号配对状态
 	c.updatePairedQuotes(cfg.Input.AutoPair.ChinesePairs)
 
+	// 加载自定义标点映射
+	c.punctConverter.SetCustomMappings(cfg.Input.PunctCustom.Enabled, cfg.Input.PunctCustom.Mappings)
+
 	// Set up toolbar callbacks
 	c.setupToolbarCallbacks()
 
