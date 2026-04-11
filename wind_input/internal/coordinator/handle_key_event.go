@@ -345,9 +345,19 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.handleTempPinyinKey(key, &data)
 	}
 
+	// 检查是否处于快捷输入模式
+	if c.quickInputMode {
+		return c.handleQuickInputKey(key, &data)
+	}
+
 	// 检查是否应触发临时拼音模式（Shift 时不触发，Shift+` 应输出 ~）
 	if triggerKey := c.getTempPinyinTriggerKey(key, data.KeyCode); !hasShift && triggerKey != "" {
 		return c.enterTempPinyinMode(triggerKey)
+	}
+
+	// 检查是否应触发快捷输入模式（仅在未按 Shift 时，且临时拼音未拦截分号时）
+	if !hasShift && c.shouldTriggerQuickInput(key, data.KeyCode) {
+		return c.enterQuickInputMode()
 	}
 
 	// 中文模式下，Shift+字母处理（CapsLock OFF 时）

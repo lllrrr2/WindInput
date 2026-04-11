@@ -26,6 +26,7 @@ type Candidate struct {
 	GroupCode      string          // 组的完整编码（选中后替换 inputBuffer，如 "zzbd"）
 	Index          int             // 显示序号（UI 渲染用，1-9/0）
 	HasShadow      bool            // 是否存在 Shadow 层修改（UI 右键菜单"恢复默认"用）
+	IndexLabel     string          // 自定义序号标签（如 "a"/"b"），非空时覆盖 Index 的数字显示
 }
 
 // CandidateList 候选词列表

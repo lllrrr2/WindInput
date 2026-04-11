@@ -189,6 +189,7 @@ type Manager struct {
 	candidatesPerPage   int
 	selectedIndex       int  // 当前页内选中的候选索引
 	isPinyinMode        bool // 是否拼音模式（控制右键菜单前移/后移禁用）
+	isQuickInputMode    bool // 是否快捷输入模式（右键菜单只保留复制）
 	caretX              int
 	caretY              int
 	caretHeight         int

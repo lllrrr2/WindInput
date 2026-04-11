@@ -385,6 +385,7 @@ async function resetCurrentPageDefaults() {
         filter_mode: defaults.input.filter_mode,
         smart_punct_after_digit: defaults.input.smart_punct_after_digit,
         auto_pair: { ...defaults.input.auto_pair },
+        quick_input: { ...defaults.input.quick_input },
       };
       break;
     case "hotkey":

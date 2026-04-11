@@ -229,10 +229,10 @@ func (w *CandidateWindow) handleRightClick(lParam uintptr) {
 	// 置顶: 首位禁用
 	// 删除: 单字禁用 | 命令候选禁用
 	// 恢复默认: 无 Shadow/短语覆盖时禁用
-	disableMoveUp := isGlobalFirst || isSingleCandidate || (isPinyin && !isCommand)
-	disableMoveDown := isGlobalLast || isSingleCandidate || (isPinyin && !isCommand)
-	disableTop := isGlobalFirst
-	disableDelete := isSingleChar || isCommand
+	disableMoveUp := isGlobalFirst || isSingleCandidate || (isPinyin && !isCommand) || w.isQuickInputMode
+	disableMoveDown := isGlobalLast || isSingleCandidate || (isPinyin && !isCommand) || w.isQuickInputMode
+	disableTop := isGlobalFirst || w.isQuickInputMode
+	disableDelete := isSingleChar || isCommand || w.isQuickInputMode
 
 	// Build menu items
 	items := []MenuItem{

@@ -133,6 +133,7 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorP
 	}
 	m.window.SetCandidateHasShadow(hasShadowFlags)
 	m.window.SetCandidateMenuState(candidateTexts, m.isPinyinMode, isCommandFlags)
+	m.window.SetQuickInputMode(m.isQuickInputMode)
 
 	// Determine position preference based on sticky state
 	var preference PositionPreference
@@ -427,5 +428,12 @@ func (m *Manager) CandidateMenuContainsPoint(screenX, screenY int) bool {
 func (m *Manager) SetPinyinMode(isPinyin bool) {
 	m.mu.Lock()
 	m.isPinyinMode = isPinyin
+	m.mu.Unlock()
+}
+
+// SetQuickInputMode 设置是否为快捷输入模式（右键菜单只保留复制）
+func (m *Manager) SetQuickInputMode(isQuickInput bool) {
+	m.mu.Lock()
+	m.isQuickInputMode = isQuickInput
 	m.mu.Unlock()
 }

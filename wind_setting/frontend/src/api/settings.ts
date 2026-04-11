@@ -151,6 +151,15 @@ export interface InputConfig {
   temp_pinyin: TempPinyinConfig;
   auto_pair: AutoPairConfig;
   punct_custom: PunctCustomConfig;
+  quick_input: QuickInputConfig;
+}
+
+// 快捷输入配置
+export interface QuickInputConfig {
+  enabled: boolean;
+  trigger_key: string;
+  force_vertical: boolean;
+  decimal_places: number;
 }
 
 // 自定义标点映射配置
@@ -414,6 +423,12 @@ export function getDefaultConfig(): Config {
       punct_custom: {
         enabled: false,
         mappings: {},
+      },
+      quick_input: {
+        enabled: true,
+        trigger_key: "semicolon",
+        force_vertical: true,
+        decimal_places: 6,
       },
     },
     advanced: {

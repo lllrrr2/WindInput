@@ -260,6 +260,98 @@
       </div>
     </div>
 
+    <!-- 快捷输入 -->
+    <div class="settings-card">
+      <div class="card-title">快捷输入</div>
+      <div class="setting-item">
+        <div class="setting-info">
+          <label>启用快捷输入</label>
+          <p class="setting-hint">
+            空码时按触发键进入快捷输入模式，支持数字转大小写、金额、计算器、日期等
+          </p>
+        </div>
+        <div class="setting-control">
+          <label class="switch">
+            <input
+              type="checkbox"
+              v-model="formData.input.quick_input.enabled"
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div
+        class="setting-item"
+        :class="{ 'item-disabled': !formData.input.quick_input.enabled }"
+      >
+        <div class="setting-info">
+          <label>触发键</label>
+          <p class="setting-hint">用于启动快捷输入的按键</p>
+        </div>
+        <div class="setting-control">
+          <select
+            v-model="formData.input.quick_input.trigger_key"
+            :disabled="!formData.input.quick_input.enabled"
+          >
+            <option value="semicolon">分号 ( ; )</option>
+            <option value="backtick">反引号 ( ` )</option>
+            <option value="quote">单引号 ( ' )</option>
+            <option value="comma">逗号 ( , )</option>
+            <option value="period">句号 ( . )</option>
+            <option value="slash">斜杠 ( / )</option>
+            <option value="backslash">反斜杠 ( \ )</option>
+            <option value="open_bracket">左方括号 ( [ )</option>
+            <option value="close_bracket">右方括号 ( ] )</option>
+          </select>
+          <p v-if="triggerKeyConflicts.length > 0" class="setting-warning">
+            ⚠ 与{{ triggerKeyConflicts.join("、") }}冲突，临时拼音优先
+          </p>
+        </div>
+      </div>
+      <div
+        class="setting-item"
+        :class="{ 'item-disabled': !formData.input.quick_input.enabled }"
+      >
+        <div class="setting-info">
+          <label>强制竖排显示</label>
+          <p class="setting-hint">
+            快捷输入时候选窗口强制使用竖排布局，退出后恢复原布局
+          </p>
+        </div>
+        <div class="setting-control">
+          <label class="switch">
+            <input
+              type="checkbox"
+              v-model="formData.input.quick_input.force_vertical"
+              :disabled="!formData.input.quick_input.enabled"
+            />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div
+        class="setting-item"
+        :class="{ 'item-disabled': !formData.input.quick_input.enabled }"
+      >
+        <div class="setting-info">
+          <label>小数保留位数</label>
+          <p class="setting-hint">
+            计算结果最多保留的小数位数（0 表示取整）
+          </p>
+        </div>
+        <div class="setting-control">
+          <input
+            type="number"
+            class="number-input"
+            v-model.number="formData.input.quick_input.decimal_places"
+            :disabled="!formData.input.quick_input.enabled"
+            min="0"
+            max="6"
+          />
+        </div>
+      </div>
+    </div>
+
     <!-- 默认状态 -->
     <div class="settings-card">
       <div class="card-title">默认状态</div>
@@ -623,6 +715,23 @@ function resetPunctCustomDefaults() {
   editingCell.value = null;
 }
 
+// 触发键冲突检测（仅检查临时拼音触发键，候选选择键不会冲突）
+const triggerKeyConflicts = computed(() => {
+  const key = props.formData.input.quick_input.trigger_key;
+  const conflicts: string[] = [];
+
+  // 检查临时拼音触发键冲突
+  const tempPinyinKeys = props.formData.input.temp_pinyin?.trigger_keys || [];
+  if (tempPinyinKeys.includes(key)) {
+    conflicts.push("临时拼音触发键");
+  }
+
+  // 注意：候选选择键（semicolon_quote, comma_period 等）不会冲突，
+  // 因为快捷输入仅在空码（无候选）时触发，与选择键的生效时机不同。
+
+  return conflicts;
+});
+
 const filterModeOptions = [
   {
     value: "smart",
@@ -845,5 +954,40 @@ onUnmounted(() => {
 }
 .dialog-footer-spacer {
   flex: 1;
+}
+
+/* ========== 触发键冲突提示 ========== */
+.setting-warning {
+  font-size: 12px;
+  color: #d97706;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+/* ========== 数字输入框 ========== */
+.number-input {
+  width: 70px;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1f2937;
+  background: #fff;
+  text-align: center;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.number-input:hover:not(:disabled) {
+  border-color: #9ca3af;
+}
+.number-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+.number-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

@@ -230,6 +230,7 @@ type CandidateWindow struct {
 	isCommandFlags      []bool          // 当前页各候选是否为命令候选（短语）
 	candidateTexts      []string        // 当前页各候选的文本（用于菜单状态判断）
 	isPinyinMode        bool            // 是否拼音模式（拼音禁用前移/后移）
+	isQuickInputMode    bool            // 是否快捷输入模式（右键菜单只保留复制）
 	hoverIndex          int             // Currently hovered candidate index (-1 for none)
 	hoverPageBtn        string          // "" = none, "up" = page up hovered, "down" = page down hovered
 	trackingMouse       bool            // Whether mouse leave tracking is enabled
@@ -501,6 +502,13 @@ func (w *CandidateWindow) SetCandidateMenuState(texts []string, isPinyin bool, i
 	w.candidateTexts = texts
 	w.isPinyinMode = isPinyin
 	w.isCommandFlags = isCommandFlags
+	w.mu.Unlock()
+}
+
+// SetQuickInputMode 设置是否为快捷输入模式（右键菜单只保留复制）
+func (w *CandidateWindow) SetQuickInputMode(isQuickInput bool) {
+	w.mu.Lock()
+	w.isQuickInputMode = isQuickInput
 	w.mu.Unlock()
 }
 

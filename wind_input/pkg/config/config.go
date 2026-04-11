@@ -138,6 +138,15 @@ type InputConfig struct {
 	TempPinyin           TempPinyinConfig       `yaml:"temp_pinyin" json:"temp_pinyin"`
 	AutoPair             AutoPairConfig         `yaml:"auto_pair" json:"auto_pair"`
 	PunctCustom          PunctCustomConfig      `yaml:"punct_custom" json:"punct_custom"`
+	QuickInput           QuickInputConfig       `yaml:"quick_input" json:"quick_input"`
+}
+
+// QuickInputConfig 快捷输入配置
+type QuickInputConfig struct {
+	Enabled       bool   `yaml:"enabled" json:"enabled"`               // 总开关（默认 true）
+	TriggerKey    string `yaml:"trigger_key" json:"trigger_key"`       // 触发键（默认 "semicolon"）
+	ForceVertical bool   `yaml:"force_vertical" json:"force_vertical"` // 强制竖排显示候选（默认 true）
+	DecimalPlaces int    `yaml:"decimal_places" json:"decimal_places"` // 计算结果小数保留位数（默认 6，0 表示取整）
 }
 
 // PunctCustomConfig 自定义标点映射配置
@@ -279,6 +288,12 @@ func DefaultConfig() *Config {
 				Blacklist:    []string{},
 				ChinesePairs: []string{"（）", "【】", "｛｝", "《》", "〈〉"},
 				EnglishPairs: []string{"()", "[]", "{}", "<>"},
+			},
+			QuickInput: QuickInputConfig{
+				Enabled:       true,
+				TriggerKey:    "semicolon",
+				ForceVertical: true,
+				DecimalPlaces: 6,
 			},
 		},
 		Advanced: AdvancedConfig{

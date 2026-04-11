@@ -130,6 +130,13 @@ type addWordState struct {
 	addWordCode   string // 自动计算的编码
 }
 
+// quickInputState 快捷输入模式状态
+type quickInputState struct {
+	quickInputMode   bool   // 是否处于快捷输入模式
+	quickInputBuffer string // 分号后的输入缓冲区（不含触发键本身）
+	savedLayout      string // 进入快捷输入前的布局（用于退出时恢复）
+}
+
 // Coordinator orchestrates between C++ Bridge, Engine, and native UI
 type Coordinator struct {
 	engineMgr    *engine.Manager
@@ -203,6 +210,9 @@ type Coordinator struct {
 
 	// 快捷加词模式
 	addWordState
+
+	// 快捷输入模式
+	quickInputState
 }
 
 // BridgeServer interface for broadcasting state to TSF clients
@@ -552,7 +562,7 @@ func (c *Coordinator) stopDarkModeWatcher() {
 
 // hasPendingInput 检查是否有任何类型的待处理输入
 func (c *Coordinator) hasPendingInput() bool {
-	return len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 || len(c.tempEnglishBuffer) > 0 || len(c.tempPinyinBuffer) > 0
+	return len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 || len(c.tempEnglishBuffer) > 0 || len(c.tempPinyinBuffer) > 0 || c.quickInputMode
 }
 
 // getPendingBufferText 获取当前待处理缓冲区的文本（用于 CommitOnSwitch 上屏）
@@ -577,6 +587,8 @@ func (c *Coordinator) getPendingBufferText() string {
 		text = c.tempEnglishBuffer
 	case len(c.tempPinyinBuffer) > 0:
 		text = c.tempPinyinBuffer
+	case c.quickInputMode && len(c.quickInputBuffer) > 0:
+		text = c.quickInputBuffer
 	default:
 		return ""
 	}
@@ -613,6 +625,18 @@ func (c *Coordinator) clearState() {
 	c.addWordChars = nil
 	c.addWordLen = 0
 	c.addWordCode = ""
+	// 清理快捷输入模式状态（恢复布局需在重置标志前执行）
+	if c.quickInputMode {
+		if c.savedLayout != "" && c.uiManager != nil {
+			c.uiManager.SetCandidateLayout(c.savedLayout)
+		}
+		if c.uiManager != nil {
+			c.uiManager.SetQuickInputMode(false)
+		}
+	}
+	c.quickInputMode = false
+	c.quickInputBuffer = ""
+	c.savedLayout = ""
 
 	// 注意：不清除 caretProfiles 和 activeProcessID，它们需要跨 composition 持久化
 
