@@ -729,11 +729,11 @@ func (r *DWriteRenderer) IsAvailable() bool {
 	return r.ensureInitLocked()
 }
 
-// SetFont sets the font by file path (resolved to a family name).
-func (r *DWriteRenderer) SetFont(fontPath string) {
+// SetFont sets the preferred system font family for DirectWrite.
+func (r *DWriteRenderer) SetFont(font string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	name := FontPathToName(fontPath)
+	name := FontSpecToName(font)
 	if name == r.fontName {
 		return
 	}

@@ -9,7 +9,7 @@ import {
 import * as api from "./api/settings";
 import * as wailsApi from "./api/wails";
 import type { Config, Status, EngineInfo, TSFLogConfig } from "./api/settings";
-import type { ThemeInfo, ThemePreview } from "./api/wails";
+import type { ThemeInfo, ThemePreview, SystemFontInfo } from "./api/wails";
 import { getDefaultConfig, getDefaultTSFLogConfig } from "./api/settings";
 import { provideToast } from "./composables/useToast";
 import { useConfirm } from "./composables/useConfirm";
@@ -69,6 +69,7 @@ const systemDefaults = ref<Config>(getDefaultConfig());
 // 主题相关状态
 const availableThemes = ref<ThemeInfo[]>([]);
 const themePreview = ref<ThemePreview | null>(null);
+const systemFonts = ref<SystemFontInfo[]>([]);
 
 const repoUrl = "https://github.com/huanfeng/WindInput";
 const appIconUrl = new URL(
@@ -147,6 +148,12 @@ async function loadDataFromWails() {
     }));
 
     await loadThemes();
+    try {
+      systemFonts.value = await wailsApi.getSystemFonts();
+    } catch (e) {
+      console.warn("加载系统字体失败", e);
+      systemFonts.value = [];
+    }
   } catch (e) {
     console.error("Wails API 调用失败", e);
     throw e;
@@ -635,6 +642,7 @@ onMounted(async () => {
           :isWailsEnv="isWailsEnv"
           :availableThemes="availableThemes"
           :themePreview="themePreview"
+          :systemFonts="systemFonts"
           @themeSelect="onThemeSelect"
           @themeStyleChange="onThemeStyleChange"
         />

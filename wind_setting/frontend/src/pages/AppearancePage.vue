@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import type { Config } from "../api/settings";
-import type { ThemeInfo, ThemePreview } from "../api/wails";
+import type { ThemeInfo, ThemePreview, SystemFontInfo } from "../api/wails";
 
 const props = defineProps<{
   formData: Config;
   isWailsEnv: boolean;
   availableThemes: ThemeInfo[];
   themePreview: ThemePreview | null;
+  systemFonts: SystemFontInfo[];
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +33,13 @@ const currentThemeOption = computed(() => {
   return themeOptions.value.find(
     (option) => option.name === props.formData.ui.theme,
   );
+});
+
+const systemFontOptions = computed(() => {
+  return props.systemFonts.map((font) => ({
+    value: font.family,
+    label: font.display_name || font.family,
+  }));
 });
 
 function onThemeSelect(themeName: string) {
@@ -340,6 +348,29 @@ onUnmounted(() => {
             v-model.number="formData.ui.font_size"
           />
           <span class="range-value">{{ formData.ui.font_size }}px</span>
+        </div>
+      </div>
+      <div class="setting-item" v-if="isWailsEnv">
+        <div class="setting-info">
+          <label>候选字体</label>
+          <p class="setting-hint">
+            从系统已安装字体中选择，渲染时优先使用所选字体并自动回退
+          </p>
+        </div>
+        <div class="setting-control">
+          <select
+            v-model="formData.ui.font_family"
+            class="select font-family-select"
+          >
+            <option value="">跟随系统默认</option>
+            <option
+              v-for="font in systemFontOptions"
+              :key="font.value"
+              :value="font.value"
+            >
+              {{ font.label }}
+            </option>
+          </select>
         </div>
       </div>
       <div class="setting-item">
@@ -789,6 +820,13 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 12px;
   }
+}
+
+.font-family-select {
+  max-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  text-overflow: ellipsis;
 }
 
 .checkbox-label {

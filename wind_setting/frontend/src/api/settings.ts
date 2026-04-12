@@ -107,6 +107,7 @@ export interface StatusIndicatorConfig {
 export interface UIConfig {
   font_size: number;
   candidates_per_page: number;
+  font_family: string;
   font_path: string;
   inline_preedit: boolean;
   hide_candidate_window: boolean;
@@ -369,6 +370,7 @@ export function getDefaultConfig(): Config {
     ui: {
       font_size: 18,
       candidates_per_page: 7,
+      font_family: "",
       font_path: "",
       inline_preedit: true,
       hide_candidate_window: false,

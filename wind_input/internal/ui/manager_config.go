@@ -10,31 +10,31 @@ import (
 )
 
 // UpdateConfig 更新 UI 配置（热更新）
-func (m *Manager) UpdateConfig(fontSize float64, fontPath string, hideCandidateWindow bool) {
+func (m *Manager) UpdateConfig(fontSize float64, fontFamily string, hideCandidateWindow bool) {
 	// 更新渲染器的字体设置
 	if m.renderer != nil {
-		m.renderer.UpdateFont(fontSize, fontPath)
+		m.renderer.UpdateFont(fontSize, fontFamily)
 	}
 	if m.toolbar != nil {
-		m.toolbar.SetFontPath(fontPath)
+		m.toolbar.SetFontFamily(fontFamily)
 	}
 	if m.tooltip != nil {
-		m.tooltip.SetFontPath(fontPath)
+		m.tooltip.SetFontFamily(fontFamily)
 	}
 	if m.unifiedPopupMenu != nil {
-		m.unifiedPopupMenu.SetFontPath(fontPath)
+		m.unifiedPopupMenu.SetFontFamily(fontFamily)
 	}
 	if m.status != nil {
-		m.status.SetFontPath(fontPath)
+		m.status.SetFontFamily(fontFamily)
 	}
 	if m.window != nil {
-		m.window.SetMenuFontPath(fontPath)
+		m.window.SetMenuFontFamily(fontFamily)
 	}
 	// 更新调试开关
 	m.mu.Lock()
 	m.hideCandidateWindow = hideCandidateWindow
 	m.mu.Unlock()
-	m.logger.Info("UI config updated", "fontSize", fontSize, "fontPath", fontPath, "hideCandidateWindow", hideCandidateWindow)
+	m.logger.Info("UI config updated", "fontSize", fontSize, "fontFamily", fontFamily, "hideCandidateWindow", hideCandidateWindow)
 }
 
 // UpdateStatusIndicatorConfig 更新状态提示配置

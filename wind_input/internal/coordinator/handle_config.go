@@ -35,7 +35,11 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 
 	// 通知 UI Manager 更新字体等设置
 	if c.uiManager != nil {
-		c.uiManager.UpdateConfig(uiConfig.FontSize, uiConfig.FontPath, uiConfig.HideCandidateWindow)
+		fontSpec := uiConfig.FontFamily
+		if fontSpec == "" {
+			fontSpec = uiConfig.FontPath
+		}
+		c.uiManager.UpdateConfig(uiConfig.FontSize, fontSpec, uiConfig.HideCandidateWindow)
 		// Update candidate layout
 		if uiConfig.CandidateLayout != "" {
 			c.uiManager.SetCandidateLayout(uiConfig.CandidateLayout)

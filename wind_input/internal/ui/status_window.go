@@ -385,11 +385,11 @@ func (w *StatusWindow) SetTheme(resolved *theme.ResolvedTheme) {
 	}
 }
 
-// SetFontPath 设置字体路径
-func (w *StatusWindow) SetFontPath(path string) {
-	w.renderer.SetFontPath(path)
+// SetFontFamily 设置字体族
+func (w *StatusWindow) SetFontFamily(fontSpec string) {
+	w.renderer.SetFontFamily(fontSpec)
 	if w.popupMenu != nil {
-		w.popupMenu.SetFontPath(path)
+		w.popupMenu.SetFontFamily(fontSpec)
 	}
 }
 

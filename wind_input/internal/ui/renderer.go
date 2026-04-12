@@ -221,7 +221,7 @@ func (r *Renderer) GetTextRenderMode() TextRenderMode {
 }
 
 // UpdateFont updates font settings
-func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
+func (r *Renderer) UpdateFont(fontSize float64, fontFamily string) {
 	scale := GetDPIScale()
 
 	if fontSize > 0 {
@@ -230,8 +230,8 @@ func (r *Renderer) UpdateFont(fontSize float64, fontPath string) {
 		r.config.IndexFontSize = (fontSize - 4) * scale
 	}
 
-	if fontPath != "" && fontPath != r.FontPath() {
-		r.SetFontPath(fontPath)
+	if fontFamily != r.FontFamily() {
+		r.SetFontFamily(fontFamily)
 	}
 }
 

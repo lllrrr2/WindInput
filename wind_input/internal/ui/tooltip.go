@@ -43,11 +43,11 @@ func (w *TooltipWindow) SetGDIFontParams(weight int, scale float64) {
 	w.TextBackendManager.SetGDIFontParams(weight, scale)
 }
 
-// SetFontPath updates the primary font for tooltip rendering.
-func (w *TooltipWindow) SetFontPath(path string) {
+// SetFontFamily updates the primary font for tooltip rendering.
+func (w *TooltipWindow) SetFontFamily(fontSpec string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.TextBackendManager.SetFontPath(path)
+	w.TextBackendManager.SetFontFamily(fontSpec)
 }
 
 // SetTextRenderMode switches between GDI, FreeType, and DirectWrite text rendering

@@ -72,12 +72,18 @@ var knownFontNames = map[string]string{
 	"segmdl2.ttf":  "Segoe MDL2 Assets",
 }
 
-// FontPathToName converts a font file path to a GDI font family name
-func FontPathToName(fontPath string) string {
-	if fontPath == "" {
+// FontSpecToName converts a configured font spec to a GDI/DirectWrite family name.
+// The preferred input is a system font family name. File-path handling remains as
+// a narrow fallback for internal resolution.
+func FontSpecToName(fontSpec string) string {
+	fontSpec = strings.TrimSpace(fontSpec)
+	if fontSpec == "" {
 		return "Microsoft YaHei"
 	}
-	base := strings.ToLower(filepath.Base(fontPath))
+	if !strings.ContainsAny(fontSpec, `\/`) {
+		return fontSpec
+	}
+	base := strings.ToLower(filepath.Base(fontSpec))
 	if name, ok := knownFontNames[base]; ok {
 		return name
 	}
@@ -166,12 +172,12 @@ func (tr *TextRenderer) SetGDIParams(weight int, scale float64) {
 	tr.gdiFontScale = scale
 }
 
-// SetFont sets the font by file path (resolves to GDI font family name)
-func (tr *TextRenderer) SetFont(fontPath string) {
+// SetFont sets the font family used by GDI rendering.
+func (tr *TextRenderer) SetFont(font string) {
 	tr.fontMu.Lock()
 	defer tr.fontMu.Unlock()
 
-	name := FontPathToName(fontPath)
+	name := FontSpecToName(font)
 	if name == tr.fontName {
 		return
 	}

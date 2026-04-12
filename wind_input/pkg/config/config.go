@@ -96,6 +96,7 @@ type StatusIndicatorConfig struct {
 type UIConfig struct {
 	FontSize                float64 `yaml:"font_size" json:"font_size"`
 	CandidatesPerPage       int     `yaml:"candidates_per_page" json:"candidates_per_page"`
+	FontFamily              string  `yaml:"font_family" json:"font_family"`
 	FontPath                string  `yaml:"font_path" json:"font_path"`
 	InlinePreedit           bool    `yaml:"inline_preedit" json:"inline_preedit"`
 	HideCandidateWindow     bool    `yaml:"hide_candidate_window" json:"hide_candidate_window"`
@@ -229,6 +230,7 @@ func DefaultConfig() *Config {
 		UI: UIConfig{
 			FontSize:                18,
 			CandidatesPerPage:       7,
+			FontFamily:              "",
 			FontPath:                "",
 			InlinePreedit:           true,
 			CandidateLayout:         "horizontal",

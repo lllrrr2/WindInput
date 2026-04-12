@@ -33,6 +33,7 @@ hotkeys:
 ui:
   font_size: 18
   candidates_per_page: 7
+  font_family: ""
   font_path: ""
   inline_preedit: true
   hide_candidate_window: false

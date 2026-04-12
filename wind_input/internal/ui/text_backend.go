@@ -9,7 +9,7 @@ type TextBackendManager struct {
 	dwriteRenderer *DWriteRenderer
 	textDrawer     TextDrawer
 	fontConfig     *FontConfig
-	fontPath       string
+	fontSpec       string
 	fontReady      bool
 	label          string // identifier for DWriteRenderer (e.g., "candidate", "toolbar")
 }
@@ -32,9 +32,9 @@ func (m *TextBackendManager) TextDrawer() TextDrawer {
 	return m.textDrawer
 }
 
-// FontPath returns the current font path.
-func (m *TextBackendManager) FontPath() string {
-	return m.fontPath
+// FontFamily returns the current font spec (family name or path).
+func (m *TextBackendManager) FontFamily() string {
+	return m.fontSpec
 }
 
 // FontReady returns whether a font has been successfully loaded.
@@ -45,12 +45,10 @@ func (m *TextBackendManager) FontReady() bool {
 // ResolvePrimaryFontPath resolves and caches the primary font path.
 // GDI / DirectWrite allow TTC; this returns the general resolved path.
 func (m *TextBackendManager) ResolvePrimaryFontPath() string {
-	if m.fontPath != "" {
-		m.fontConfig.SetPrimaryFont(m.fontPath)
-	}
+	m.fontConfig.SetPrimaryFont(m.fontSpec)
 	resolved := m.fontConfig.ResolvePrimaryFont()
 	if resolved != "" {
-		m.fontPath = resolved
+		m.fontSpec = resolved
 	}
 	return resolved
 }
@@ -62,8 +60,8 @@ func (m *TextBackendManager) EnsureTextRenderer() *TextRenderer {
 	}
 	tr := NewTextRenderer()
 	tr.SetGDIParams(m.fontConfig.GetEffectiveGDIWeight(), m.fontConfig.GetEffectiveGDIScale())
-	if resolved := m.ResolvePrimaryFontPath(); resolved != "" {
-		tr.SetFont(resolved)
+	if family := m.fontConfig.ResolvePrimaryFontFamily(); family != "" {
+		tr.SetFont(family)
 	}
 	m.textRenderer = tr
 	return tr
@@ -76,8 +74,8 @@ func (m *TextBackendManager) EnsureDWriteRenderer() *DWriteRenderer {
 	}
 	dwr := NewDWriteRenderer(m.label)
 	dwr.SetGDIParams(m.fontConfig.GetEffectiveGDIWeight(), m.fontConfig.GetEffectiveGDIScale())
-	if resolved := m.ResolvePrimaryFontPath(); resolved != "" {
-		dwr.SetFont(resolved)
+	if family := m.fontConfig.ResolvePrimaryFontFamily(); family != "" {
+		dwr.SetFont(family)
 	}
 	m.dwriteRenderer = dwr
 	return dwr
@@ -89,9 +87,7 @@ func (m *TextBackendManager) EnsureFontCache() *fontCache {
 	if m.fontCache == nil {
 		m.fontCache = newFontCache()
 	}
-	if m.fontPath != "" {
-		m.fontConfig.SetPrimaryFont(m.fontPath)
-	}
+	m.fontConfig.SetPrimaryFont(m.fontSpec)
 	resolved := m.fontConfig.ResolveTextPrimaryFont()
 	if resolved == "" {
 		return m.fontCache
@@ -169,10 +165,11 @@ func (m *TextBackendManager) SetGDIFontParams(weight int, scale float64) {
 	}
 }
 
-// SetFontPath updates the primary font on all active backends.
-func (m *TextBackendManager) SetFontPath(path string) {
-	m.fontPath = path
-	resolved := m.ResolvePrimaryFontPath()
+// SetFontFamily updates the primary font on all active backends.
+func (m *TextBackendManager) SetFontFamily(fontSpec string) {
+	m.fontSpec = fontSpec
+	m.fontConfig.SetPrimaryFont(m.fontSpec)
+	family := m.fontConfig.ResolvePrimaryFontFamily()
 	textResolved := m.fontConfig.ResolveTextPrimaryFont()
 	if m.fontCache != nil && textResolved != "" {
 		m.fontCache.mu.Lock()
@@ -180,11 +177,11 @@ func (m *TextBackendManager) SetFontPath(path string) {
 		m.fontCache.mu.Unlock()
 		m.fontReady = true
 	}
-	if m.textRenderer != nil && resolved != "" {
-		m.textRenderer.SetFont(resolved)
+	if m.textRenderer != nil {
+		m.textRenderer.SetFont(family)
 	}
-	if m.dwriteRenderer != nil && resolved != "" {
-		m.dwriteRenderer.SetFont(resolved)
+	if m.dwriteRenderer != nil {
+		m.dwriteRenderer.SetFont(family)
 	}
 }
 

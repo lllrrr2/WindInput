@@ -438,7 +438,11 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 
 	// Initialize UI config (including debug options)
 	if c.uiManager != nil && cfg != nil {
-		c.uiManager.UpdateConfig(cfg.UI.FontSize, cfg.UI.FontPath, cfg.UI.HideCandidateWindow)
+		fontSpec := cfg.UI.FontFamily
+		if fontSpec == "" {
+			fontSpec = cfg.UI.FontPath
+		}
+		c.uiManager.UpdateConfig(cfg.UI.FontSize, fontSpec, cfg.UI.HideCandidateWindow)
 		// Set candidate layout (horizontal/vertical)
 		if cfg.UI.CandidateLayout != "" {
 			c.uiManager.SetCandidateLayout(cfg.UI.CandidateLayout)

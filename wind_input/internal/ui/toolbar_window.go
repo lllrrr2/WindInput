@@ -286,13 +286,13 @@ func (w *ToolbarWindow) SetMenuFontSize(size float64) {
 	}
 }
 
-// SetFontPath updates the primary font for toolbar text and its popup menu.
-func (w *ToolbarWindow) SetFontPath(path string) {
+// SetFontFamily updates the primary font for toolbar text and its popup menu.
+func (w *ToolbarWindow) SetFontFamily(fontSpec string) {
 	if w.renderer != nil {
-		w.renderer.SetFontPath(path)
+		w.renderer.SetFontFamily(fontSpec)
 	}
 	if w.popupMenu != nil {
-		w.popupMenu.SetFontPath(path)
+		w.popupMenu.SetFontFamily(fontSpec)
 	}
 }
 

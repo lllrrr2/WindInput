@@ -8,6 +8,7 @@ import (
 
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
 	"github.com/huanfeng/wind_input/pkg/control"
+	"github.com/huanfeng/wind_input/pkg/systemfont"
 	"github.com/huanfeng/wind_input/pkg/theme"
 )
 
@@ -93,6 +94,29 @@ type ThemeInfo struct {
 	IsBuiltin   bool   `json:"is_builtin"`
 	IsActive    bool   `json:"is_active"`
 	HasVariants bool   `json:"has_variants"` // 是否支持亮暗双模式
+}
+
+// SystemFontInfo 系统字体信息（用于设置页下拉选择）
+type SystemFontInfo struct {
+	Family      string `json:"family"`
+	DisplayName string `json:"display_name"`
+}
+
+// GetSystemFonts 获取系统字体族列表
+func (a *App) GetSystemFonts() ([]SystemFontInfo, error) {
+	fonts, err := systemfont.List()
+	if err != nil && len(fonts) == 0 {
+		return nil, err
+	}
+
+	result := make([]SystemFontInfo, 0, len(fonts))
+	for _, font := range fonts {
+		result = append(result, SystemFontInfo{
+			Family:      font.Family,
+			DisplayName: font.DisplayName,
+		})
+	}
+	return result, nil
 }
 
 // GetAvailableThemes 获取可用的主题列表（按排序字段排序）

@@ -293,12 +293,8 @@ func newPopupMenuShared(parent *PopupMenu) *PopupMenu {
 	}
 }
 
-func (m *PopupMenu) resolvePrimaryFontPathLocked() string {
-	resolved := m.fontConfig.ResolvePrimaryFont()
-	if resolved != "" {
-		m.fontConfig.SetPrimaryFont(resolved)
-	}
-	return resolved
+func (m *PopupMenu) resolvePrimaryFontFamilyLocked() string {
+	return m.fontConfig.ResolvePrimaryFontFamily()
 }
 
 func (m *PopupMenu) ensureTextRendererLocked() *TextRenderer {
@@ -307,8 +303,8 @@ func (m *PopupMenu) ensureTextRendererLocked() *TextRenderer {
 	}
 	tr := NewTextRenderer()
 	tr.SetGDIParams(m.fontConfig.GetEffectiveGDIWeight(), m.fontConfig.GetEffectiveGDIScale())
-	if resolved := m.resolvePrimaryFontPathLocked(); resolved != "" {
-		tr.SetFont(resolved)
+	if family := m.resolvePrimaryFontFamilyLocked(); family != "" {
+		tr.SetFont(family)
 	}
 	m.textRenderer = tr
 	return tr
@@ -320,8 +316,8 @@ func (m *PopupMenu) ensureDWriteRendererLocked() *DWriteRenderer {
 	}
 	dwr := NewDWriteRenderer("popup_menu")
 	dwr.SetGDIParams(m.fontConfig.GetEffectiveGDIWeight(), m.fontConfig.GetEffectiveGDIScale())
-	if resolved := m.resolvePrimaryFontPathLocked(); resolved != "" {
-		dwr.SetFont(resolved)
+	if family := m.resolvePrimaryFontFamilyLocked(); family != "" {
+		dwr.SetFont(family)
 	}
 	m.dwriteRenderer = dwr
 	return dwr
@@ -416,31 +412,29 @@ func (m *PopupMenu) SetGDIFontParams(weight int, scale float64) {
 	}
 }
 
-// SetFontPath updates the primary font for popup menu rendering.
-func (m *PopupMenu) SetFontPath(path string) {
+// SetFontFamily updates the primary font for popup menu rendering.
+func (m *PopupMenu) SetFontFamily(fontSpec string) {
 	m.mu.Lock()
 	sub := m.submenu
-	m.fontConfig.SetPrimaryFont(path)
-	resolved := m.resolvePrimaryFontPathLocked()
+	m.fontConfig.SetPrimaryFont(fontSpec)
+	resolvedFamily := m.resolvePrimaryFontFamilyLocked()
 	textResolved := m.fontConfig.ResolveTextPrimaryFont()
-	if resolved != "" {
-		if m.fontCache != nil && textResolved != "" {
-			m.fontCache.mu.Lock()
-			// 原生后端和 gg/text 后端分别更新，避免把 TTC 路径喂给 gg/text。
-			_ = m.fontCache.loadFont(textResolved)
-			m.fontCache.mu.Unlock()
-		}
-		if m.textRenderer != nil {
-			m.textRenderer.SetFont(resolved)
-		}
-		if m.dwriteRenderer != nil {
-			m.dwriteRenderer.SetFont(resolved)
-		}
+	if m.fontCache != nil && textResolved != "" {
+		m.fontCache.mu.Lock()
+		// 原生后端和 gg/text 后端分别更新，避免把 TTC 路径喂给 gg/text。
+		_ = m.fontCache.loadFont(textResolved)
+		m.fontCache.mu.Unlock()
+	}
+	if m.textRenderer != nil {
+		m.textRenderer.SetFont(resolvedFamily)
+	}
+	if m.dwriteRenderer != nil {
+		m.dwriteRenderer.SetFont(resolvedFamily)
 	}
 	m.mu.Unlock()
 
 	if sub != nil {
-		sub.SetFontPath(path)
+		sub.SetFontFamily(fontSpec)
 	}
 }
 

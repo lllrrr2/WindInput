@@ -19,6 +19,10 @@ export type ServiceStatus = control.ServiceStatus;
 export type ThemeInfo = main.ThemeInfo;
 export type SchemaInfo = main.SchemaInfo;
 export type SchemaConfig = main.SchemaConfig;
+export interface SystemFontInfo {
+  family: string;
+  display_name: string;
+}
 
 // ===== Schema API =====
 
@@ -514,6 +518,12 @@ export async function getThemePreview(
   return preview as unknown as ThemePreview;
 }
 
+export async function getSystemFonts(): Promise<SystemFontInfo[]> {
+  return (await (
+    window as any
+  ).go.main.App.GetSystemFonts()) as SystemFontInfo[];
+}
+
 // 启动页面
 export async function getStartPage(): Promise<string> {
   return App.GetStartPage();
@@ -537,7 +547,8 @@ export async function getVersion(): Promise<string> {
 // 默认配置（从后端获取系统默认值：代码默认 + data/config.yaml 合并）
 // Go Config 不含 dictionary/engine（由方案单独管理），前端用硬编码默认值补齐
 export async function fetchSystemDefaultConfig(): Promise<Config> {
-  const goDefaults = (await App.GetDefaultConfig()) as unknown as Partial<Config>;
+  const goDefaults =
+    (await App.GetDefaultConfig()) as unknown as Partial<Config>;
   const httpDefaults = getHTTPDefaultConfig();
   return {
     ...httpDefaults,

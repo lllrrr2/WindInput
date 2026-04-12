@@ -544,11 +544,11 @@ func (w *CandidateWindow) SetTextRenderMode(mode TextRenderMode) {
 	w.mu.Unlock()
 }
 
-// SetMenuFontPath sets the primary font path for the candidate window's popup menu.
-func (w *CandidateWindow) SetMenuFontPath(path string) {
+// SetMenuFontFamily sets the primary font family for the candidate window's popup menu.
+func (w *CandidateWindow) SetMenuFontFamily(fontSpec string) {
 	w.mu.Lock()
 	if w.popupMenu != nil {
-		w.popupMenu.SetFontPath(path)
+		w.popupMenu.SetFontFamily(fontSpec)
 	}
 	w.mu.Unlock()
 }

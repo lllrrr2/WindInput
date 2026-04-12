@@ -12,9 +12,9 @@
   },
   "info": {
     "companyName": "清风输入法",
-    "productName": "清风输入法 设置",
     "copyright": "Copyright © 2026 清风输入法",
     "comments": "清风输入法设置工具",
-    "productVersion": "0.1.0"
+    "productVersion": "0.0.0",
+    "productName": "清风输入法 Debug 设置"
   }
 }

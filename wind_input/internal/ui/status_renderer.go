@@ -207,11 +207,11 @@ func (r *StatusRenderer) Close() {
 	r.TextBackendManager.Close()
 }
 
-// SetFontPath 设置字体路径
-func (r *StatusRenderer) SetFontPath(path string) {
+// SetFontFamily 设置字体族
+func (r *StatusRenderer) SetFontFamily(fontSpec string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.TextBackendManager.SetFontPath(path)
+	r.TextBackendManager.SetFontFamily(fontSpec)
 }
 
 // SetTextRenderMode 切换文本渲染模式

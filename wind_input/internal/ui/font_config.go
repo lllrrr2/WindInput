@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	ggtext "github.com/gogpu/gg/text"
+	"github.com/huanfeng/wind_input/pkg/systemfont"
 )
 
 // GDI font weight constants (Windows LOGFONT.lfWeight values).
@@ -27,8 +28,9 @@ const (
 // GDI / DirectWrite use the general system font chain, while gogpu/gg text
 // uses a separate TTF/OTF-only chain because TTC collections are unsupported.
 type FontConfig struct {
-	// PrimaryFont is the user-configured font file path (may be empty for auto-detection).
-	// It may be TTC, so callers that use gogpu/gg text must not consume it blindly.
+	// PrimaryFont stores the configured primary font spec.
+	// Current usage prefers system font family names; explicit file paths are only
+	// retained for internal fallback and gg/text resolution.
 	PrimaryFont string
 	// SystemFonts lists system fonts in priority order for fallback.
 	// When a font lacks certain glyphs, subsequent fonts in the list are tried.
@@ -141,6 +143,18 @@ func availableFont(path string) bool {
 	return err == nil
 }
 
+func resolveConfiguredFontPath(spec string, singleFontOnly bool) string {
+	if availableFont(spec) {
+		if !singleFontOnly || isGGTextCompatibleFont(spec) {
+			return spec
+		}
+	}
+	if path := systemfont.ResolveFile(spec, singleFontOnly); path != "" {
+		return path
+	}
+	return ""
+}
+
 func appendUnique(paths []string, seen map[string]struct{}, path string) []string {
 	if path == "" {
 		return paths
@@ -233,8 +247,8 @@ func (fc *FontConfig) textFallbackFonts() []string {
 // Search order: PrimaryFont → UserFonts → SystemFonts.
 // Native Windows backends may still resolve to TTC fonts here.
 func (fc *FontConfig) ResolvePrimaryFont() string {
-	if fc.PrimaryFont != "" && availableFont(fc.PrimaryFont) {
-		return fc.PrimaryFont
+	if path := resolveConfiguredFontPath(fc.PrimaryFont, false); path != "" {
+		return path
 	}
 	for _, path := range fc.allFonts() {
 		if availableFont(path) {
@@ -244,12 +258,28 @@ func (fc *FontConfig) ResolvePrimaryFont() string {
 	return ""
 }
 
+// ResolvePrimaryFontFamily returns the preferred system font family for native rendering.
+func (fc *FontConfig) ResolvePrimaryFontFamily() string {
+	if family := strings.TrimSpace(fc.PrimaryFont); family != "" {
+		if systemfont.HasFamily(family) {
+			return family
+		}
+		if path := resolveConfiguredFontPath(family, false); path != "" {
+			return FontSpecToName(path)
+		}
+	}
+	if resolved := fc.ResolvePrimaryFont(); resolved != "" {
+		return FontSpecToName(resolved)
+	}
+	return "Microsoft YaHei"
+}
+
 // ResolveTextPrimaryFont returns the first available TTF / OTF path for gogpu/gg text.
 // If PrimaryFont points to an unsupported TTC file, this intentionally falls back
 // to the dedicated TTF-only chain instead of failing hard.
 func (fc *FontConfig) ResolveTextPrimaryFont() string {
-	if isGGTextCompatibleFont(fc.PrimaryFont) && availableFont(fc.PrimaryFont) {
-		return fc.PrimaryFont
+	if path := resolveConfiguredFontPath(fc.PrimaryFont, true); path != "" {
+		return path
 	}
 	for _, path := range fc.textPrimaryFonts() {
 		if availableFont(path) {
@@ -286,9 +316,9 @@ func (fc *FontConfig) GetTextFallbackFonts() []string {
 	return fallbacks
 }
 
-// SetPrimaryFont sets a user-configured primary font.
-func (fc *FontConfig) SetPrimaryFont(fontPath string) {
-	fc.PrimaryFont = fontPath
+// SetPrimaryFont sets the configured primary font family/spec.
+func (fc *FontConfig) SetPrimaryFont(font string) {
+	fc.PrimaryFont = font
 }
 
 // SetGDIFontWeight sets the GDI font weight (100-900).
