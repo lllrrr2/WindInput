@@ -423,9 +423,10 @@ func (c *Coordinator) exitQuickInputMode(commit bool, text string) *bridge.KeyEv
 		c.savedLayout = ""
 	}
 
-	// 重置快捷输入模式标志
+	// 重置快捷输入模式标志和模式标签
 	if c.uiManager != nil {
 		c.uiManager.SetQuickInputMode(false)
+		c.uiManager.SetModeLabel("")
 	}
 
 	c.quickInputMode = false
@@ -501,6 +502,7 @@ func (c *Coordinator) showQuickInputUI() {
 	preedit := c.quickInputPrefix() + c.quickInputBuffer
 
 	c.uiManager.SetQuickInputMode(true)
+	c.uiManager.SetModeLabel("快捷输入")
 	c.uiManager.ShowCandidates(
 		displayCandidates,
 		preedit,

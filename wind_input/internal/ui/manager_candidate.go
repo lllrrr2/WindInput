@@ -93,10 +93,16 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorP
 		m.lastRenderedPage = page
 	}
 	currentStickyAbove := m.stickyAbove
+	modeLabel := m.modeLabel
 	// Get current hover index and page button hover for rendering
 	hoverIndex := m.window.GetHoverIndex()
 	hoverPageBtn := m.window.GetHoverPageBtn()
 	m.mu.Unlock()
+
+	// Set mode label on renderer before rendering
+	if m.renderer != nil {
+		m.renderer.SetModeLabel(modeLabel)
+	}
 
 	// Update effective DPI based on caret position before rendering.
 	// This ensures correct DPI when the caret is on a different monitor,
@@ -445,5 +451,12 @@ func (m *Manager) SetPinyinMode(isPinyin bool) {
 func (m *Manager) SetQuickInputMode(isQuickInput bool) {
 	m.mu.Lock()
 	m.isQuickInputMode = isQuickInput
+	m.mu.Unlock()
+}
+
+// SetModeLabel 设置临时模式标签（如"临时拼音"、"快捷输入"），空字符串表示不显示
+func (m *Manager) SetModeLabel(label string) {
+	m.mu.Lock()
+	m.modeLabel = label
 	m.mu.Unlock()
 }

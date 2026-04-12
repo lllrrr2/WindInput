@@ -638,6 +638,9 @@ func (c *Coordinator) clearState() {
 			c.uiManager.SetQuickInputMode(false)
 		}
 	}
+	if c.uiManager != nil {
+		c.uiManager.SetModeLabel("")
+	}
 	c.quickInputMode = false
 	c.quickInputBuffer = ""
 	c.savedLayout = ""

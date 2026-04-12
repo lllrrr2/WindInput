@@ -138,6 +138,9 @@ func (c *Coordinator) exitTempEnglishMode(commit bool, text string) *bridge.KeyE
 	c.candidates = nil
 	c.currentPage = 0
 	c.totalPages = 0
+	if c.uiManager != nil {
+		c.uiManager.SetModeLabel("")
+	}
 	c.hideUI()
 
 	c.logger.Debug("Exited temp English mode", "commit", commit, "textLen", len(text))
@@ -186,6 +189,7 @@ func (c *Coordinator) showTempEnglishUI() {
 	}
 
 	// 显示临时英文缓冲区内容（无候选词）
+	c.uiManager.SetModeLabel("临时英文")
 	c.uiManager.ShowCandidates(
 		nil, // 无候选词
 		c.tempEnglishBuffer,

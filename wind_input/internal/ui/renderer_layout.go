@@ -112,7 +112,7 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 	// Candidate start Y (after input area)
 	candStartY := padY
 	if !cfg.HidePreedit {
-		candStartY += inputHeight + 4*scale
+		candStartY = padY + inputHeight + 4*scale
 	}
 
 	// Pre-compute cursor X position
@@ -302,6 +302,26 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		textX := padX + 8*scale
 		textY := padY + inputHeight/2 + cfg.FontSize/3
 		td.DrawString(input, textX, textY, cfg.FontSize, cfg.InputTextColor)
+	}
+
+	// Mode label (e.g. "临时拼音", "快捷输入")
+	if cfg.ModeLabel != "" {
+		labelSize := cfg.IndexFontSize
+		labelColor := r.getCommentColor()
+		labelWidth := td.MeasureString(cfg.ModeLabel, labelSize)
+		if cfg.HidePreedit {
+			// Embedded mode: show on first candidate row only when no candidates
+			if len(candidates) == 0 {
+				labelX := width - padX - labelWidth - 4*scale
+				labelY := candStartY + cfg.ItemHeight/2 + labelSize/3
+				td.DrawString(cfg.ModeLabel, labelX, labelY, labelSize, labelColor)
+			}
+		} else {
+			// Non-embedded mode: right-aligned inside the input buffer area
+			labelX := width - padX - labelWidth - 8*scale
+			labelY := padY + inputHeight/2 + labelSize/3
+			td.DrawString(cfg.ModeLabel, labelX, labelY, labelSize, labelColor)
+		}
 	}
 
 	// Index numbers
@@ -593,7 +613,7 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 
 	candStartY := padY
 	if !cfg.HidePreedit && input != "" {
-		candStartY += inputHeight + 4*scale
+		candStartY = padY + inputHeight + 4*scale
 	}
 
 	xPos := padX + accentBarOffset + bgPadL
@@ -755,6 +775,26 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 		textX := preeditX + 8*scale
 		textY := padY + inputHeight/2 + cfg.FontSize/3
 		td.DrawString(input, textX, textY, cfg.FontSize, cfg.InputTextColor)
+	}
+
+	// Mode label (e.g. "临时拼音", "快捷输入")
+	if cfg.ModeLabel != "" {
+		labelSize := cfg.IndexFontSize
+		labelColor := r.getCommentColor()
+		labelWidth := td.MeasureString(cfg.ModeLabel, labelSize)
+		if cfg.HidePreedit {
+			// Embedded mode: show on candidate row only when no candidates
+			if len(candidates) == 0 {
+				labelX := width - padX - labelWidth - 4*scale
+				labelY := candStartY + candidateRowHeight/2 + labelSize/3
+				td.DrawString(cfg.ModeLabel, labelX, labelY, labelSize, labelColor)
+			}
+		} else {
+			// Non-embedded mode: right-aligned inside the input buffer area
+			labelX := width - padX - labelWidth - 8*scale
+			labelY := padY + inputHeight/2 + labelSize/3
+			td.DrawString(cfg.ModeLabel, labelX, labelY, labelSize, labelColor)
+		}
 	}
 
 	// Candidate text (index, text, comment)

@@ -43,6 +43,7 @@ type RenderConfig struct {
 	AlwaysShowPager  bool           // Always show page navigation (disable buttons when not navigable)
 	ShowPageNumber   bool           // Show page number text (e.g. "1/3")
 	TextRenderMode   TextRenderMode // "gdi" (Windows native) or "freetype" (original)
+	ModeLabel        string         // Temporary mode label (e.g. "临时拼音", "快捷输入"), empty = no label
 }
 
 // DefaultRenderConfig returns default rendering configuration with DPI scaling
@@ -269,6 +270,11 @@ func (r *Renderer) SetLayout(layout string) {
 // SetHidePreedit sets whether to hide the preedit area
 func (r *Renderer) SetHidePreedit(hide bool) {
 	r.config.HidePreedit = hide
+}
+
+// SetModeLabel sets the temporary mode label for display
+func (r *Renderer) SetModeLabel(label string) {
+	r.config.ModeLabel = label
 }
 
 // SetTheme sets the theme for the renderer and updates colors
