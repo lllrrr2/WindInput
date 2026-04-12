@@ -603,9 +603,13 @@ func (a *App) GetReferencedSchemaIDs() ([]string, error) {
 		availableSet[id] = true
 	}
 
-	// 找出被引用但不在 available 中的方案
+	// 找出被已启用方案引用但自身不在 available 中的方案
+	// 只考虑已启用方案的引用关系，避免未启用的混输方案导致其引用的方案被错误显示
 	var result []string
-	for _, ref := range refs {
+	for id, ref := range refs {
+		if !availableSet[id] {
+			continue
+		}
 		if ref.PrimarySchema != "" && !availableSet[ref.PrimarySchema] {
 			result = append(result, ref.PrimarySchema)
 			availableSet[ref.PrimarySchema] = true // 去重
