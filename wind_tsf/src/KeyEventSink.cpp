@@ -243,7 +243,27 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
     // First try hash-based lookup, then fallback to VK-based detection
     BOOL isToggleModeKey = FALSE;
 
-    if (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyUpHotkey(keyHash))
+    // TSF sends generic VK_SHIFT/VK_CONTROL as wParam, but the hotkey whitelist
+    // registers specific VK_LSHIFT/VK_RSHIFT/VK_LCONTROL/VK_RCONTROL.
+    // Resolve the generic VK to specific left/right variant for proper hash matching.
+    uint32_t resolvedVK = (uint32_t)wParam;
+    if (wParam == VK_SHIFT)
+    {
+        if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+            resolvedVK = VK_LSHIFT;
+        else if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+            resolvedVK = VK_RSHIFT;
+    }
+    else if (wParam == VK_CONTROL)
+    {
+        if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+            resolvedVK = VK_LCONTROL;
+        else if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+            resolvedVK = VK_RCONTROL;
+    }
+    uint32_t keyUpHash = CHotkeyManager::CalcKeyHash(modifiers, resolvedVK);
+
+    if (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyUpHotkey(keyUpHash))
     {
         isToggleModeKey = TRUE;
     }
@@ -502,8 +522,29 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
 
     // Check if this is a KeyUp triggered key (toggle mode keys like Shift, Ctrl, CapsLock)
     // Use hash-based lookup first, then fallback to VK-based detection
+    //
+    // TSF sends generic VK_SHIFT/VK_CONTROL as wParam, but the hotkey whitelist
+    // registers specific VK_LSHIFT/VK_RSHIFT/VK_LCONTROL/VK_RCONTROL.
+    // Resolve the generic VK to specific left/right variant for proper hash matching.
     BOOL isToggleModeKey = FALSE;
-    if (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyUpHotkey(keyHash))
+    uint32_t resolvedVK = (uint32_t)wParam;
+    if (wParam == VK_SHIFT)
+    {
+        if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+            resolvedVK = VK_LSHIFT;
+        else if (GetAsyncKeyState(VK_RSHIFT) & 0x8000)
+            resolvedVK = VK_RSHIFT;
+    }
+    else if (wParam == VK_CONTROL)
+    {
+        if (GetAsyncKeyState(VK_LCONTROL) & 0x8000)
+            resolvedVK = VK_LCONTROL;
+        else if (GetAsyncKeyState(VK_RCONTROL) & 0x8000)
+            resolvedVK = VK_RCONTROL;
+    }
+    uint32_t keyUpHash = CHotkeyManager::CalcKeyHash(modifiers, resolvedVK);
+
+    if (pHotkeyMgr != nullptr && pHotkeyMgr->IsKeyUpHotkey(keyUpHash))
     {
         isToggleModeKey = TRUE;
     }
