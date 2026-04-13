@@ -27,6 +27,7 @@ func (c *Coordinator) enterQuickInputPinyinMode(firstKey string) *bridge.KeyEven
 
 	c.quickInputPinyinMode = true
 	c.quickInputPinyinBuffer = firstKey
+	c.quickInputPinyinCommitted = ""
 	c.currentPage = 1
 	c.selectedIndex = 0
 
@@ -53,6 +54,7 @@ func (c *Coordinator) exitQuickInputPinyinToBase() *bridge.KeyEventResult {
 
 	c.quickInputPinyinMode = false
 	c.quickInputPinyinBuffer = ""
+	c.quickInputPinyinCommitted = ""
 	c.quickInputPinyinDictSwapped = false
 	c.preeditDisplay = ""
 	c.currentPage = 1
@@ -84,10 +86,11 @@ func (c *Coordinator) exitQuickInputPinyinMode(commit bool, text string) *bridge
 	c.quickInputPinyinDictSwapped = false
 	c.preeditDisplay = ""
 
-	// 记录输入历史，供重复上屏功能使用
+	// 记录输入历史（含部分上屏累积文本），供重复上屏功能使用
 	if commit && len(text) > 0 && c.inputHistory != nil {
-		c.inputHistory.Record(text, "", "", 0)
+		c.inputHistory.Record(c.quickInputPinyinCommitted+text, "", "", 0)
 	}
+	c.quickInputPinyinCommitted = ""
 
 	return c.exitQuickInputMode(commit, text)
 }
@@ -95,8 +98,9 @@ func (c *Coordinator) exitQuickInputPinyinMode(commit bool, text string) *bridge
 // quickInputPinyinOps 创建快捷输入拼音子模式的操作回调
 func (c *Coordinator) quickInputPinyinOps() *pinyinModeOps {
 	return &pinyinModeOps{
-		buffer: &c.quickInputPinyinBuffer,
-		prefix: c.quickInputPrefix,
+		buffer:    &c.quickInputPinyinBuffer,
+		committed: &c.quickInputPinyinCommitted,
+		prefix:    c.quickInputPrefix,
 		exitMode: func(commit bool, text string) *bridge.KeyEventResult {
 			return c.exitQuickInputPinyinMode(commit, text)
 		},

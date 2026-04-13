@@ -119,6 +119,7 @@ type tempModeState struct {
 	tempEnglishBuffer    string // 临时英文缓冲区
 	tempPinyinMode       bool   // 是否处于临时拼音模式
 	tempPinyinBuffer     string // 临时拼音输入缓冲区
+	tempPinyinCommitted  string // 临时拼音部分上屏累积文本
 	tempPinyinTriggerKey string // 临时拼音触发键类型（"backtick"/"semicolon"/"z"）
 }
 
@@ -136,6 +137,7 @@ type quickInputState struct {
 	quickInputBuffer            string // 分号后的输入缓冲区（不含触发键本身）
 	quickInputPinyinMode        bool   // 是否处于快捷输入的临时拼音子模式
 	quickInputPinyinBuffer      string // 快捷输入临时拼音缓冲区
+	quickInputPinyinCommitted   string // 快捷输入拼音部分上屏累积文本
 	quickInputPinyinDictSwapped bool   // 是否已交换词库层（仅码表引擎下为 true）
 	savedLayout                 string // 进入快捷输入前的布局（用于退出时恢复）
 }
@@ -621,6 +623,7 @@ func (c *Coordinator) clearState() {
 	}
 	c.tempPinyinMode = false
 	c.tempPinyinBuffer = ""
+	c.tempPinyinCommitted = ""
 	c.candidates = nil
 	c.currentPage = 1
 	c.totalPages = 1
@@ -654,6 +657,7 @@ func (c *Coordinator) clearState() {
 	c.quickInputBuffer = ""
 	c.quickInputPinyinMode = false
 	c.quickInputPinyinBuffer = ""
+	c.quickInputPinyinCommitted = ""
 	c.quickInputPinyinDictSwapped = false
 	c.savedLayout = ""
 

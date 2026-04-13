@@ -88,6 +88,7 @@ func (c *Coordinator) enterTempPinyinMode(triggerKey string) *bridge.KeyEventRes
 	c.tempPinyinMode = true
 	c.tempPinyinTriggerKey = triggerKey
 	c.tempPinyinBuffer = ""
+	c.tempPinyinCommitted = ""
 
 	c.logger.Debug("Entered temp pinyin mode", "triggerKey", triggerKey)
 
@@ -134,15 +135,17 @@ func (c *Coordinator) exitTempPinyinMode(commit bool, text string) *bridge.KeyEv
 	c.logger.Debug("Exited temp pinyin mode", "commit", commit, "textLen", len(text))
 
 	if commit && len(text) > 0 {
-		// 记录输入历史，供重复上屏功能使用
+		// 记录输入历史（含部分上屏累积文本），供重复上屏功能使用
 		if c.inputHistory != nil {
-			c.inputHistory.Record(text, "", "", 0)
+			c.inputHistory.Record(c.tempPinyinCommitted+text, "", "", 0)
 		}
+		c.tempPinyinCommitted = ""
 		return &bridge.KeyEventResult{
 			Type: bridge.ResponseTypeInsertText,
 			Text: text,
 		}
 	}
+	c.tempPinyinCommitted = ""
 
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
 }
@@ -150,8 +153,9 @@ func (c *Coordinator) exitTempPinyinMode(commit bool, text string) *bridge.KeyEv
 // tempPinyinOps 创建临时拼音模式的操作回调
 func (c *Coordinator) tempPinyinOps() *pinyinModeOps {
 	return &pinyinModeOps{
-		buffer: &c.tempPinyinBuffer,
-		prefix: c.tempPinyinPrefix,
+		buffer:    &c.tempPinyinBuffer,
+		committed: &c.tempPinyinCommitted,
+		prefix:    c.tempPinyinPrefix,
 		exitMode: func(commit bool, text string) *bridge.KeyEventResult {
 			return c.exitTempPinyinMode(commit, text)
 		},

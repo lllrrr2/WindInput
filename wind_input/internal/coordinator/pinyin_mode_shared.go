@@ -16,6 +16,7 @@ import (
 // pinyinModeOps 封装拼音模式中各实现的差异化行为
 type pinyinModeOps struct {
 	buffer               *string                                   // 指向缓冲区字段的指针
+	committed            *string                                   // 指向累积已提交文本的指针（部分上屏时累积）
 	prefix               func() string                             // 获取前缀显示字符
 	exitMode             func(bool, string) *bridge.KeyEventResult // 完全退出模式
 	exitOnBackspaceEmpty func() *bridge.KeyEventResult             // 退格删空缓冲区时的行为
@@ -289,6 +290,10 @@ func (c *Coordinator) selectPinyinModeCandidate(ops *pinyinModeOps, index int) *
 
 	// 支持拼音部分上屏
 	if cand.ConsumedLength > 0 && cand.ConsumedLength < len(*ops.buffer) {
+		// 累积已提交文本，供最终退出时记录完整输入历史
+		if ops.committed != nil {
+			*ops.committed += text
+		}
 		*ops.buffer = (*ops.buffer)[cand.ConsumedLength:]
 		c.currentPage = 1
 		c.updatePinyinModeCandidates(ops)
