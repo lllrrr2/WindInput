@@ -28,6 +28,10 @@ var (
 	catalogOnce sync.Once
 	cached      catalog
 	cachedErr   error
+
+	// localizedDone is closed when async localized name resolution finishes.
+	localizedDone  chan struct{}
+	localizedFonts []FontInfo // populated by the background goroutine
 )
 
 var styleSuffixes = []string{
@@ -247,15 +251,76 @@ func ensureCatalog() error {
 		sort.Slice(cached.fonts, func(i, j int) bool {
 			return strings.ToLower(cached.fonts[i].DisplayName) < strings.ToLower(cached.fonts[j].DisplayName)
 		})
+
+		// Resolve localized display names asynchronously by parsing font files'
+		// name tables. This avoids slowing down IME startup (HasFamily/ResolveFile
+		// don't need display names). List() blocks on this before returning.
+		localizedDone = make(chan struct{})
+		go resolveLocalizedDisplayNames()
 	})
 	return cachedErr
 }
 
-// List returns installed system font families.
-func List() ([]FontInfo, error) {
-	err := ensureCatalog()
+// resolveLocalizedDisplayNames reads each font file's name table to find
+// Chinese localized family names, then rebuilds the font list with those names.
+func resolveLocalizedDisplayNames() {
+	defer close(localizedDone)
+
+	// Collect unique font paths per family key
+	type entry struct {
+		key  string
+		path string
+	}
+	var entries []entry
+	for key, paths := range cached.families {
+		if len(paths) > 0 && cached.displayNames[key] != "" {
+			entries = append(entries, entry{key: key, path: paths[0]})
+		}
+	}
+
+	// Parse name tables to find localized names
+	localNames := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if name := readLocalizedFamilyName(e.path); name != "" {
+			localNames[e.key] = name
+		}
+	}
+
+	if len(localNames) == 0 {
+		return // no localized names found; List() will use cached.fonts as-is
+	}
+
+	// Build new font list with localized DisplayName
 	fonts := make([]FontInfo, len(cached.fonts))
 	copy(fonts, cached.fonts)
+	for i := range fonts {
+		key := normalizeKey(fonts[i].Family)
+		if localName, ok := localNames[key]; ok {
+			fonts[i].DisplayName = localName
+		}
+	}
+
+	sort.Slice(fonts, func(i, j int) bool {
+		return strings.ToLower(fonts[i].DisplayName) < strings.ToLower(fonts[j].DisplayName)
+	})
+
+	localizedFonts = fonts
+}
+
+// List returns installed system font families with localized display names.
+// Blocks until async localized name resolution is complete.
+func List() ([]FontInfo, error) {
+	err := ensureCatalog()
+
+	// Wait for localized names to be resolved
+	<-localizedDone
+
+	src := localizedFonts
+	if src == nil {
+		src = cached.fonts
+	}
+	fonts := make([]FontInfo, len(src))
+	copy(fonts, src)
 	return fonts, err
 }
 

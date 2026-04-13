@@ -11,25 +11,11 @@ import (
 )
 
 // UpdateConfig 更新 UI 配置（热更新）
+// fontFamily 仅作用于候选窗口渲染器，菜单/工具栏/提示等组件使用系统默认字体。
 func (m *Manager) UpdateConfig(fontSize float64, fontFamily string, hideCandidateWindow bool) {
-	// 更新渲染器的字体设置
+	// 候选字体仅影响候选窗口渲染器
 	if m.renderer != nil {
 		m.renderer.UpdateFont(fontSize, fontFamily)
-	}
-	if m.toolbar != nil {
-		m.toolbar.SetFontFamily(fontFamily)
-	}
-	if m.tooltip != nil {
-		m.tooltip.SetFontFamily(fontFamily)
-	}
-	if m.unifiedPopupMenu != nil {
-		m.unifiedPopupMenu.SetFontFamily(fontFamily)
-	}
-	if m.status != nil {
-		m.status.SetFontFamily(fontFamily)
-	}
-	if m.window != nil {
-		m.window.SetMenuFontFamily(fontFamily)
 	}
 	// 更新调试开关
 	m.mu.Lock()

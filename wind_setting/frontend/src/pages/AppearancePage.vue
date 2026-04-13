@@ -354,7 +354,7 @@ onUnmounted(() => {
         <div class="setting-info">
           <label>候选字体</label>
           <p class="setting-hint">
-            从系统已安装字体中选择，渲染时优先使用所选字体并自动回退
+            设置候选词的显示字体，从系统已安装字体中选择并自动回退
           </p>
         </div>
         <div class="setting-control">
