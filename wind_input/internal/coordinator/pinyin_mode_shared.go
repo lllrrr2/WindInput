@@ -203,7 +203,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 		// 缓冲区为空时，输出触发键字符的标点形式
 		if len(*ops.buffer) == 0 {
 			punctText := key
-			if len(key) == 1 && c.chinesePunctuation {
+			if len(key) == 1 && c.isEffectiveChinesePunct() {
 				if converted, ok := c.punctConverter.ToChinesePunctStr(rune(key[0])); ok {
 					punctText = converted
 				}
@@ -327,7 +327,7 @@ func (c *Coordinator) selectPinyinModeWithPunct(ops *pinyinModeOps, pageOffset i
 		text = transform.ToFullWidth(text)
 	}
 	punctText := key
-	if len(key) == 1 && c.chinesePunctuation {
+	if len(key) == 1 && c.isEffectiveChinesePunct() {
 		if converted, ok := c.punctConverter.ToChinesePunctStr(rune(key[0])); ok {
 			punctText = converted
 		}

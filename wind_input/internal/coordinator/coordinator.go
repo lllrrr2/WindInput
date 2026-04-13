@@ -267,6 +267,12 @@ func (c *Coordinator) getEffectiveModeNoLock() EffectiveMode {
 	return ModeEnglishLower
 }
 
+// isEffectiveChinesePunct 返回当前是否应使用中文标点（考虑 CapsLock 等模式影响）
+// CapsLock 开启时视为英文模式，不使用中文标点。调用者必须持有锁。
+func (c *Coordinator) isEffectiveChinesePunct() bool {
+	return c.chinesePunctuation && c.getEffectiveModeNoLock() == ModeChinese
+}
+
 // IsCapsLockOn returns the current CapsLock state
 func (c *Coordinator) IsCapsLockOn() bool {
 	c.mu.Lock()
@@ -338,7 +344,7 @@ func (c *Coordinator) buildToolbarState() ui.ToolbarState {
 	return ui.ToolbarState{
 		ChineseMode:   effectiveMode == ModeChinese,
 		FullWidth:     c.fullWidth,
-		ChinesePunct:  c.chinesePunctuation && effectiveMode == ModeChinese,
+		ChinesePunct:  c.isEffectiveChinesePunct(),
 		CapsLock:      c.capsLockOn,
 		EffectiveMode: int(effectiveMode),
 		ModeLabel:     modeLabel,

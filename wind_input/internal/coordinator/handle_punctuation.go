@@ -349,10 +349,10 @@ func (c *Coordinator) getAutoPairTracker() *transform.PairTracker {
 	if !c.chineseMode {
 		return nil // 英文模式由 C++ 处理
 	}
-	if c.chinesePunctuation && c.config.Input.AutoPair.Chinese {
+	if c.isEffectiveChinesePunct() && c.config.Input.AutoPair.Chinese {
 		return c.pairTracker
 	}
-	if !c.chinesePunctuation && c.config.Input.AutoPair.English {
+	if !c.isEffectiveChinesePunct() && c.config.Input.AutoPair.English {
 		return c.pairTrackerEn
 	}
 	return nil
@@ -773,8 +773,9 @@ func (c *Coordinator) updatePairedQuotes(chinesePairs []string) {
 // convertPunct 统一标点转换逻辑：自定义映射 > 中文标点转换 > 全角转换
 // 返回最终输出的标点文本
 func (c *Coordinator) convertPunct(r rune, afterDigit bool, prevChar rune) string {
-	smartPunct := c.chinesePunctuation && c.shouldSmartPunct(r, afterDigit, prevChar)
-	isChinesePunct := c.chinesePunctuation && !smartPunct
+	effectiveChPunct := c.isEffectiveChinesePunct()
+	smartPunct := effectiveChPunct && c.shouldSmartPunct(r, afterDigit, prevChar)
+	isChinesePunct := effectiveChPunct && !smartPunct
 
 	// 自定义标点映射优先
 	if c.config != nil && c.config.Input.PunctCustom.Enabled {

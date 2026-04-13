@@ -363,7 +363,7 @@ func (c *Coordinator) getStatusModeLabel() string {
 
 // getStatusPunctLabel 获取标点状态标签
 func (c *Coordinator) getStatusPunctLabel() string {
-	if c.chinesePunctuation {
+	if c.isEffectiveChinesePunct() {
 		return "。"
 	}
 	return "."
