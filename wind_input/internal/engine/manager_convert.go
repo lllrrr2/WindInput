@@ -62,6 +62,7 @@ func (m *Manager) ConvertEx(input string, maxCandidates int) *ConvertResult {
 			result.CompletedSyllables = mixedResult.CompletedSyllables
 			result.PartialSyllable = mixedResult.PartialSyllable
 			result.HasPartial = mixedResult.HasPartial
+			result.FullPinyinInput = mixedResult.FullPinyinInput
 		}
 		return result
 	}
@@ -81,9 +82,10 @@ func (m *Manager) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	if pinyinEngine, ok := engine.(*pinyin.Engine); ok {
 		pinyinResult := pinyinEngine.ConvertEx(input, maxCandidates)
 		result := &ConvertResult{
-			Candidates:     pinyinResult.Candidates,
-			IsEmpty:        pinyinResult.IsEmpty,
-			PreeditDisplay: pinyinResult.PreeditDisplay,
+			Candidates:      pinyinResult.Candidates,
+			IsEmpty:         pinyinResult.IsEmpty,
+			PreeditDisplay:  pinyinResult.PreeditDisplay,
+			FullPinyinInput: pinyinResult.FullPinyinInput,
 		}
 		if pinyinResult.Composition != nil {
 			result.CompletedSyllables = pinyinResult.Composition.CompletedSyllables

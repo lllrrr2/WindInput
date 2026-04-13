@@ -161,7 +161,7 @@ type Coordinator struct {
 	// Input state
 	inputBuffer          string
 	inputCursorPos       int                // 光标在 inputBuffer 中的字节位置（0 = 最左，len(inputBuffer) = 最右）
-	preeditDisplay       string             // 带音节分隔符的显示文本（如 "zhong'guo"），五笔时为空
+	preeditDisplay       string             // 带音节分隔符的显示文本（如 "zhong guo"），五笔时为空
 	syllableBoundaries   []int              // 音节边界在 inputBuffer 中的位置（如 [5] 表示位置 5 处有分隔符）
 	confirmedSegments    []ConfirmedSegment // 拼音分步确认：已确认但未上屏的文本段
 	candidates           []ui.Candidate

@@ -56,6 +56,7 @@ type ConvertResult struct {
 	PartialSyllable    string   // 未完成的音节
 	HasPartial         bool     // 是否有未完成音节
 	IsPinyinFallback   bool     // 是否为拼音降级模式（>maxCodeLen 时）
+	FullPinyinInput    string   // 双拼模式下的全拼字符串（用于 preedit 校验）
 }
 
 // Engine 码表拼音混合输入引擎
@@ -348,6 +349,7 @@ func (e *Engine) convertMixedOverflow(input string, maxCandidates int) *ConvertR
 	if pinyinResult != nil && pinyinResult.HasFullSyllable {
 		result.IsPinyinFallback = true
 		result.PreeditDisplay = pinyinResult.PreeditDisplay
+		result.FullPinyinInput = pinyinResult.FullPinyinInput
 		if pinyinResult.Composition != nil {
 			result.CompletedSyllables = pinyinResult.Composition.CompletedSyllables
 			result.PartialSyllable = pinyinResult.Composition.PartialSyllable

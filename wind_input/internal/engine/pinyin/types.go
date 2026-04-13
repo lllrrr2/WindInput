@@ -303,4 +303,7 @@ type PinyinConvertResult struct {
 	IsEmpty         bool // 是否空码（无候选）
 	NeedRefine      bool // 是否需要用户继续输入以细化
 	HasFullSyllable bool // 输入中是否包含至少一个完整音节（非简拼）
+
+	// 双拼模式下的全拼字符串（用于 preedit 校验，全拼模式为空）
+	FullPinyinInput string
 }

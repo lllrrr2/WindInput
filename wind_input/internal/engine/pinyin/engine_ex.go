@@ -568,16 +568,63 @@ func (e *Engine) shuangpinPreprocess(input string) *shuangpinConvertResult {
 	}
 }
 
-// shuangpinPostprocess 双拼后处理：回映 ConsumedLength，替换预编辑显示
+// shuangpinPostprocess 双拼后处理：回映 ConsumedLength，构建双拼键对显示
 func (e *Engine) shuangpinPostprocess(result *PinyinConvertResult, spResult *shuangpinConvertResult, originalInput string) {
-	// 替换预编辑显示为双拼转换后的全拼显示
-	result.PreeditDisplay = spResult.preeditDisplay
+	// 构建双拼专用的 PreeditDisplay：按键对拆分原始输入，空格分隔。
+	// 例如输入 "nihc" → 显示 "ni hc"（每 2 键为一对），保持编码与显示一致。
+	result.PreeditDisplay = buildShuangpinPreedit(spResult.raw, originalInput)
+	result.FullPinyinInput = spResult.fullPinyin
 
 	// 回映所有候选的 ConsumedLength（全拼位置→双拼位置）
 	for i := range result.Candidates {
 		fpConsumed := result.Candidates[i].ConsumedLength
 		result.Candidates[i].ConsumedLength = spResult.raw.MapConsumedLength(fpConsumed)
 	}
+}
+
+// buildShuangpinPreedit 构建双拼预编辑显示文本。
+// 有效键对（converter 产生了音节）合为一组，无效键对和单键逐字显示。
+// 例如：
+//   - "nihc" → "ni hc"（两个有效键对）
+//   - "bzd"  → "b z d"（无有效键对，简拼模式）
+//   - "nihcbzd" → "ni hc b z d"（前两对有效，后面逐字）
+func buildShuangpinPreedit(raw *shuangpin.ConvertResult, originalInput string) string {
+	if len(originalInput) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(originalInput) + len(originalInput)/2)
+
+	pos := 0
+	for _, s := range raw.Syllables {
+		// 有效音节前的间隙：逐字显示（无效键对被拆开）
+		for pos < s.SPStart && pos < len(originalInput) {
+			if builder.Len() > 0 {
+				builder.WriteByte(' ')
+			}
+			builder.WriteByte(originalInput[pos])
+			pos++
+		}
+		// 有效键对：合为一组
+		if s.SPEnd <= len(originalInput) {
+			if builder.Len() > 0 {
+				builder.WriteByte(' ')
+			}
+			builder.WriteString(originalInput[s.SPStart:s.SPEnd])
+			pos = s.SPEnd
+		}
+	}
+
+	// 剩余字符（无效键对残余 + partial）：逐字显示
+	for pos < len(originalInput) {
+		if builder.Len() > 0 {
+			builder.WriteByte(' ')
+		}
+		builder.WriteByte(originalInput[pos])
+		pos++
+	}
+
+	return builder.String()
 }
 
 // applyShadowRules 在拼音引擎最终排序后应用 Shadow 拦截器（pin + delete）。

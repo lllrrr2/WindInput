@@ -186,20 +186,8 @@ func (r *ConvertResult) MapConsumedLength(fpConsumed int) int {
 		}
 	}
 
-	// 包含 partial 的情况
-	if r.HasPartial {
-		totalFP := len(r.FullPinyin)
-		if fpConsumed >= totalFP {
-			// 消耗了全部（含 partial），返回双拼总长度
-			lastSPEnd := 0
-			if len(r.Syllables) > 0 {
-				lastSPEnd = r.Syllables[len(r.Syllables)-1].SPEnd
-			}
-			return lastSPEnd + 1 // partial 占 1 个双拼键
-		}
-	}
-
 	// Fallback: 使用位置映射表
+	// 覆盖所有音节边界无法精确映射的场景：partial、无效键对（简拼）等
 	if fpConsumed > len(r.PositionMap) {
 		fpConsumed = len(r.PositionMap)
 	}

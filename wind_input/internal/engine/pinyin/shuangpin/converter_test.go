@@ -148,6 +148,31 @@ func TestConsumedLengthMapping(t *testing.T) {
 	}
 }
 
+func TestConsumedLengthAbbrev(t *testing.T) {
+	scheme := Get("xiaohe")
+	conv := NewConverter(scheme)
+
+	// "bzd" → 简拼（无有效键对），全拼="bzd"(3字节)，双拼也是3字节
+	result := conv.Convert("bzd")
+	gotSP := result.MapConsumedLength(3)
+	if gotSP != 3 {
+		t.Errorf("MapConsumedLength(3) for 'bzd' = %d, want 3", gotSP)
+	}
+
+	// "nihcbzd" → 2个有效键对 + 简拼尾部
+	result2 := conv.Convert("nihcbzd")
+	// 全拼 "nihao"(5) + "bzd"(3) = 8，消耗全部应返回7
+	gotSP2 := result2.MapConsumedLength(8)
+	if gotSP2 != 7 {
+		t.Errorf("MapConsumedLength(8) for 'nihcbzd' = %d, want 7", gotSP2)
+	}
+	// 只消耗 "nihao"(5) 应返回4
+	gotSP3 := result2.MapConsumedLength(5)
+	if gotSP3 != 4 {
+		t.Errorf("MapConsumedLength(5) for 'nihcbzd' = %d, want 4", gotSP3)
+	}
+}
+
 func TestPartialInput(t *testing.T) {
 	scheme := Get("xiaohe")
 	conv := NewConverter(scheme)

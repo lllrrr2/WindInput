@@ -38,6 +38,23 @@ func (c *Coordinator) compositionText() string {
 	return prefix + c.inputBuffer
 }
 
+// calcShuangpinBoundaries 从 preedit 文本反推音节边界位置。
+// 按空格分割 preedit 得到各段长度，累加得到 inputBuffer 中的边界偏移。
+// 这样边界与 preedit 显示始终同步，无论段是 1 键（简拼）还是 2 键（有效键对）。
+func (c *Coordinator) calcShuangpinBoundaries() []int {
+	segments := strings.Split(c.preeditDisplay, " ")
+	if len(segments) <= 1 {
+		return nil
+	}
+	boundaries := make([]int, 0, len(segments)-1)
+	pos := 0
+	for i := 0; i < len(segments)-1; i++ {
+		pos += len(segments[i])
+		boundaries = append(boundaries, pos)
+	}
+	return boundaries
+}
+
 // calcSyllableBoundaries 从已完成音节和部分音节计算边界位置。
 // 边界位置是 inputBuffer 中每对相邻音节段之间的字节偏移。
 // 例如 ["zhong", "guo"] partial="" → [5]；["ni", "hao"] partial="zh" → [2, 5]
@@ -116,6 +133,9 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 		if stripped != inputStripped {
 			c.preeditDisplay = ""
 			c.syllableBoundaries = nil
+		} else if result.FullPinyinInput != "" {
+			// 双拼模式：每个音节固定 2 键，按键对计算边界
+			c.syllableBoundaries = c.calcShuangpinBoundaries()
 		} else {
 			c.syllableBoundaries = c.calcSyllableBoundaries(
 				result.CompletedSyllables, result.PartialSyllable)
