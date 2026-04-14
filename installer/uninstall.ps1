@@ -138,6 +138,12 @@ if (Test-Path $cacheDir) {
     Remove-Item -Path $cacheDir -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "  - 已清理词库缓存"
 }
+# 清理 wind_setting WebView2 缓存数据
+$settingCacheDir = Join-Path $env:APPDATA $SettingProcessName
+if (Test-Path $settingCacheDir) {
+    Remove-Item -Path $settingCacheDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "  - 已清理设置程序缓存"
+}
 $windInputLocal = Join-Path $env:LOCALAPPDATA $AppDirName
 if ((Test-Path $windInputLocal) -and ((Get-ChildItem $windInputLocal -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)) {
     Remove-Item -Path $windInputLocal -Force -ErrorAction SilentlyContinue
