@@ -250,6 +250,12 @@ func validateSchema(s *Schema, path string) error {
 		if len(runes) > 0 {
 			s.Schema.IconLabel = string(runes[0])
 		}
+	} else {
+		// 防御：icon_label 仅保留第一个字符，多字符会导致 C++ 侧渲染异常
+		runes := []rune(s.Schema.IconLabel)
+		if len(runes) > 1 {
+			s.Schema.IconLabel = string(runes[0])
+		}
 	}
 	return nil
 }
