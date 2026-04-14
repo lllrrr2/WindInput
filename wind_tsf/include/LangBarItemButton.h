@@ -131,6 +131,7 @@ private:
     BOOL _bChinesePunct;       // Chinese punctuation mode (中文标点)
     BOOL _bToolbarVisible;     // Toolbar visibility
     BOOL _bKeyboardDisabled;   // Keyboard disabled by system
+    BOOL _bDarkMode;           // System dark mode state (cached, updated on status change)
 
     // Input method type label for Chinese mode display
     // Default: "中", future values: "拼"(Pinyin), "五"(Wubi), "双"(Shuangpin)

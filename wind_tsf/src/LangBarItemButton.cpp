@@ -6,6 +6,24 @@
 #include <dwrite.h>
 
 #pragma comment(lib, "dwrite.lib")
+#pragma comment(lib, "advapi32.lib")
+
+// Detect if the system taskbar uses dark mode by reading the registry.
+// Returns true if dark mode is active (SystemUsesLightTheme == 0).
+static bool IsSystemDarkMode()
+{
+    DWORD value = 1; // default to light mode
+    DWORD size = sizeof(value);
+    RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"SystemUsesLightTheme",
+        RRF_RT_REG_DWORD,
+        nullptr,
+        &value,
+        &size);
+    return value == 0;
+}
 
 // DirectWrite factory (lazy-initialized, per-process lifetime)
 static IDWriteFactory* g_pDWriteFactory = nullptr;
@@ -114,6 +132,7 @@ CLangBarItemButton::CLangBarItemButton(CTextService* pTextService)
     , _bChinesePunct(TRUE)
     , _bToolbarVisible(FALSE)
     , _bKeyboardDisabled(FALSE)
+    , _bDarkMode(IsSystemDarkMode() ? TRUE : FALSE)
     , _hMsgWnd(NULL)
 {
     // Default input type label
@@ -532,8 +551,13 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
             DeleteObject(hFont);
     }
 
-    // Convert white-on-black text to alpha mask for theme-aware rendering
-    // Text luminance becomes alpha; RGB set to 0 for TF_LBI_STYLE_TEXTCOLORICON
+    // Convert white-on-black text to alpha mask for theme-aware rendering.
+    // Text luminance becomes alpha; RGB is set based on system theme:
+    //   Light mode: RGB(0,0,0)       → black text on light taskbar
+    //   Dark mode:  RGB(255,255,255) → white text on dark taskbar
+    // TF_LBI_STYLE_TEXTCOLORICON should handle this automatically, but some
+    // Windows versions don't reliably recolor, so we detect the theme ourselves.
+    BYTE fgColor = _bDarkMode ? 255 : 0;
     BYTE* pixels = (BYTE*)pBits;
     for (int i = 0; i < iconSize * iconSize; i++)
     {
@@ -545,9 +569,9 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon)
         // When keyboard is disabled, reduce alpha to 35% for dimmed appearance
         if (_bKeyboardDisabled)
             alpha = (BYTE)(alpha * 90 / 255);
-        pixels[i * 4 + 0] = 0;      // B = 0
-        pixels[i * 4 + 1] = 0;      // G = 0
-        pixels[i * 4 + 2] = 0;      // R = 0
+        pixels[i * 4 + 0] = fgColor; // B
+        pixels[i * 4 + 1] = fgColor; // G
+        pixels[i * 4 + 2] = fgColor; // R
         pixels[i * 4 + 3] = alpha;   // A = text coverage
     }
 
@@ -879,11 +903,15 @@ void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BO
         }
     }
 
+    // Refresh dark mode state (cached for GetIcon)
+    BOOL bDarkMode = IsSystemDarkMode() ? TRUE : FALSE;
+
     BOOL needUpdate = (_bChineseMode != bChineseMode) ||
                       (_bFullWidth != bFullWidth) ||
                       (_bChinesePunct != bChinesePunct) ||
                       (_bToolbarVisible != bToolbarVisible) ||
                       (_bCapsLock != bCapsLock) ||
+                      (_bDarkMode != bDarkMode) ||
                       labelChanged;
 
     _bChineseMode = bChineseMode;
@@ -891,14 +919,15 @@ void CLangBarItemButton::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BO
     _bChinesePunct = bChinesePunct;
     _bToolbarVisible = bToolbarVisible;
     _bCapsLock = bCapsLock;
+    _bDarkMode = bDarkMode;
 
     if (needUpdate && _pLangBarItemSink != nullptr)
     {
         _pLangBarItemSink->OnUpdate(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
     }
 
-    WIND_LOG_DEBUG_FMT(L"UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, label=%ls, needUpdate=%d\n",
-              bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock, _inputTypeLabel, needUpdate);
+    WIND_LOG_DEBUG_FMT(L"UpdateFullStatus: mode=%d, width=%d, punct=%d, toolbar=%d, caps=%d, dark=%d, label=%ls, needUpdate=%d\n",
+              bChineseMode, bFullWidth, bChinesePunct, bToolbarVisible, bCapsLock, bDarkMode, _inputTypeLabel, needUpdate);
 }
 
 void CLangBarItemButton::PostUpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel)
