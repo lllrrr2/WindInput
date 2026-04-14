@@ -108,6 +108,8 @@ type UIConfig struct {
 	ThemeStyle              string  `yaml:"theme_style" json:"theme_style"`                             // 主题风格：system(跟随系统), light(亮色), dark(暗色)
 	TooltipDelay            int     `yaml:"tooltip_delay" json:"tooltip_delay"`                         // 编码提示延迟显示时间（毫秒），0 表示立即显示
 
+	PreeditMode string `yaml:"preedit_mode" json:"preedit_mode"` // 编码显示模式："top"（默认，编码在上方独立行）, "embedded"（嵌入候选行前）；仅 InlinePreedit=false 时生效
+
 	// 文本渲染设置
 	TextRenderMode string  `yaml:"text_render_mode,omitempty" json:"text_render_mode,omitempty"` // 文本渲染引擎："directwrite"（默认，DirectWrite渲染）、"gdi"（Windows原生GDI渲染）或 "freetype"（FreeType渲染）
 	GDIFontWeight  int     `yaml:"gdi_font_weight,omitempty" json:"gdi_font_weight,omitempty"`   // 候选框GDI字体粗细：100~900，默认500(Medium)
@@ -246,6 +248,7 @@ func DefaultConfig() *Config {
 			FontFamily:              "",
 			FontPath:                "",
 			InlinePreedit:           true,
+			PreeditMode:             "top",
 			CandidateLayout:         "horizontal",
 			StatusIndicatorDuration: 800,
 			StatusIndicatorOffsetX:  0,

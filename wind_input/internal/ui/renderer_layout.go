@@ -625,16 +625,31 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	if cfg.ModeLabel != "" {
 		modeLabelWidth = td.MeasureString(cfg.ModeLabel, cfg.IndexFontSize) + 12*scale
 	}
+	// embedded 模式：编码嵌入候选行前，不显示独立编码行
+	isEmbedded := cfg.PreeditMode == "embedded" && !cfg.HidePreedit
 	inputWidth := 0.0
 	inputHeight := 0.0
-	if !cfg.HidePreedit && input != "" {
+	if !cfg.HidePreedit && !isEmbedded && input != "" {
 		inputWidth = td.MeasureString(input, cfg.FontSize)
 		inputWidth += 16*scale + modeLabelWidth
 		inputHeight = 24 * scale
-	} else if !cfg.HidePreedit && modeLabelWidth > 0 {
+	} else if !cfg.HidePreedit && !isEmbedded && modeLabelWidth > 0 {
 		// 无输入但有 ModeLabel（如临时英文初始状态）
 		inputWidth = modeLabelWidth + 16*scale
 		inputHeight = 24 * scale
+	}
+
+	// embedded 模式下，编码文本嵌入候选行前的宽度
+	embeddedPreeditWidth := 0.0
+	embeddedModeLabelWidth := 0.0
+	embeddedSeparatorWidth := 16.0 * scale // 编码与候选之间的分隔间距
+	if isEmbedded {
+		if input != "" {
+			embeddedPreeditWidth = td.MeasureString(input, cfg.FontSize) + embeddedSeparatorWidth
+		}
+		if cfg.ModeLabel != "" {
+			embeddedModeLabelWidth = modeLabelWidth + 4*scale
+		}
 	}
 
 	// Extra padding for accent bar
@@ -648,11 +663,13 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	if cfg.HorizontalMinWidth > 0 {
 		minWidth = cfg.HorizontalMinWidth
 	}
-	contentWidth := padX*2 + accentBarExtra + candidatesWidth + pageInfoWidth
+	// embedded 模式：候选行宽度需包含编码前缀
+	embeddedPrefix := embeddedPreeditWidth + embeddedModeLabelWidth
+	contentWidth := padX*2 + accentBarExtra + embeddedPrefix + candidatesWidth + pageInfoWidth
 	if inputWidth > 0 {
 		contentWidth = padX*2 + accentBarExtra + inputWidth
-		if accentBarExtra+candidatesWidth+pageInfoWidth > accentBarExtra+inputWidth {
-			contentWidth = padX*2 + accentBarExtra + candidatesWidth + pageInfoWidth
+		if accentBarExtra+embeddedPrefix+candidatesWidth+pageInfoWidth > accentBarExtra+inputWidth {
+			contentWidth = padX*2 + accentBarExtra + embeddedPrefix + candidatesWidth + pageInfoWidth
 		}
 	}
 	width := contentWidth
@@ -673,12 +690,21 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	// Pre-compute cursor X position
 	var cursorDrawX float64
 	hasCursor := false
-	if !cfg.HidePreedit && input != "" && cursorPos >= 0 && cursorPos <= len(input) {
+	if !cfg.HidePreedit && !isEmbedded && input != "" && cursorPos >= 0 && cursorPos <= len(input) {
 		cursorText := input[:cursorPos]
 		preeditX := padX + accentBarExtra
 		textX := preeditX + 8*scale
 		cursorDrawX = textX + td.MeasureString(cursorText, cfg.FontSize)
 		hasCursor = true
+	}
+	// Embedded mode cursor
+	var embeddedCursorX float64
+	hasEmbeddedCursor := false
+	if isEmbedded && input != "" && cursorPos >= 0 && cursorPos <= len(input) {
+		cursorText := input[:cursorPos]
+		embedX := padX + accentBarExtra
+		embeddedCursorX = embedX + td.MeasureString(cursorText, cfg.FontSize)
+		hasEmbeddedCursor = true
 	}
 
 	// Pre-compute candidate X positions
@@ -694,11 +720,11 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	}
 
 	candStartY := padY
-	if !cfg.HidePreedit && input != "" {
+	if !cfg.HidePreedit && !isEmbedded && input != "" {
 		candStartY = padY + inputHeight + 4*scale
 	}
 
-	xPos := padX + accentBarOffset + bgPadL
+	xPos := padX + accentBarOffset + embeddedPrefix + bgPadL
 	for i := range candidates {
 		positions[i].x = xPos
 		if candidates[i].Index < 0 {
@@ -732,8 +758,8 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 
 	y := padY
 
-	// Input area shapes
-	if !cfg.HidePreedit && input != "" {
+	// Input area shapes (top mode only; embedded mode draws preedit inline with candidates)
+	if !cfg.HidePreedit && !isEmbedded && input != "" {
 		preeditX := padX + accentBarOffset
 		dc.SetColor(cfg.InputBgColor)
 		r.drawRoundedRect(dc, preeditX, y, width-preeditX-padX-2, inputHeight, 4*scale)
@@ -747,6 +773,16 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 			dc.DrawLine(cursorDrawX, cursorTopY, cursorDrawX, cursorBottomY)
 			dc.Stroke()
 		}
+	}
+
+	// Embedded mode: draw cursor in candidate row
+	if hasEmbeddedCursor {
+		cursorTopY := candStartY + candidateRowHeight*0.15
+		cursorBottomY := candStartY + candidateRowHeight*0.85
+		dc.SetColor(cfg.InputTextColor)
+		dc.SetLineWidth(1.5 * scale)
+		dc.DrawLine(embeddedCursorX, cursorTopY, embeddedCursorX, cursorBottomY)
+		dc.Stroke()
 	}
 
 	// Build candidate rectangles for hit testing
@@ -852,20 +888,37 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	td.BeginDraw(img)
 
 	// Input text
-	if !cfg.HidePreedit && input != "" {
+	if !cfg.HidePreedit && !isEmbedded && input != "" {
 		preeditX := padX + accentBarOffset
 		textX := preeditX + 8*scale
 		textY := padY + inputHeight/2 + cfg.FontSize/3
 		td.DrawString(input, textX, textY, cfg.FontSize, cfg.InputTextColor)
 	}
 
-	// Mode label (e.g. "临时拼音", "快捷输入")
-	if cfg.ModeLabel != "" {
+	// Embedded mode: draw preedit text and cursor inline before candidates
+	if isEmbedded && (input != "" || cfg.ModeLabel != "") {
+		embedY := candStartY + candidateRowHeight/2 + cfg.FontSize/3
+		embedX := padX + accentBarOffset
+		if input != "" {
+			td.DrawString(input, embedX, embedY, cfg.FontSize, cfg.InputTextColor)
+		}
+		// ModeLabel in embedded mode: draw after preedit text
+		if cfg.ModeLabel != "" {
+			labelSize := cfg.IndexFontSize
+			labelColor := r.getCommentColor()
+			labelX := embedX + embeddedPreeditWidth
+			labelY := candStartY + candidateRowHeight/2 + labelSize/3
+			td.DrawString(cfg.ModeLabel, labelX, labelY, labelSize, labelColor)
+		}
+	}
+
+	// Mode label (e.g. "临时拼音", "快捷输入") - top mode only
+	if !isEmbedded && cfg.ModeLabel != "" {
 		labelSize := cfg.IndexFontSize
 		labelColor := r.getCommentColor()
 		labelWidth := td.MeasureString(cfg.ModeLabel, labelSize)
 		if cfg.HidePreedit {
-			// Embedded mode: show on candidate row only when no candidates
+			// HidePreedit mode: show on candidate row only when no candidates
 			if len(candidates) == 0 {
 				labelX := width - padX - labelWidth - 4*scale
 				labelY := candStartY + candidateRowHeight/2 + labelSize/3

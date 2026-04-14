@@ -52,6 +52,7 @@ type RenderConfig struct {
 	ShowPageNumber     bool           // Show page number text (e.g. "1/3")
 	TextRenderMode     TextRenderMode // "gdi" (Windows native) or "freetype" (original)
 	ModeLabel          string         // Temporary mode label (e.g. "临时拼音", "快捷输入"), empty = no label
+	PreeditMode        string         // "top" (default) or "embedded" (inline before candidates); only effective when HidePreedit=false
 }
 
 // DefaultRenderConfig returns default rendering configuration with DPI scaling
@@ -278,6 +279,11 @@ func (r *Renderer) SetLayout(layout string) {
 // SetHidePreedit sets whether to hide the preedit area
 func (r *Renderer) SetHidePreedit(hide bool) {
 	r.config.HidePreedit = hide
+}
+
+// SetPreeditMode sets the preedit display mode ("top" or "embedded")
+func (r *Renderer) SetPreeditMode(mode string) {
+	r.config.PreeditMode = mode
 }
 
 // SetModeLabel sets the temporary mode label for display

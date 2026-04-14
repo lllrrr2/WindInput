@@ -110,6 +110,7 @@ export interface UIConfig {
   font_family: string;
   font_path: string;
   inline_preedit: boolean;
+  preedit_mode: string; // "top" | "embedded"
   hide_candidate_window: boolean;
   candidate_layout: string;
   status_indicator: StatusIndicatorConfig;
@@ -383,6 +384,7 @@ export function getDefaultConfig(): Config {
       font_family: "",
       font_path: "",
       inline_preedit: true,
+      preedit_mode: "top",
       hide_candidate_window: false,
       candidate_layout: "horizontal",
       status_indicator: {

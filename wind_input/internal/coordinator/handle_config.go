@@ -46,6 +46,8 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 		}
 		// Update hide preedit setting
 		c.uiManager.SetHidePreedit(uiConfig.InlinePreedit)
+		// Update preedit display mode
+		c.uiManager.SetPreeditMode(uiConfig.PreeditMode)
 		// Update status indicator config (旧字段兼容)
 		c.uiManager.UpdateStatusIndicatorConfig(
 			uiConfig.StatusIndicatorDuration,

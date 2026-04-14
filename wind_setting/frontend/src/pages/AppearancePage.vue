@@ -418,6 +418,18 @@ onUnmounted(() => {
           </label>
         </div>
       </div>
+      <div class="setting-item" v-if="!formData.ui.inline_preedit">
+        <div class="setting-info">
+          <label>编码显示方式</label>
+          <p class="setting-hint">未开启嵌入编码时，编码在候选窗中的显示位置</p>
+        </div>
+        <div class="setting-control">
+          <select v-model="formData.ui.preedit_mode" class="select">
+            <option value="top">独立编码行</option>
+            <option value="embedded">嵌入候选行</option>
+          </select>
+        </div>
+      </div>
       <div class="setting-item">
         <div class="setting-info">
           <label>候选布局</label>

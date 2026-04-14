@@ -156,6 +156,13 @@ func (m *Manager) SetHidePreedit(hide bool) {
 	}
 }
 
+// SetPreeditMode 设置编码显示模式（"top" 或 "embedded"）
+func (m *Manager) SetPreeditMode(mode string) {
+	if m.renderer != nil {
+		m.renderer.SetPreeditMode(mode)
+	}
+}
+
 // OpenSettings opens the settings window
 func (m *Manager) OpenSettings() {
 	m.OpenSettingsWithPage("")
