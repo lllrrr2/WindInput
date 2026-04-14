@@ -246,6 +246,13 @@ func main() {
 		dictManager.Close()
 		logger.Info("DictManager closed, user data saved")
 	}()
+
+	// 启用 bbolt Store 后端（用户词库、词频、Shadow 统一存储）
+	dbPath := filepath.Join(dataDir, "user_data.db")
+	if err := dictManager.OpenStore(dbPath); err != nil {
+		logger.Error("Failed to open store, falling back to file backend", "error", err)
+	}
+
 	if err := dictManager.Initialize(); err != nil {
 		logger.Warn("Failed to initialize dict manager", "error", err)
 	}

@@ -266,6 +266,12 @@ func (s *Server) handleReloadUserDict() string {
 		return control.ErrorResponse(fmt.Errorf("dict manager not initialized"))
 	}
 
+	// Store 后端无需手动重载（bbolt 实时读取）
+	if s.dictManager.UseStore() {
+		s.logger.Info("User dict reload skipped (Store backend)")
+		return control.OkResponse()
+	}
+
 	userDict := s.dictManager.GetUserDict()
 	if userDict == nil {
 		return control.ErrorResponse(fmt.Errorf("user dict not initialized"))
@@ -303,10 +309,12 @@ func (s *Server) handleReloadAll() string {
 		if err := s.dictManager.ReloadShadow(); err != nil {
 			errors = append(errors, fmt.Sprintf("shadow: %v", err))
 		}
-		userDict := s.dictManager.GetUserDict()
-		if userDict != nil {
-			if err := userDict.Load(); err != nil {
-				errors = append(errors, fmt.Sprintf("userdict: %v", err))
+		if !s.dictManager.UseStore() {
+			userDict := s.dictManager.GetUserDict()
+			if userDict != nil {
+				if err := userDict.Load(); err != nil {
+					errors = append(errors, fmt.Sprintf("userdict: %v", err))
+				}
 			}
 		}
 	}

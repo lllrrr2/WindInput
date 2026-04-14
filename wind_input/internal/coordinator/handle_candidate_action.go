@@ -50,12 +50,10 @@ func (c *Coordinator) handleDeleteCandidateByKey(num int) *bridge.KeyEventResult
 	c.mu.Unlock()
 
 	if c.engineMgr != nil {
-		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
-		if shadowLayer != nil {
-			shadowLayer.Delete(code, cand.Text)
-			if err := shadowLayer.Save(); err != nil {
-				c.logger.Error("Failed to save shadow layer after hotkey delete", "error", err)
-			}
+		dm := c.engineMgr.GetDictManager()
+		dm.DeleteWord(code, cand.Text)
+		if err := dm.SaveShadow(); err != nil {
+			c.logger.Error("Failed to save shadow layer after hotkey delete", "error", err)
 		}
 	}
 
@@ -97,12 +95,10 @@ func (c *Coordinator) handlePinCandidateByKey(num int) *bridge.KeyEventResult {
 	c.mu.Unlock()
 
 	if c.engineMgr != nil {
-		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
-		if shadowLayer != nil {
-			shadowLayer.Pin(code, cand.Text, 0)
-			if err := shadowLayer.Save(); err != nil {
-				c.logger.Error("Failed to save shadow layer after hotkey pin", "error", err)
-			}
+		dm := c.engineMgr.GetDictManager()
+		dm.PinWord(code, cand.Text, 0)
+		if err := dm.SaveShadow(); err != nil {
+			c.logger.Error("Failed to save shadow layer after hotkey pin", "error", err)
 		}
 	}
 

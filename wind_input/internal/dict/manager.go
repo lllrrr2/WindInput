@@ -409,6 +409,44 @@ func (dm *DictManager) RemoveShadowRule(code, word string) {
 	}
 }
 
+// HasShadowRule 检查指定编码和词是否有 Shadow 规则
+func (dm *DictManager) HasShadowRule(code, word string) bool {
+	if dm.useStore {
+		if dm.activeStoreShadow != nil {
+			rules := dm.activeStoreShadow.GetShadowRules(code)
+			if rules == nil {
+				return false
+			}
+			for _, p := range rules.Pinned {
+				if p.Word == word {
+					return true
+				}
+			}
+			for _, d := range rules.Deleted {
+				if d == word {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if dm.activeShadow != nil {
+		return dm.activeShadow.HasRule(code, word)
+	}
+	return false
+}
+
+// SaveShadow 保存 Shadow 规则
+func (dm *DictManager) SaveShadow() error {
+	if dm.useStore {
+		return nil // bbolt 自动持久化
+	}
+	if dm.activeShadow != nil && dm.activeShadow.IsDirty() {
+		return dm.activeShadow.Save()
+	}
+	return nil
+}
+
 // ── Store 后端专用访问器 ──
 
 // GetStoreUserLayer 获取当前活跃的 Store 用户词库层（仅 Store 模式下有效）

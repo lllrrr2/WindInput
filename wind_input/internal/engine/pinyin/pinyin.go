@@ -309,11 +309,6 @@ func (e *Engine) OnCandidateSelected(code, text string) {
 		return
 	}
 
-	userDict := e.dictManager.GetUserDict()
-	if userDict == nil {
-		return
-	}
-
 	// 单字不写入 UserDict（避免膨胀），但更新 Unigram 频率（单字频率对造句重要）
 	runes := []rune(text)
 	if len(runes) < 2 {
@@ -323,25 +318,66 @@ func (e *Engine) OnCandidateSelected(code, text string) {
 		return
 	}
 
-	if e.config.FrequencyOnly {
-		// 仅调频模式：只调整已有词条权重，不创建新词
-		userDict.IncreaseWeight(code, text, 20)
+	// Store 后端路径
+	if e.dictManager.UseStore() {
+		e.onCandidateSelectedStore(code, text)
 	} else {
-		// 自动学习模式：优先使用临时词库
-		tempDict := e.dictManager.GetTempDict()
-		if tempDict != nil {
-			promoted := tempDict.LearnWord(code, text, 20)
-			if promoted {
-				tempDict.PromoteWord(code, text)
-			}
-		} else {
-			userDict.OnWordSelected(code, text, 800, 20, 2)
-		}
+		e.onCandidateSelectedFile(code, text)
 	}
 
 	// 更新 Unigram 用户频率（两种模式都需要）
 	if e.unigram != nil {
 		e.unigram.BoostUserFreq(text, 1)
+	}
+}
+
+// onCandidateSelectedStore Store 后端的选词回调
+func (e *Engine) onCandidateSelectedStore(code, text string) {
+	// 记录独立词频
+	if s := e.dictManager.GetStore(); s != nil {
+		s.IncrementFreq(e.dictManager.GetActiveSchemaID(), code, text)
+	}
+
+	if e.config.FrequencyOnly {
+		if userLayer := e.dictManager.GetStoreUserLayer(); userLayer != nil {
+			userLayer.IncreaseWeight(code, text, 20)
+		}
+		return
+	}
+
+	tempLayer := e.dictManager.GetStoreTempLayer()
+	if tempLayer != nil {
+		promoted := tempLayer.LearnWord(code, text, 20)
+		if promoted {
+			tempLayer.PromoteWord(code, text)
+		}
+	} else {
+		if userLayer := e.dictManager.GetStoreUserLayer(); userLayer != nil {
+			userLayer.OnWordSelected(code, text, 800, 20, 2)
+		}
+	}
+}
+
+// onCandidateSelectedFile 文件后端的选词回调
+func (e *Engine) onCandidateSelectedFile(code, text string) {
+	userDict := e.dictManager.GetUserDict()
+	if userDict == nil {
+		return
+	}
+
+	if e.config.FrequencyOnly {
+		userDict.IncreaseWeight(code, text, 20)
+		return
+	}
+
+	tempDict := e.dictManager.GetTempDict()
+	if tempDict != nil {
+		promoted := tempDict.LearnWord(code, text, 20)
+		if promoted {
+			tempDict.PromoteWord(code, text)
+		}
+	} else {
+		userDict.OnWordSelected(code, text, 800, 20, 2)
 	}
 }
 

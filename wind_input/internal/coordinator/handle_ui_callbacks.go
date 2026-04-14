@@ -401,12 +401,10 @@ func (c *Coordinator) handleCandidateMoveUp(index int) {
 	c.mu.Unlock()
 
 	if c.engineMgr != nil {
-		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
-		if shadowLayer != nil {
-			shadowLayer.Pin(code, cand.Text, targetPosition)
-			if err := shadowLayer.Save(); err != nil {
-				c.logger.Error("Failed to save shadow layer", "error", err)
-			}
+		dm := c.engineMgr.GetDictManager()
+		dm.PinWord(code, cand.Text, targetPosition)
+		if err := dm.SaveShadow(); err != nil {
+			c.logger.Error("Failed to save shadow layer", "error", err)
 		}
 	}
 
@@ -459,12 +457,10 @@ func (c *Coordinator) handleCandidateMoveDown(index int) {
 	c.mu.Unlock()
 
 	if c.engineMgr != nil {
-		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
-		if shadowLayer != nil {
-			shadowLayer.Pin(code, cand.Text, targetPosition)
-			if err := shadowLayer.Save(); err != nil {
-				c.logger.Error("Failed to save shadow layer", "error", err)
-			}
+		dm := c.engineMgr.GetDictManager()
+		dm.PinWord(code, cand.Text, targetPosition)
+		if err := dm.SaveShadow(); err != nil {
+			c.logger.Error("Failed to save shadow layer", "error", err)
 		}
 	}
 
@@ -509,12 +505,10 @@ func (c *Coordinator) handleCandidateMoveTop(index int) {
 	c.mu.Unlock()
 
 	if c.engineMgr != nil {
-		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
-		if shadowLayer != nil {
-			shadowLayer.Pin(code, cand.Text, 0)
-			if err := shadowLayer.Save(); err != nil {
-				c.logger.Error("Failed to save shadow layer", "error", err)
-			}
+		dm := c.engineMgr.GetDictManager()
+		dm.PinWord(code, cand.Text, 0)
+		if err := dm.SaveShadow(); err != nil {
+			c.logger.Error("Failed to save shadow layer", "error", err)
 		}
 	}
 
@@ -557,12 +551,10 @@ func (c *Coordinator) handleCandidateDelete(index int) {
 	c.mu.Unlock()
 
 	if c.engineMgr != nil {
-		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
-		if shadowLayer != nil {
-			shadowLayer.Delete(code, cand.Text)
-			if err := shadowLayer.Save(); err != nil {
-				c.logger.Error("Failed to save shadow layer", "error", err)
-			}
+		dm := c.engineMgr.GetDictManager()
+		dm.DeleteWord(code, cand.Text)
+		if err := dm.SaveShadow(); err != nil {
+			c.logger.Error("Failed to save shadow layer", "error", err)
 		}
 	}
 
@@ -609,12 +601,10 @@ func (c *Coordinator) handleCandidateResetDefault(index int) {
 
 	// Remove shadow rule without lock
 	if c.engineMgr != nil {
-		shadowLayer := c.engineMgr.GetDictManager().GetShadowLayer()
-		if shadowLayer != nil {
-			shadowLayer.RemoveRule(code, cand.Text)
-			if err := shadowLayer.Save(); err != nil {
-				c.logger.Error("Failed to save shadow layer", "error", err)
-			}
+		dm := c.engineMgr.GetDictManager()
+		dm.RemoveShadowRule(code, cand.Text)
+		if err := dm.SaveShadow(); err != nil {
+			c.logger.Error("Failed to save shadow layer", "error", err)
 		}
 	}
 

@@ -128,14 +128,7 @@ func (c *Coordinator) confirmAddWord() *bridge.KeyEventResult {
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
 	}
 
-	userDict := dictMgr.GetUserDict()
-	if userDict == nil {
-		c.logger.Warn("addword: user dict not available")
-		c.exitAddWordMode()
-		return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
-	}
-
-	if err := userDict.Add(code, word, addWordMaxWeight); err != nil {
+	if err := dictMgr.AddUserWord(code, word, addWordMaxWeight); err != nil {
 		c.logger.Warn("addword: failed to add word", "error", err)
 	} else {
 		c.logger.Info("addword: word added successfully", "wordLen", len([]rune(word)), "codeLen", len(code))

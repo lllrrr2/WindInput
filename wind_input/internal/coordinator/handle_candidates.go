@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/ui"
 )
@@ -146,11 +147,9 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 
 	// Convert to UI candidates
 	// Check shadow layer for HasShadow flags
-	var shadowLayer interface {
-		HasRule(code string, word string) bool
-	}
+	var dictMgr *dict.DictManager
 	if c.engineMgr != nil {
-		shadowLayer = c.engineMgr.GetDictManager().GetShadowLayer()
+		dictMgr = c.engineMgr.GetDictManager()
 	}
 
 	c.candidates = make([]ui.Candidate, len(result.Candidates))
@@ -159,14 +158,14 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 		// HasShadow 统一用 inputBuffer 查询（Shadow 规则按当前输入编码存储）
 		if cand.IsCommand && cand.PhraseTemplate != "" {
 			// 命令候选：检查 PhraseLayer 是否有用户覆盖
-			if c.engineMgr != nil {
-				phraseLayer := c.engineMgr.GetDictManager().GetPhraseLayer()
+			if dictMgr != nil {
+				phraseLayer := dictMgr.GetPhraseLayer()
 				if phraseLayer != nil {
 					cand.HasShadow = phraseLayer.HasPhraseOverride(c.inputBuffer, cand.PhraseTemplate)
 				}
 			}
-		} else if shadowLayer != nil && !cand.IsCommand {
-			cand.HasShadow = shadowLayer.HasRule(c.inputBuffer, cand.Text)
+		} else if dictMgr != nil && !cand.IsCommand {
+			cand.HasShadow = dictMgr.HasShadowRule(c.inputBuffer, cand.Text)
 		}
 		c.candidates[i] = cand
 	}
