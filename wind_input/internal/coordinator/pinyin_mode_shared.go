@@ -213,15 +213,27 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 			}
 			return ops.exitMode(true, punctText)
 		}
-		// 有候选时上屏首候选+标点
+		// 有候选时：先检查是否为以词定字键
 		if len(c.candidates) > 0 {
+			if data.Modifiers&ModShift == 0 && c.isSelectCharFirstKey(key, data.KeyCode) {
+				return c.selectPinyinModeChar(ops, 0)
+			}
+			if data.Modifiers&ModShift == 0 && c.isSelectCharSecondKey(key, data.KeyCode) {
+				return c.selectPinyinModeChar(ops, 1)
+			}
 			return c.selectPinyinModeWithPunct(ops, 0, key)
 		}
 		return ops.exitMode(false, "")
 
 	default:
-		// 其他按键（标点等）：有候选时选首候选+标点
+		// 其他按键（标点等）：有候选时先检查以词定字键，否则选首候选+标点
 		if len(c.candidates) > 0 {
+			if data.Modifiers&ModShift == 0 && c.isSelectCharFirstKey(key, data.KeyCode) {
+				return c.selectPinyinModeChar(ops, 0)
+			}
+			if data.Modifiers&ModShift == 0 && c.isSelectCharSecondKey(key, data.KeyCode) {
+				return c.selectPinyinModeChar(ops, 1)
+			}
 			pageStart := (c.currentPage - 1) * c.candidatesPerPage
 			cand := c.candidates[pageStart]
 			text := cand.Text
@@ -311,6 +323,28 @@ func (c *Coordinator) selectPinyinModeCandidate(ops *pinyinModeOps, index int) *
 		}
 	}
 
+	return ops.exitMode(true, text)
+}
+
+// selectPinyinModeChar 以词定字：从当前高亮候选词中取第 charIndex 个字符上屏（拼音模式专用）
+func (c *Coordinator) selectPinyinModeChar(ops *pinyinModeOps, charIndex int) *bridge.KeyEventResult {
+	index := (c.currentPage-1)*c.candidatesPerPage + c.selectedIndex
+	if index >= len(c.candidates) {
+		index = (c.currentPage - 1) * c.candidatesPerPage
+	}
+	if index >= len(c.candidates) {
+		return ops.exitMode(false, "")
+	}
+	cand := c.candidates[index]
+	runes := []rune(cand.Text)
+	if charIndex >= len(runes) {
+		// 候选词长度不足，按 overflow 策略：忽略（消费按键）
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+	}
+	text := string(runes[charIndex])
+	if c.fullWidth {
+		text = transform.ToFullWidth(text)
+	}
 	return ops.exitMode(true, text)
 }
 
