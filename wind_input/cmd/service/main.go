@@ -16,6 +16,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/coordinator"
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/engine"
+	imrpc "github.com/huanfeng/wind_input/internal/rpc"
 	"github.com/huanfeng/wind_input/internal/schema"
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
@@ -350,6 +351,13 @@ func main() {
 	controlServer.SetReloadHandler(coordinator.NewReloadHandler(coord, cfg, schemaMgr, engineMgr, dictManager, logger))
 	controlServer.StartAsync()
 	logger.Info("Control pipe server started", "pipe", pkgcontrol.PipeName)
+
+	// Start RPC server (JSON-RPC over named pipe for settings GUI)
+	if dictManager.UseStore() {
+		rpcServer := imrpc.NewServer(logger, dictManager, dictManager.GetStore())
+		defer rpcServer.Stop()
+		rpcServer.StartAsync()
+	}
 
 	// Create Bridge IPC server (connects to C++)
 	bridgeServer := bridge.NewServer(coord, logger)
