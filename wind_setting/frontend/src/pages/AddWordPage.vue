@@ -10,7 +10,7 @@
             ref="textInput"
             class="addword-input"
             v-model="wordText"
-            placeholder="输入要添加的词语（至少2字）"
+            placeholder="输入要添加的词语"
           />
         </div>
 
@@ -95,7 +95,7 @@ const textInput = ref<HTMLInputElement | null>(null);
 
 const canAdd = computed(() => {
   return (
-    wordText.value.trim().length >= 2 &&
+    wordText.value.trim().length >= 1 &&
     wordCode.value.trim().length > 0 &&
     wordWeight.value > 0
   );
