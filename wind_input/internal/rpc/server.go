@@ -81,6 +81,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("register System service: %w", err)
 	}
 
+	phraseSvc := &PhraseService{store: s.store, logger: s.logger}
+	if err := s.rpcServer.RegisterName("Phrase", phraseSvc); err != nil {
+		return fmt.Errorf("register Phrase service: %w", err)
+	}
+
 	// 创建命名管道监听器
 	pipeConfig := &winio.PipeConfig{
 		SecurityDescriptor: "",

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/store"
@@ -299,5 +300,83 @@ func (d *DictService) PromoteAllTemp(args *rpcapi.DictPromoteAllTempArgs, reply 
 	d.store.ClearTempWords(schemaID)
 
 	d.logger.Info("RPC Dict.PromoteAllTemp", "schemaID", schemaID, "promoted", reply.Count)
+	return nil
+}
+
+// ── 词频操作 ──
+
+// GetFreqList 查询词频列表（支持前缀搜索和分页）
+func (d *DictService) GetFreqList(args *rpcapi.FreqSearchArgs, reply *rpcapi.FreqSearchReply) error {
+	if d.store == nil {
+		return fmt.Errorf("store not available")
+	}
+
+	schemaID := d.resolveSchemaID(args.SchemaID)
+
+	allEntries, err := d.store.SearchFreqPrefix(schemaID, args.Prefix, 0)
+	if err != nil {
+		return fmt.Errorf("search freq: %w", err)
+	}
+
+	reply.Total = len(allEntries)
+
+	// 分页
+	limit := args.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	start := args.Offset
+	if start > len(allEntries) {
+		start = len(allEntries)
+	}
+	end := start + limit
+	if end > len(allEntries) {
+		end = len(allEntries)
+	}
+
+	page := allEntries[start:end]
+	now := time.Now().Unix()
+	reply.Entries = make([]rpcapi.FreqEntryItem, len(page))
+	for i, e := range page {
+		reply.Entries[i] = rpcapi.FreqEntryItem{
+			Code:     e.Code,
+			Text:     e.Text,
+			Count:    int(e.Record.Count),
+			LastUsed: e.Record.LastUsed,
+			Streak:   int(e.Record.Streak),
+			Boost:    store.CalcFreqBoost(e.Record, now),
+		}
+	}
+
+	return nil
+}
+
+// DeleteFreq 删除单条词频记录
+func (d *DictService) DeleteFreq(args *rpcapi.FreqDeleteArgs, reply *rpcapi.Empty) error {
+	if d.store == nil {
+		return fmt.Errorf("store not available")
+	}
+	if args.Code == "" || args.Text == "" {
+		return fmt.Errorf("code and text are required")
+	}
+
+	schemaID := d.resolveSchemaID(args.SchemaID)
+	d.logger.Info("RPC Dict.DeleteFreq", "schemaID", schemaID, "codeLen", len(args.Code))
+	return d.store.DeleteFreq(schemaID, args.Code, args.Text)
+}
+
+// ClearFreq 清空指定方案的所有词频数据
+func (d *DictService) ClearFreq(args *rpcapi.FreqClearArgs, reply *rpcapi.FreqClearReply) error {
+	if d.store == nil {
+		return fmt.Errorf("store not available")
+	}
+
+	schemaID := d.resolveSchemaID(args.SchemaID)
+	count, err := d.store.ClearAllFreq(schemaID)
+	if err != nil {
+		return fmt.Errorf("clear freq: %w", err)
+	}
+	reply.Count = count
+	d.logger.Info("RPC Dict.ClearFreq", "schemaID", schemaID, "cleared", count)
 	return nil
 }

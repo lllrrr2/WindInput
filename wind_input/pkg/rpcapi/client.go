@@ -266,3 +266,66 @@ func (c *Client) SystemResetDB(schemaID string) error {
 		SchemaID: schemaID,
 	}, &reply)
 }
+
+// ── Phrase 方法 ──
+
+// PhraseList 获取所有短语
+func (c *Client) PhraseList() (*PhraseListReply, error) {
+	var reply PhraseListReply
+	err := c.call("Phrase.List", &Empty{}, &reply)
+	return &reply, err
+}
+
+// PhraseAdd 添加短语
+func (c *Client) PhraseAdd(args PhraseAddArgs) error {
+	return c.call("Phrase.Add", &args, &Empty{})
+}
+
+// PhraseUpdate 更新短语
+func (c *Client) PhraseUpdate(args PhraseUpdateArgs) error {
+	return c.call("Phrase.Update", &args, &Empty{})
+}
+
+// PhraseRemove 删除短语
+func (c *Client) PhraseRemove(code, text, name string) error {
+	return c.call("Phrase.Remove", &PhraseRemoveArgs{Code: code, Text: text, Name: name}, &Empty{})
+}
+
+// PhraseResetDefaults 重置短语为默认值
+func (c *Client) PhraseResetDefaults() error {
+	return c.call("Phrase.ResetDefaults", &Empty{}, &Empty{})
+}
+
+// ── Freq 方法 ──
+
+// FreqSearch 搜索词频记录
+func (c *Client) FreqSearch(schemaID, prefix string, limit, offset int) (*FreqSearchReply, error) {
+	var reply FreqSearchReply
+	err := c.call("Dict.GetFreqList", &FreqSearchArgs{
+		SchemaID: schemaID, Prefix: prefix, Limit: limit, Offset: offset,
+	}, &reply)
+	return &reply, err
+}
+
+// FreqDelete 删除单条词频记录
+func (c *Client) FreqDelete(schemaID, code, text string) error {
+	return c.call("Dict.DeleteFreq", &FreqDeleteArgs{
+		SchemaID: schemaID, Code: code, Text: text,
+	}, &Empty{})
+}
+
+// FreqClear 清空指定方案的所有词频数据
+func (c *Client) FreqClear(schemaID string) (int, error) {
+	var reply FreqClearReply
+	err := c.call("Dict.ClearFreq", &FreqClearArgs{SchemaID: schemaID}, &reply)
+	return reply.Count, err
+}
+
+// ── Schema 扩展 ──
+
+// SystemListSchemas 列出所有方案及其状态
+func (c *Client) SystemListSchemas() (*ListSchemasReply, error) {
+	var reply ListSchemasReply
+	err := c.call("System.ListSchemas", &Empty{}, &reply)
+	return &reply, err
+}

@@ -194,6 +194,113 @@ type SystemResetDBReply struct {
 	Success bool `json:"success"`
 }
 
+// ── Phrase 服务类型 ──
+
+// PhraseEntry 短语条目
+type PhraseEntry struct {
+	Code     string `json:"code"`
+	Text     string `json:"text,omitempty"`
+	Texts    string `json:"texts,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Type     string `json:"type"`
+	Position int    `json:"position"`
+	Enabled  bool   `json:"enabled"`
+	IsSystem bool   `json:"is_system"`
+}
+
+// PhraseListReply 短语列表响应
+type PhraseListReply struct {
+	Phrases []PhraseEntry `json:"phrases"`
+	Total   int           `json:"total"`
+}
+
+// PhraseAddArgs 添加短语请求
+type PhraseAddArgs struct {
+	Code     string `json:"code"`
+	Text     string `json:"text,omitempty"`
+	Texts    string `json:"texts,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Type     string `json:"type"`
+	Position int    `json:"position"`
+}
+
+// PhraseRemoveArgs 删除短语请求
+type PhraseRemoveArgs struct {
+	Code string `json:"code"`
+	Text string `json:"text,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+// PhraseUpdateArgs 更新短语请求
+type PhraseUpdateArgs struct {
+	Code        string `json:"code"`
+	Text        string `json:"text,omitempty"`
+	Name        string `json:"name,omitempty"`
+	NewText     string `json:"new_text,omitempty"`
+	NewPosition int    `json:"new_position,omitempty"`
+	Enabled     *bool  `json:"enabled,omitempty"`
+}
+
+// ── Freq 服务类型 ──
+
+// FreqSearchArgs 词频搜索请求
+type FreqSearchArgs struct {
+	SchemaID string `json:"schema_id,omitempty"`
+	Prefix   string `json:"prefix,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+	Offset   int    `json:"offset,omitempty"`
+}
+
+// FreqEntryItem 词频条目
+type FreqEntryItem struct {
+	Code     string `json:"code"`
+	Text     string `json:"text"`
+	Count    int    `json:"count"`
+	LastUsed int64  `json:"last_used"`
+	Streak   int    `json:"streak"`
+	Boost    int    `json:"boost"`
+}
+
+// FreqSearchReply 词频搜索响应
+type FreqSearchReply struct {
+	Entries []FreqEntryItem `json:"entries"`
+	Total   int             `json:"total"`
+}
+
+// FreqDeleteArgs 删除词频请求
+type FreqDeleteArgs struct {
+	SchemaID string `json:"schema_id,omitempty"`
+	Code     string `json:"code"`
+	Text     string `json:"text"`
+}
+
+// FreqClearArgs 清空词频请求
+type FreqClearArgs struct {
+	SchemaID string `json:"schema_id,omitempty"`
+}
+
+// FreqClearReply 清空词频响应
+type FreqClearReply struct {
+	Count int `json:"count"`
+}
+
+// ── System 扩展类型 ──
+
+// SchemaStatus 方案状态
+type SchemaStatus struct {
+	SchemaID    string `json:"schema_id"`
+	Status      string `json:"status"` // "enabled" | "disabled" | "orphaned"
+	UserWords   int    `json:"user_words"`
+	TempWords   int    `json:"temp_words"`
+	ShadowRules int    `json:"shadow_rules"`
+	FreqRecords int    `json:"freq_records"`
+}
+
+// ListSchemasReply 方案列表响应
+type ListSchemasReply struct {
+	Schemas []SchemaStatus `json:"schemas"`
+}
+
 // SystemStatusReply 系统状态响应
 type SystemStatusReply struct {
 	Running      bool   `json:"running"`

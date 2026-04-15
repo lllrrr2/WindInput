@@ -6,6 +6,7 @@ import (
 
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/store"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/rpcapi"
 )
 
@@ -77,5 +78,68 @@ func (s *SystemService) ResetDB(args *rpcapi.SystemResetDBArgs, reply *rpcapi.Sy
 	}
 
 	reply.Success = true
+	return nil
+}
+
+// ListSchemas 列出所有方案及其状态
+func (s *SystemService) ListSchemas(args *rpcapi.Empty, reply *rpcapi.ListSchemasReply) error {
+	if s.store == nil {
+		return fmt.Errorf("store not available")
+	}
+
+	// 获取 bbolt 中已有数据的方案
+	storeIDs, err := s.store.ListSchemaIDs()
+	if err != nil {
+		return fmt.Errorf("list schema IDs: %w", err)
+	}
+
+	// 获取配置中启用的方案
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	enabledSet := make(map[string]bool, len(cfg.Schema.Available))
+	for _, id := range cfg.Schema.Available {
+		enabledSet[id] = true
+	}
+
+	// 已处理的方案集合
+	processed := make(map[string]bool)
+
+	// 处理 store 中的方案
+	for _, id := range storeIDs {
+		status := "orphaned"
+		if enabledSet[id] {
+			status = "enabled"
+		}
+
+		entry := rpcapi.SchemaStatus{
+			SchemaID: id,
+			Status:   status,
+		}
+		entry.UserWords, _ = s.store.UserWordCount(id)
+		entry.TempWords, _ = s.store.TempWordCount(id)
+		entry.ShadowRules, _ = s.store.ShadowRuleCount(id)
+
+		// 词频记录数
+		freqEntries, _ := s.store.SearchFreqPrefix(id, "", 0)
+		entry.FreqRecords = len(freqEntries)
+
+		reply.Schemas = append(reply.Schemas, entry)
+		processed[id] = true
+	}
+
+	// 添加配置中启用但 store 中没有数据的方案
+	for _, id := range cfg.Schema.Available {
+		if processed[id] {
+			continue
+		}
+		reply.Schemas = append(reply.Schemas, rpcapi.SchemaStatus{
+			SchemaID: id,
+			Status:   "enabled",
+		})
+	}
+
+	s.logger.Info("RPC System.ListSchemas", "count", len(reply.Schemas))
 	return nil
 }
