@@ -73,6 +73,40 @@ func (s *Store) DB() *bolt.DB {
 	return s.db
 }
 
+// ClearSchema removes all data (UserWords, TempWords, Shadow, Freq) for a
+// specific schema by deleting and recreating its bucket under Schemas.
+func (s *Store) ClearSchema(schemaID string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		schemas := tx.Bucket(bucketSchemas)
+		if schemas == nil {
+			return nil
+		}
+		key := []byte(schemaID)
+		if schemas.Bucket(key) != nil {
+			if err := schemas.DeleteBucket(key); err != nil {
+				return fmt.Errorf("delete schema bucket %q: %w", schemaID, err)
+			}
+		}
+		// 重新创建空 bucket，保持结构一致
+		_, err := schemas.CreateBucket(key)
+		return err
+	})
+}
+
+// ClearAllSchemas removes all schema data by deleting and recreating the
+// top-level Schemas bucket. Meta (version, device_id) is preserved.
+func (s *Store) ClearAllSchemas() error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		if tx.Bucket(bucketSchemas) != nil {
+			if err := tx.DeleteBucket(bucketSchemas); err != nil {
+				return fmt.Errorf("delete Schemas bucket: %w", err)
+			}
+		}
+		_, err := tx.CreateBucket(bucketSchemas)
+		return err
+	})
+}
+
 // Path returns the filesystem path of the database file.
 func (s *Store) Path() string {
 	return s.path

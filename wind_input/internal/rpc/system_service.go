@@ -1,15 +1,18 @@
 package rpc
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/huanfeng/wind_input/internal/dict"
+	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/pkg/rpcapi"
 )
 
 // SystemService 系统管理 RPC 服务
 type SystemService struct {
 	dm     *dict.DictManager
+	store  *store.Store
 	server *Server
 	logger *slog.Logger
 }
@@ -53,4 +56,26 @@ func (s *SystemService) ReloadPhrases(args *rpcapi.Empty, reply *rpcapi.Empty) e
 func (s *SystemService) ReloadAll(args *rpcapi.Empty, reply *rpcapi.Empty) error {
 	s.logger.Info("RPC System.ReloadAll")
 	return s.dm.ReloadPhrases()
+}
+
+// ResetDB 重置数据库（清除用户词库、临时词库、Shadow 规则、词频数据）
+func (s *SystemService) ResetDB(args *rpcapi.SystemResetDBArgs, reply *rpcapi.SystemResetDBReply) error {
+	if s.store == nil {
+		return fmt.Errorf("store not available")
+	}
+
+	if args.SchemaID != "" {
+		s.logger.Info("RPC System.ResetDB: clearing schema", "schemaID", args.SchemaID)
+		if err := s.store.ClearSchema(args.SchemaID); err != nil {
+			return fmt.Errorf("clear schema: %w", err)
+		}
+	} else {
+		s.logger.Info("RPC System.ResetDB: clearing all schemas")
+		if err := s.store.ClearAllSchemas(); err != nil {
+			return fmt.Errorf("clear all schemas: %w", err)
+		}
+	}
+
+	reply.Success = true
+	return nil
 }

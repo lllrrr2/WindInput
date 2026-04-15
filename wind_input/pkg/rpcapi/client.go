@@ -103,9 +103,9 @@ func (c *Client) DictRemove(schemaID, code, text string) error {
 // DictUpdate 更新词条权重
 func (c *Client) DictUpdate(schemaID, code, text string, newWeight int) error {
 	return c.call("Dict.Update", &DictUpdateArgs{
-		SchemaID: schemaID,
-		Code:     code,
-		Text:     text,
+		SchemaID:  schemaID,
+		Code:      code,
+		Text:      text,
 		NewWeight: newWeight,
 	}, &Empty{})
 }
@@ -257,4 +257,12 @@ func (c *Client) SystemReloadPhrases() error {
 // SystemReloadAll 重载所有
 func (c *Client) SystemReloadAll() error {
 	return c.call("System.ReloadAll", &Empty{}, &Empty{})
+}
+
+// SystemResetDB 重置数据库（清除指定方案或全部用户数据）
+func (c *Client) SystemResetDB(schemaID string) error {
+	var reply SystemResetDBReply
+	return c.call("System.ResetDB", &SystemResetDBArgs{
+		SchemaID: schemaID,
+	}, &reply)
 }

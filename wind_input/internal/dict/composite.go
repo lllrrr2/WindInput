@@ -111,7 +111,9 @@ func (c *CompositeDict) SearchPrefix(prefix string, limit int) []candidate.Candi
 // CompositeDict 只负责层级合并、去重和基础排序。
 func (c *CompositeDict) searchInternal(code string, limit int, isPrefix bool) []candidate.Candidate {
 	// 1. 遍历所有层收集候选词
-	seen := make(map[string]bool)
+	// 去重策略：保留高优先级层（先出现）的词条信息，但继承后续层中同 Text 词条的更高权重。
+	// 这确保用户词不会因为低权重而丢失码表词的自然排序位置。
+	seenIdx := make(map[string]int) // Text -> index in results
 	var results []candidate.Candidate
 
 	for _, layer := range c.layers {
@@ -123,10 +125,14 @@ func (c *CompositeDict) searchInternal(code string, limit int, isPrefix bool) []
 		}
 
 		for _, cand := range layerResults {
-			if seen[cand.Text] {
+			if idx, exists := seenIdx[cand.Text]; exists {
+				// 同 Text 词条已存在：继承更高的权重
+				if cand.Weight > results[idx].Weight {
+					results[idx].Weight = cand.Weight
+				}
 				continue
 			}
-			seen[cand.Text] = true
+			seenIdx[cand.Text] = len(results)
 			results = append(results, cand)
 		}
 	}

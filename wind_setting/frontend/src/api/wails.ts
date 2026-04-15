@@ -500,6 +500,11 @@ export async function getServiceStatus(): Promise<ServiceStatus | null> {
   return App.GetServiceStatus();
 }
 
+// 重置用户数据
+export async function resetUserData(schemaID: string = ""): Promise<void> {
+  return App.ResetUserData(schemaID);
+}
+
 // 文件变化检测
 export async function reloadAllFiles(): Promise<void> {
   return App.ReloadAllFiles();

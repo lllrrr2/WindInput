@@ -184,6 +184,16 @@ type ShadowCodeRules struct {
 // Empty 空参数/响应
 type Empty struct{}
 
+// SystemResetDBArgs 重置数据库请求
+type SystemResetDBArgs struct {
+	SchemaID string `json:"schema_id,omitempty"` // 指定方案（空=全部清除）
+}
+
+// SystemResetDBReply 重置数据库响应
+type SystemResetDBReply struct {
+	Success bool `json:"success"`
+}
+
 // SystemStatusReply 系统状态响应
 type SystemStatusReply struct {
 	Running      bool   `json:"running"`

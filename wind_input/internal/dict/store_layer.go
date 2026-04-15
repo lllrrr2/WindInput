@@ -339,15 +339,20 @@ func (f *StoreFreqScorer) FreqBoost(code, text string) int {
 // ─────────────────────────────────────────
 
 // userRecordsToCandidates 将 store.UserWordRecord 切片转换为已排序的 candidate.Candidate 切片。
+// code 参数用于精确查询（非空时覆盖 rec.Code），前缀查询时传空串则使用 rec.Code。
 func userRecordsToCandidates(recs []store.UserWordRecord, code string, limit int) []candidate.Candidate {
 	if len(recs) == 0 {
 		return nil
 	}
 	results := make([]candidate.Candidate, 0, len(recs))
 	for _, rec := range recs {
+		candCode := code
+		if candCode == "" {
+			candCode = rec.Code // 前缀查询时从记录中获取
+		}
 		c := candidate.Candidate{
 			Text:     rec.Text,
-			Code:     code,
+			Code:     candCode,
 			Weight:   rec.Weight,
 			IsCommon: true, // 用户词不应被 smart 过滤
 		}

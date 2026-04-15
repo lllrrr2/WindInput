@@ -154,15 +154,25 @@
               <div v-if="showPhraseMenu" class="toolbar-dropdown">
                 <div
                   class="dropdown-item"
-                  @click.stop="handleImportPhrases(); showPhraseMenu = false"
+                  @click.stop="
+                    handleImportPhrases();
+                    showPhraseMenu = false;
+                  "
                 >
-                  {{ phraseCategory === 'user' ? '导入用户短语' : '导入系统短语' }}
+                  {{
+                    phraseCategory === "user" ? "导入用户短语" : "导入系统短语"
+                  }}
                 </div>
                 <div
                   class="dropdown-item"
-                  @click.stop="handleExportPhrases(); showPhraseMenu = false"
+                  @click.stop="
+                    handleExportPhrases();
+                    showPhraseMenu = false;
+                  "
                 >
-                  {{ phraseCategory === 'user' ? '导出用户短语' : '导出系统短语' }}
+                  {{
+                    phraseCategory === "user" ? "导出用户短语" : "导出系统短语"
+                  }}
                 </div>
               </div>
             </div>
@@ -188,7 +198,11 @@
                 />
                 <div class="dict-item-main">
                   <span class="dict-item-code">{{ item.code }}</span>
-                  <span v-if="item.texts" class="dict-item-text">{{ item.name || item.code }}（{{ item.texts.length }}字符）</span>
+                  <span v-if="item.texts" class="dict-item-text"
+                    >{{ item.name || item.code }}（{{
+                      item.texts.length
+                    }}字符）</span
+                  >
                   <span v-else class="dict-item-text">{{ item.text }}</span>
                   <span v-if="item.texts" class="tag-mapping">数组</span>
                   <span v-else-if="item.text.includes('$')" class="tag-dynamic"
@@ -242,7 +256,9 @@
                     v-if="item.texts"
                     class="dict-item-text"
                     :class="{ 'text-disabled': item.disabled }"
-                    >{{ item.name || item.code }}（{{ item.texts.length }}字符）</span
+                    >{{ item.name || item.code }}（{{
+                      item.texts.length
+                    }}字符）</span
                   >
                   <span
                     v-else
@@ -251,7 +267,9 @@
                     >{{ item.text }}</span
                   >
                   <span v-if="item.texts" class="tag-mapping">数组</span>
-                  <span v-else-if="item.text && item.text.includes('$')" class="tag-dynamic"
+                  <span
+                    v-else-if="item.text && item.text.includes('$')"
+                    class="tag-dynamic"
                     >动态</span
                   >
                   <span class="dict-item-weight">{{ item.position }}</span>
@@ -661,6 +679,20 @@
           </div>
         </div>
       </div>
+
+      <!-- ========== 数据重置 ========== -->
+      <div v-if="selectedSchemaID" class="dict-reset-zone">
+        <button
+          class="btn btn-sm btn-danger-outline"
+          @click="handleResetSchemaData"
+        >
+          重置当前方案数据
+        </button>
+        <span class="dict-reset-hint"
+          >清除「{{ currentSchemaName }}」的用户词库、临时词库、Shadow
+          规则和词频数据</span
+        >
+      </div>
     </template>
 
     <!-- ========== 添加/编辑短语对话框 ========== -->
@@ -760,7 +792,12 @@
         </div>
         <div v-if="sysEditForm.texts" class="form-row">
           <label>字符列表</label>
-          <textarea class="input" rows="3" :value="sysEditForm.texts" disabled></textarea>
+          <textarea
+            class="input"
+            rows="3"
+            :value="sysEditForm.texts"
+            disabled
+          ></textarea>
         </div>
         <div v-else class="form-row">
           <label>文本</label>
@@ -864,15 +901,28 @@
       </div>
     </div>
     <!-- ========== 确认对话框 ========== -->
-    <div v-if="confirmVisible" class="dialog-overlay" @click.self="handleCancel">
+    <div
+      v-if="confirmVisible"
+      class="dialog-overlay"
+      @click.self="handleCancel"
+    >
       <div class="dialog-box" style="max-width: 360px">
         <div class="dialog-title">确认</div>
-        <div style="padding: 8px 0 16px; font-size: 14px; color: #374151; white-space: pre-line">
+        <div
+          style="
+            padding: 8px 0 16px;
+            font-size: 14px;
+            color: #374151;
+            white-space: pre-line;
+          "
+        >
           {{ confirmMessage }}
         </div>
         <div class="dialog-actions">
           <button class="btn btn-sm" @click="handleCancel">取消</button>
-          <button class="btn btn-primary btn-sm" @click="handleConfirm">确定</button>
+          <button class="btn btn-primary btn-sm" @click="handleConfirm">
+            确定
+          </button>
         </div>
       </div>
     </div>
@@ -900,7 +950,8 @@ const props = defineProps<{
 
 // ===== 全局 Toast =====
 const { toast } = useToast();
-const { confirmVisible, confirmMessage, confirm, handleConfirm, handleCancel } = useConfirm();
+const { confirmVisible, confirmMessage, confirm, handleConfirm, handleCancel } =
+  useConfirm();
 
 // ===== 通用状态 =====
 const dictSubTab = ref<"phrases" | "userdict" | "shadow" | "temp">("phrases");
@@ -1229,8 +1280,15 @@ function openEditPhraseDialog(item: PhraseItem) {
 
 async function handleSavePhrase() {
   const isArr = phraseIsArray.value;
-  if (!newPhrase.value.code || (!isArr && !newPhrase.value.text) || (isArr && !newPhrase.value.texts)) {
-    showDictMessage(isArr ? "请填写编码和字符列表" : "请填写编码和文本", "error");
+  if (
+    !newPhrase.value.code ||
+    (!isArr && !newPhrase.value.text) ||
+    (isArr && !newPhrase.value.texts)
+  ) {
+    showDictMessage(
+      isArr ? "请填写编码和字符列表" : "请填写编码和文本",
+      "error",
+    );
     return;
   }
   try {
@@ -1248,7 +1306,10 @@ async function handleSavePhrase() {
     if (editingPhrase.value) {
       // 编辑：在列表中替换
       const idx = phrases.value.findIndex(
-        (p) => p.code === editingPhrase.value!.code && p.text === editingPhrase.value!.text && p.texts === editingPhrase.value!.texts,
+        (p) =>
+          p.code === editingPhrase.value!.code &&
+          p.text === editingPhrase.value!.text &&
+          p.texts === editingPhrase.value!.texts,
       );
       if (idx >= 0) {
         phrases.value[idx] = item;
@@ -1328,7 +1389,12 @@ async function handleResetSystemPhrase() {
 
 // ===== 恢复系统默认 =====
 async function handleResetAllSystemPhrases() {
-  if (!(await confirm("确定恢复所有系统短语为默认设置？\n这将删除所有对系统短语的禁用和位置调整。"))) return;
+  if (
+    !(await confirm(
+      "确定恢复所有系统短语为默认设置？\n这将删除所有对系统短语的禁用和位置调整。",
+    ))
+  )
+    return;
   try {
     await wailsApi.resetAllSystemPhraseOverrides();
     showDictMessage("已恢复为系统默认", "success");
@@ -1545,6 +1611,31 @@ async function handlePromoteAllTemp() {
     await loadSchemaList();
   } catch (e: unknown) {
     showDictMessage((e as Error).message || "转正失败", "error");
+  }
+}
+
+const currentSchemaName = computed(() => {
+  const s = schemaList.value.find(
+    (s) => s.schema_id === selectedSchemaID.value,
+  );
+  return s?.schema_name || selectedSchemaID.value;
+});
+
+async function handleResetSchemaData() {
+  const name = currentSchemaName.value;
+  if (
+    !(await confirm(
+      `确定重置「${name}」的所有用户数据吗？\n\n将清除：用户词库、临时词库、Shadow 规则、词频数据\n\n此操作不可恢复！`,
+    ))
+  )
+    return;
+  try {
+    await wailsApi.resetUserData(selectedSchemaID.value);
+    showDictMessage(`已重置「${name}」的所有用户数据`, "success");
+    await loadSchemaData();
+    await loadSchemaList();
+  } catch (e: unknown) {
+    showDictMessage((e as Error).message || "重置失败", "error");
   }
 }
 
@@ -2170,5 +2261,18 @@ onUnmounted(() => {
   background: #f3f4f6;
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+/* ===== 数据重置 ===== */
+.dict-reset-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid #f3f4f6;
+}
+.dict-reset-hint {
+  font-size: 12px;
+  color: #9ca3af;
 }
 </style>

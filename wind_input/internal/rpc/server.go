@@ -69,7 +69,7 @@ func (s *Server) Start() error {
 	// 注册服务
 	dictSvc := &DictService{store: s.store, dm: s.dictManager, logger: s.logger}
 	shadowSvc := &ShadowService{store: s.store, dm: s.dictManager, logger: s.logger}
-	systemSvc := &SystemService{dm: s.dictManager, server: s, logger: s.logger}
+	systemSvc := &SystemService{dm: s.dictManager, store: s.store, server: s, logger: s.logger}
 
 	if err := s.rpcServer.RegisterName("Dict", dictSvc); err != nil {
 		return fmt.Errorf("register Dict service: %w", err)
