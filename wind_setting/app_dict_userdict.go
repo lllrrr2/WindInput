@@ -88,8 +88,9 @@ func (a *App) GetUserDictStats() map[string]int {
 		}
 	}
 
-	if a.phraseEditor != nil {
-		stats["phrase_count"] = a.phraseEditor.GetPhraseCount()
+	// 短语数量通过 RPC 获取
+	if phraseReply, err := a.rpcClient.PhraseList(); err == nil {
+		stats["phrase_count"] = len(phraseReply.Phrases)
 	}
 
 	return stats

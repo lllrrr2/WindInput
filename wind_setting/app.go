@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"path/filepath"
+	"time"
 
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
-	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/control"
 	"github.com/huanfeng/wind_input/pkg/rpcapi"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"wind_setting/internal/editor"
 	"wind_setting/internal/filesync"
@@ -24,10 +25,7 @@ type App struct {
 	addWordParams AddWordParams
 
 	// 编辑器
-	configEditor           *editor.ConfigEditor
-	phraseEditor           *editor.PhraseEditor // 用户短语编辑器
-	systemPhraseEditor     *editor.PhraseEditor // 系统短语编辑器（程序目录，只读）
-	systemUserPhraseEditor *editor.PhraseEditor // 用户目录的系统短语（修改后的副本）
+	configEditor *editor.ConfigEditor
 
 	// RPC 客户端（词库/Shadow 操作走 RPC）
 	rpcClient *rpcapi.Client
@@ -86,31 +84,14 @@ func (a *App) startup(ctx context.Context) {
 		a.configEditor.Load()
 	}
 
-	a.phraseEditor, err = editor.NewPhraseEditor()
-	if err == nil {
-		a.phraseEditor.Load()
-	}
-
-	// 初始化系统短语编辑器（只读，从 exe/data 目录加载）
-	systemPhrasePath := filepath.Join(getExeDir(), "data", "system.phrases.yaml")
-	a.systemPhraseEditor = editor.NewPhraseEditorWithPath(systemPhrasePath)
-	a.systemPhraseEditor.Load()
-
-	// 初始化用户目录的系统短语编辑器（同名覆盖）
-	systemUserPath, _ := config.GetSystemPhrasesUserPath()
-	if systemUserPath != "" {
-		a.systemUserPhraseEditor = editor.NewPhraseEditorWithPath(systemUserPath)
-		a.systemUserPhraseEditor.Load() // 文件可能不存在，Load 会返回错误但不影响
-	}
-
 	// 初始化文件监控
 	a.fileWatcher = filesync.NewFileWatcher()
 	if a.configEditor != nil {
 		a.fileWatcher.Watch(a.configEditor.GetFilePath())
 	}
-	if a.phraseEditor != nil {
-		a.fileWatcher.Watch(a.phraseEditor.GetFilePath())
-	}
+
+	// 启动事件监听
+	go a.startEventListener()
 }
 
 // shutdown is called when the app is closing
@@ -118,4 +99,32 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.fileWatcher != nil {
 		a.fileWatcher.Stop()
 	}
+}
+
+// startEventListener 启动事件监听，将 RPC 事件转发为 Wails 前端事件
+func (a *App) startEventListener() {
+	if a.rpcClient == nil {
+		return
+	}
+	ctx := a.ctx
+	go func() {
+		for {
+			err := a.rpcClient.SubscribeEvents(ctx, func(msg rpcapi.EventMessage) {
+				wailsRuntime.EventsEmit(a.ctx, "dict-event", map[string]string{
+					"type":      msg.Type,
+					"schema_id": msg.SchemaID,
+					"action":    msg.Action,
+				})
+			})
+			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					// 连接断开，延迟重试
+					time.Sleep(2 * time.Second)
+				}
+			}
+		}
+	}()
 }

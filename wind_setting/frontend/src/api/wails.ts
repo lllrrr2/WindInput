@@ -11,7 +11,6 @@ import {
 } from "./settings";
 
 // 重新导出类型
-export type PhraseItem = main.PhraseItem;
 export type UserWordItem = main.UserWordItem;
 export type ShadowRuleItem = main.ShadowRuleItem;
 export type FileChangeStatus = main.FileChangeStatus;
@@ -22,6 +21,46 @@ export type SchemaConfig = main.SchemaConfig;
 export interface SystemFontInfo {
   family: string;
   display_name: string;
+}
+
+// ── 短语类型 ──
+export interface PhraseItem {
+  code: string;
+  text?: string;
+  texts?: string;
+  name?: string;
+  type: "static" | "dynamic" | "array";
+  position: number;
+  enabled: boolean;
+  is_system: boolean;
+}
+
+// ── 词频类型 ──
+export interface FreqItem {
+  code: string;
+  text: string;
+  count: number;
+  last_used: number;
+  streak: number;
+  boost: number;
+}
+
+// ── 方案状态类型 ──
+export interface SchemaStatusItem {
+  schema_id: string;
+  schema_name: string;
+  status: "enabled" | "disabled" | "orphaned";
+  user_words: number;
+  temp_words: number;
+  shadow_rules: number;
+  freq_records: number;
+}
+
+// ── 事件类型 ──
+export interface DictEvent {
+  type: string;
+  schema_id: string;
+  action: string;
 }
 
 // ===== Schema API =====
@@ -190,77 +229,88 @@ export async function reloadConfig(): Promise<void> {
   return App.ReloadConfig();
 }
 
-// 短语管理
-export async function getPhrases(): Promise<PhraseItem[]> {
+// ── 短语 API ──
+export async function getPhraseList(): Promise<PhraseItem[]> {
   return App.GetPhrases();
-}
-
-// 系统短语管理
-export async function getSystemPhrases(): Promise<PhraseItem[]> {
-  return App.GetSystemPhrases();
-}
-
-export async function savePhrases(items: PhraseItem[]): Promise<void> {
-  return App.SavePhrases(items);
 }
 
 export async function addPhrase(
   code: string,
   text: string,
-  position: number = 1,
+  texts: string,
+  name: string,
+  type: string,
+  position: number,
 ): Promise<void> {
-  return App.AddPhrase(code, text, position);
-}
-
-export async function removePhrase(code: string, text: string): Promise<void> {
-  return App.RemovePhrase(code, text);
+  return App.AddPhrase(code, text, texts, name, type, position);
 }
 
 export async function updatePhrase(
-  oldCode: string,
-  oldText: string,
-  newCode: string,
+  code: string,
+  text: string,
+  name: string,
   newText: string,
   newPosition: number,
+  enabled: boolean | null,
 ): Promise<void> {
-  return App.UpdatePhrase(oldCode, oldText, newCode, newText, newPosition);
+  return App.UpdatePhrase(code, text, name, newText, newPosition, enabled);
 }
 
-export async function overrideSystemPhrase(
+export async function removePhrase(
   code: string,
   text: string,
-  position: number,
-  disabled: boolean,
+  name: string,
 ): Promise<void> {
-  return App.OverrideSystemPhrase(code, text, position, disabled);
+  return App.RemovePhrase(code, text, name);
 }
 
-export async function resetAllSystemPhraseOverrides(): Promise<void> {
-  return App.ResetAllSystemPhraseOverrides();
+export async function setPhraseEnabled(
+  code: string,
+  text: string,
+  name: string,
+  enabled: boolean,
+): Promise<void> {
+  return App.SetPhraseEnabled(code, text, name, enabled);
 }
 
-export async function removeSystemPhraseOverride(
+export async function resetPhrasesToDefault(): Promise<void> {
+  return App.ResetPhrasesToDefault();
+}
+
+// ── 词频 API ──
+export async function getFreqList(
+  schemaID: string,
+  prefix: string,
+  limit: number,
+  offset: number,
+): Promise<{ entries: FreqItem[]; total: number }> {
+  return App.GetFreqList(schemaID, prefix, limit, offset);
+}
+
+export async function deleteFreq(
+  schemaID: string,
   code: string,
   text: string,
 ): Promise<void> {
-  return App.RemoveSystemPhraseOverride(code, text);
+  return App.DeleteFreq(schemaID, code, text);
 }
 
-// 短语导入导出
-export async function exportUserPhrases(): Promise<string> {
-  return App.ExportUserPhrases();
+export async function clearFreq(schemaID: string): Promise<number> {
+  return App.ClearFreq(schemaID);
 }
 
-export async function importUserPhrases(): Promise<void> {
-  return App.ImportUserPhrases();
+// ── 方案列表 API ──
+export async function getAllSchemaStatuses(): Promise<SchemaStatusItem[]> {
+  return App.GetAllSchemaStatuses();
 }
 
-export async function exportSystemPhrases(): Promise<string> {
-  return App.ExportSystemPhrases();
+// ── 事件监听 ──
+export function onDictEvent(callback: (event: DictEvent) => void): void {
+  (window as any).runtime.EventsOn("dict-event", callback);
 }
 
-export async function importSystemPhrases(): Promise<void> {
-  return App.ImportSystemPhrases();
+export function offDictEvent(): void {
+  (window as any).runtime.EventsOff("dict-event");
 }
 
 // 用户词库管理
