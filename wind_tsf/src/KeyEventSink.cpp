@@ -336,7 +336,14 @@ STDAPI CKeyEventSink::OnTestKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM 
         // send to Go for state cleanup, then pass through to the host application.
         // This prevents dangling composition state when user presses Ctrl+S, Ctrl+C, etc.
         // Note: registered hotkeys (Ctrl+`, Shift+Space) are already caught above.
-        if (hasInputSession && (modifiers & (KEYMOD_CTRL | KEYMOD_ALT)))
+        // IMPORTANT: Exclude modifier keys themselves (VK_CONTROL, VK_MENU, etc.) —
+        // pressing Ctrl alone should NOT trigger cleanup, otherwise Ctrl+number (pin)
+        // and Ctrl+Shift+number (delete) candidate shortcuts break because the
+        // composition is cleared before the number key arrives.
+        bool isModifierKeyItself = (wParam == VK_CONTROL || wParam == VK_LCONTROL || wParam == VK_RCONTROL ||
+                                    wParam == VK_MENU    || wParam == VK_LMENU    || wParam == VK_RMENU ||
+                                    wParam == VK_SHIFT   || wParam == VK_LSHIFT   || wParam == VK_RSHIFT);
+        if (hasInputSession && (modifiers & (KEYMOD_CTRL | KEYMOD_ALT)) && !isModifierKeyItself)
         {
             WIND_LOG_DEBUG_FMT(L"OnTestKeyDown: Ctrl/Alt during session, eating for cleanup: vk=0x%02X\n",
                          (uint32_t)wParam);
@@ -667,7 +674,12 @@ STDAPI CKeyEventSink::OnKeyDown(ITfContext* pContext, WPARAM wParam, LPARAM lPar
         // Ctrl/Alt combos during active input session: mark as input key so we can
         // send to Go for state cleanup. After response, we'll override pfEaten=FALSE.
         // Note: registered hotkeys are already caught by isKeyDownHotkey above.
-        if (hasInputSession && (modifiers & (KEYMOD_CTRL | KEYMOD_ALT)) && !isKeyDownHotkey)
+        // IMPORTANT: Exclude modifier keys themselves — pressing Ctrl/Alt alone should
+        // not trigger cleanup, to preserve Ctrl+number and Ctrl+Shift+number shortcuts.
+        bool isModifierKeyItself = (wParam == VK_CONTROL || wParam == VK_LCONTROL || wParam == VK_RCONTROL ||
+                                    wParam == VK_MENU    || wParam == VK_LMENU    || wParam == VK_RMENU ||
+                                    wParam == VK_SHIFT   || wParam == VK_LSHIFT   || wParam == VK_RSHIFT);
+        if (hasInputSession && (modifiers & (KEYMOD_CTRL | KEYMOD_ALT)) && !isKeyDownHotkey && !isModifierKeyItself)
         {
             isInputKey = TRUE;
             isCtrlAltCleanup = TRUE;
