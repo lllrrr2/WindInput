@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/huanfeng/wind_input/internal/candidate"
@@ -46,9 +47,10 @@ type DictManager struct {
 	freqScorers       map[string]*StoreFreqScorer  // schemaID -> StoreFreqScorer
 
 	// 当前活跃方案（Store 后端）
-	activeStoreUser   *StoreUserLayer
-	activeStoreTemp   *StoreTempLayer
-	activeStoreShadow *StoreShadowLayer
+	activeDataSchemaID string // 数据方案 ID（混输方案映射到主方案）
+	activeStoreUser    *StoreUserLayer
+	activeStoreTemp    *StoreTempLayer
+	activeStoreShadow  *StoreShadowLayer
 
 	// 聚合词库
 	compositeDict *CompositeDict
@@ -151,7 +153,11 @@ func (dm *DictManager) SwitchSchemaFull(schemaID, shadowFile, userDictFile, temp
 	}
 
 	if dm.useStore {
-		dm.switchSchemaStore(schemaID, tempMaxEntries, tempPromoteCount)
+		// 从 userDictFile 推导数据方案 ID
+		// 混输方案（如 wubi86_pinyin）共享主方案（wubi86）的用户数据文件
+		// Store 模式需要用相同的 bucket key 以保持数据一致
+		dataSchemaID := deriveDataSchemaID(userDictFile, schemaID)
+		dm.switchSchemaStore(schemaID, dataSchemaID, tempMaxEntries, tempPromoteCount)
 	} else {
 		dm.switchSchemaFile(schemaID, shadowFile, userDictFile, tempDictFile, tempMaxEntries, tempPromoteCount)
 	}
@@ -160,38 +166,57 @@ func (dm *DictManager) SwitchSchemaFull(schemaID, shadowFile, userDictFile, temp
 	dm.logger.Info("切换到方案", "schemaID", schemaID)
 }
 
+// deriveDataSchemaID 从用户词库文件名推导数据方案 ID
+// 例如 "wubi86.userwords.txt" → "wubi86"
+// 混输方案与主方案共享同一个用户数据文件，因此 Store bucket 也应一致
+func deriveDataSchemaID(userDictFile, fallback string) string {
+	if userDictFile == "" {
+		return fallback
+	}
+	base := filepath.Base(userDictFile)
+	if idx := strings.Index(base, "."); idx > 0 {
+		return base[:idx]
+	}
+	return fallback
+}
+
 // switchSchemaStore Store 后端的方案切换
-func (dm *DictManager) switchSchemaStore(schemaID string, tempMaxEntries, tempPromoteCount int) {
+// schemaID: 活跃方案 ID（如 wubi86_pinyin）
+// dataSchemaID: 数据方案 ID（如 wubi86，用于 Store bucket key）
+func (dm *DictManager) switchSchemaStore(schemaID, dataSchemaID string, tempMaxEntries, tempPromoteCount int) {
+	dm.logger.Info("Store 方案切换", "schemaID", schemaID, "dataSchemaID", dataSchemaID)
+	dm.activeDataSchemaID = dataSchemaID
+
 	// 1. 移除旧的 Store 用户词库层
 	if dm.activeStoreUser != nil {
 		dm.compositeDict.RemoveLayer(dm.activeStoreUser.Name())
 	}
 
-	// 2. 懒加载 StoreShadowLayer
-	shadowLayer, ok := dm.storeShadowLayers[schemaID]
+	// 2. 懒加载 StoreShadowLayer（使用 dataSchemaID 作为 bucket key）
+	shadowLayer, ok := dm.storeShadowLayers[dataSchemaID]
 	if !ok {
-		shadowLayer = NewStoreShadowLayer(dm.store, schemaID)
-		dm.storeShadowLayers[schemaID] = shadowLayer
-		dm.logger.Info("Store Shadow 层已创建", "schemaID", schemaID)
+		shadowLayer = NewStoreShadowLayer(dm.store, dataSchemaID)
+		dm.storeShadowLayers[dataSchemaID] = shadowLayer
+		dm.logger.Info("Store Shadow 层已创建", "dataSchemaID", dataSchemaID)
 	}
 	dm.compositeDict.SetShadowProvider(shadowLayer)
 	dm.activeStoreShadow = shadowLayer
 
-	// 3. 懒加载 StoreUserLayer
-	userLayer, ok := dm.storeUserLayers[schemaID]
+	// 3. 懒加载 StoreUserLayer（使用 dataSchemaID 作为 bucket key）
+	userLayer, ok := dm.storeUserLayers[dataSchemaID]
 	if !ok {
-		userLayer = NewStoreUserLayer(dm.store, schemaID)
-		dm.storeUserLayers[schemaID] = userLayer
-		dm.logger.Info("Store 用户词库层已创建", "schemaID", schemaID, "entries", userLayer.EntryCount())
+		userLayer = NewStoreUserLayer(dm.store, dataSchemaID)
+		dm.storeUserLayers[dataSchemaID] = userLayer
+		dm.logger.Info("Store 用户词库层已创建", "dataSchemaID", dataSchemaID, "entries", userLayer.EntryCount())
 	}
 	dm.compositeDict.AddLayer(userLayer)
 	dm.activeStoreUser = userLayer
 
 	// 4. 设置词频评分器
-	scorer, ok := dm.freqScorers[schemaID]
+	scorer, ok := dm.freqScorers[dataSchemaID]
 	if !ok {
-		scorer = NewStoreFreqScorer(dm.store, schemaID)
-		dm.freqScorers[schemaID] = scorer
+		scorer = NewStoreFreqScorer(dm.store, dataSchemaID)
+		dm.freqScorers[dataSchemaID] = scorer
 	}
 	dm.compositeDict.SetFreqScorer(scorer)
 
@@ -199,12 +224,12 @@ func (dm *DictManager) switchSchemaStore(schemaID string, tempMaxEntries, tempPr
 	if dm.activeStoreTemp != nil {
 		dm.compositeDict.RemoveLayer(dm.activeStoreTemp.Name())
 	}
-	tempLayer, ok := dm.storeTempLayers[schemaID]
+	tempLayer, ok := dm.storeTempLayers[dataSchemaID]
 	if !ok {
-		tempLayer = NewStoreTempLayer(dm.store, schemaID)
+		tempLayer = NewStoreTempLayer(dm.store, dataSchemaID)
 		tempLayer.SetLimits(tempMaxEntries, tempPromoteCount)
-		dm.storeTempLayers[schemaID] = tempLayer
-		dm.logger.Info("Store 临时词库层已创建", "schemaID", schemaID)
+		dm.storeTempLayers[dataSchemaID] = tempLayer
+		dm.logger.Info("Store 临时词库层已创建", "dataSchemaID", dataSchemaID)
 	}
 	dm.compositeDict.AddLayer(tempLayer)
 	dm.activeStoreTemp = tempLayer
@@ -361,9 +386,13 @@ func (dm *DictManager) GetPhraseLayer() *PhraseLayer {
 }
 
 // GetActiveSchemaID 获取当前活跃方案 ID
+// Store 模式下返回数据方案 ID（如混输方案映射到主方案），确保数据操作使用正确的 bucket
 func (dm *DictManager) GetActiveSchemaID() string {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
+	if dm.useStore && dm.activeDataSchemaID != "" {
+		return dm.activeDataSchemaID
+	}
 	return dm.activeSchemaID
 }
 
