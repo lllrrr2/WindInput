@@ -231,7 +231,7 @@ export async function reloadConfig(): Promise<void> {
 
 // ── 短语 API ──
 export async function getPhraseList(): Promise<PhraseItem[]> {
-  return App.GetPhrases();
+  return App.GetPhrases() as Promise<PhraseItem[]>;
 }
 
 export async function addPhrase(
@@ -284,7 +284,10 @@ export async function getFreqList(
   limit: number,
   offset: number,
 ): Promise<{ entries: FreqItem[]; total: number }> {
-  return App.GetFreqList(schemaID, prefix, limit, offset);
+  return App.GetFreqList(schemaID, prefix, limit, offset) as Promise<{
+    entries: FreqItem[];
+    total: number;
+  }>;
 }
 
 export async function deleteFreq(
@@ -301,7 +304,7 @@ export async function clearFreq(schemaID: string): Promise<number> {
 
 // ── 方案列表 API ──
 export async function getAllSchemaStatuses(): Promise<SchemaStatusItem[]> {
-  return App.GetAllSchemaStatuses();
+  return App.GetAllSchemaStatuses() as Promise<SchemaStatusItem[]>;
 }
 
 // ── 事件监听 ──
