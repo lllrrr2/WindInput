@@ -81,6 +81,24 @@ func (s *SystemService) ResetDB(args *rpcapi.SystemResetDBArgs, reply *rpcapi.Sy
 	return nil
 }
 
+// DeleteSchema 彻底删除方案的 bucket（用于清理残留方案）
+func (s *SystemService) DeleteSchema(args *rpcapi.SystemResetDBArgs, reply *rpcapi.SystemResetDBReply) error {
+	if s.store == nil {
+		return fmt.Errorf("store not available")
+	}
+	if args.SchemaID == "" {
+		return fmt.Errorf("schema_id is required")
+	}
+
+	s.logger.Info("RPC System.DeleteSchema", "schemaID", args.SchemaID)
+	if err := s.store.DeleteSchema(args.SchemaID); err != nil {
+		return fmt.Errorf("delete schema: %w", err)
+	}
+
+	reply.Success = true
+	return nil
+}
+
 // ListSchemas 列出所有方案及其状态
 func (s *SystemService) ListSchemas(args *rpcapi.Empty, reply *rpcapi.ListSchemasReply) error {
 	if s.store == nil {
@@ -124,6 +142,12 @@ func (s *SystemService) ListSchemas(args *rpcapi.Empty, reply *rpcapi.ListSchema
 		// 词频记录数
 		freqEntries, _ := s.store.SearchFreqPrefix(id, "", 0)
 		entry.FreqRecords = len(freqEntries)
+
+		// 跳过数据全为空的 orphaned 方案（已被清除的残留 bucket）
+		if status == "orphaned" && entry.UserWords == 0 && entry.TempWords == 0 && entry.ShadowRules == 0 && entry.FreqRecords == 0 {
+			processed[id] = true
+			continue
+		}
 
 		reply.Schemas = append(reply.Schemas, entry)
 		processed[id] = true

@@ -2,8 +2,15 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"time"
 
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/rpcapi"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"gopkg.in/yaml.v3"
 )
 
 // ========== 短语管理（通过 RPC）==========
@@ -111,6 +118,8 @@ func (a *App) ClearFreq(schemaID string) (int, error) {
 type SchemaStatusItem struct {
 	SchemaID    string `json:"schema_id"`
 	SchemaName  string `json:"schema_name"`
+	EngineType  string `json:"engine_type"` // codetable | pinyin | mixed
+	IsMixed     bool   `json:"is_mixed"`    // 是否为混输方案（用户词库等继承自主方案）
 	Status      string `json:"status"`
 	UserWords   int    `json:"user_words"`
 	TempWords   int    `json:"temp_words"`
@@ -119,17 +128,39 @@ type SchemaStatusItem struct {
 }
 
 // GetAllSchemaStatuses 获取所有方案状态
+// 排序：启用方案(按配置顺序) → 未启用但有数据 → 残留(orphaned)
 func (a *App) GetAllSchemaStatuses() ([]SchemaStatusItem, error) {
 	reply, err := a.rpcClient.SystemListSchemas()
 	if err != nil {
 		return nil, err
 	}
 
-	// 从已有方法获取方案显示名称
+	// 从 GetAvailableSchemas 构建完整 nameMap 和 engineTypeMap
 	nameMap := make(map[string]string)
-	if stats, err := a.GetEnabledSchemasWithDictStats(); err == nil {
-		for _, s := range stats {
-			nameMap[s.SchemaID] = s.SchemaName
+	engineTypeMap := make(map[string]string)
+	if schemas, err := a.GetAvailableSchemas(); err == nil {
+		for _, s := range schemas {
+			nameMap[s.ID] = s.Name
+			engineTypeMap[s.ID] = s.EngineType
+		}
+	}
+
+	// 获取引用关系，判断混输方案
+	mixedSet := make(map[string]bool)
+	if refs, err := a.GetSchemaReferences(); err == nil {
+		for id, ref := range refs {
+			if ref.PrimarySchema != "" || ref.SecondarySchema != "" {
+				mixedSet[id] = true
+			}
+		}
+	}
+
+	// 获取配置中的启用方案顺序
+	cfg, _ := config.Load()
+	enabledOrder := make(map[string]int)
+	if cfg != nil {
+		for i, id := range cfg.Schema.Available {
+			enabledOrder[id] = i
 		}
 	}
 
@@ -140,12 +171,161 @@ func (a *App) GetAllSchemaStatuses() ([]SchemaStatusItem, error) {
 			name = s.SchemaID
 		}
 		items[i] = SchemaStatusItem{
-			SchemaID: s.SchemaID, SchemaName: name, Status: s.Status,
+			SchemaID: s.SchemaID, SchemaName: name,
+			EngineType: engineTypeMap[s.SchemaID], IsMixed: mixedSet[s.SchemaID],
+			Status:    s.Status,
 			UserWords: s.UserWords, TempWords: s.TempWords,
 			ShadowRules: s.ShadowRules, FreqRecords: s.FreqRecords,
 		}
 	}
+
+	// 排序：enabled(按配置顺序) → disabled → orphaned
+	sort.SliceStable(items, func(i, j int) bool {
+		si, sj := items[i], items[j]
+		ri := statusRank(si.Status)
+		rj := statusRank(sj.Status)
+		if ri != rj {
+			return ri < rj
+		}
+		// 同一 status 组内，enabled 按配置顺序排
+		if si.Status == "enabled" {
+			oi, oki := enabledOrder[si.SchemaID]
+			oj, okj := enabledOrder[sj.SchemaID]
+			if oki && okj {
+				return oi < oj
+			}
+		}
+		return si.SchemaID < sj.SchemaID
+	})
+
 	return items, nil
+}
+
+// statusRank 返回方案状态的排序权重
+func statusRank(status string) int {
+	switch status {
+	case "enabled":
+		return 0
+	case "disabled":
+		return 1
+	default: // orphaned
+		return 2
+	}
+}
+
+// ========== 短语导入导出 ==========
+
+// phraseYAMLEntry 简化 YAML 格式的短语条目
+type phraseYAMLEntry struct {
+	Code     string `yaml:"code"`
+	Text     string `yaml:"text,omitempty"`
+	Texts    string `yaml:"texts,omitempty"`
+	Name     string `yaml:"name,omitempty"`
+	Position int    `yaml:"position,omitempty"`
+	Disabled bool   `yaml:"disabled,omitempty"`
+}
+
+type phraseYAMLFile struct {
+	Phrases []phraseYAMLEntry `yaml:"phrases"`
+}
+
+// ImportPhrases 导入短语（简化 YAML 格式）
+func (a *App) ImportPhrases() (*ImportExportResult, error) {
+	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "导入短语",
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "短语文件 (*.yaml, *.yml)", Pattern: "*.yaml;*.yml"},
+			{DisplayName: "所有文件 (*.*)", Pattern: "*.*"},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("打开文件对话框失败: %w", err)
+	}
+	if path == "" {
+		return &ImportExportResult{Cancelled: true}, nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取文件失败: %w", err)
+	}
+
+	var file phraseYAMLFile
+	if err := yaml.Unmarshal(data, &file); err != nil {
+		return nil, fmt.Errorf("解析 YAML 失败: %w", err)
+	}
+
+	count := 0
+	for _, e := range file.Phrases {
+		if e.Code == "" || (e.Text == "" && e.Texts == "") {
+			continue
+		}
+		pType := "static"
+		if e.Texts != "" {
+			pType = "array"
+		} else if strings.Contains(e.Text, "$") {
+			pType = "dynamic"
+		}
+		pos := e.Position
+		if pos <= 0 {
+			pos = 1
+		}
+		if err := a.rpcClient.PhraseAdd(rpcapi.PhraseAddArgs{
+			Code: e.Code, Text: e.Text, Texts: e.Texts, Name: e.Name,
+			Type: pType, Position: pos,
+		}); err == nil {
+			count++
+		}
+	}
+
+	return &ImportExportResult{Count: count, Total: len(file.Phrases)}, nil
+}
+
+// ExportPhrases 导出短语（简化 YAML 格式）
+func (a *App) ExportPhrases() (*ImportExportResult, error) {
+	defaultFilename := fmt.Sprintf("phrases_%s.yaml", time.Now().Format("20060102"))
+	path, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+		Title:           "导出短语",
+		DefaultFilename: defaultFilename,
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: "短语文件 (*.yaml)", Pattern: "*.yaml"},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("打开保存对话框失败: %w", err)
+	}
+	if path == "" {
+		return &ImportExportResult{Cancelled: true}, nil
+	}
+
+	reply, err := a.rpcClient.PhraseList()
+	if err != nil {
+		return nil, fmt.Errorf("获取短语列表失败: %w", err)
+	}
+
+	entries := make([]phraseYAMLEntry, 0, len(reply.Phrases))
+	for _, p := range reply.Phrases {
+		e := phraseYAMLEntry{
+			Code:     p.Code,
+			Text:     p.Text,
+			Texts:    p.Texts,
+			Name:     p.Name,
+			Position: p.Position,
+			Disabled: !p.Enabled,
+		}
+		entries = append(entries, e)
+	}
+
+	data, err := yaml.Marshal(phraseYAMLFile{Phrases: entries})
+	if err != nil {
+		return nil, fmt.Errorf("序列化失败: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return nil, fmt.Errorf("写入文件失败: %w", err)
+	}
+
+	return &ImportExportResult{Count: len(entries), Path: path}, nil
 }
 
 // ========== 短语文件变化检测（已迁移到 RPC，保留空实现兼容前端）==========

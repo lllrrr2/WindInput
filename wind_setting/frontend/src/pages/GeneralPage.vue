@@ -111,9 +111,9 @@ async function loadAllSchemas() {
 
     // 加载方案引用关系
     try {
-      schemaReferences.value = await wailsApi.getSchemaReferences();
+      schemaReferences.value = (await wailsApi.getSchemaReferences()) || {};
       // 加载被引用但未启用的方案配置（仅加载配置，不加入管理列表）
-      const refIDs = await wailsApi.getReferencedSchemaIDs();
+      const refIDs = (await wailsApi.getReferencedSchemaIDs()) || [];
       referencedOnlyIDs.value = [];
       for (const id of refIDs) {
         if (!schemaConfigs.value[id]) {

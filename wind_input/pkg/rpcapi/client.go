@@ -269,6 +269,14 @@ func (c *Client) SystemResetDB(schemaID string) error {
 	}, &reply)
 }
 
+// SystemDeleteSchema 彻底删除方案 bucket（清理残留）
+func (c *Client) SystemDeleteSchema(schemaID string) error {
+	var reply SystemResetDBReply
+	return c.call("System.DeleteSchema", &SystemResetDBArgs{
+		SchemaID: schemaID,
+	}, &reply)
+}
+
 // ── Phrase 方法 ──
 
 // PhraseList 获取所有短语

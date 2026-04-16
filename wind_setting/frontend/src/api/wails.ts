@@ -49,6 +49,8 @@ export interface FreqItem {
 export interface SchemaStatusItem {
   schema_id: string;
   schema_name: string;
+  engine_type: string; // codetable | pinyin | mixed
+  is_mixed: boolean;
   status: "enabled" | "disabled" | "orphaned";
   user_words: number;
   temp_words: number;
@@ -275,6 +277,14 @@ export async function setPhraseEnabled(
 
 export async function resetPhrasesToDefault(): Promise<void> {
   return App.ResetPhrasesToDefault();
+}
+
+export async function importPhrases(): Promise<ImportExportResult> {
+  return App.ImportPhrases() as Promise<ImportExportResult>;
+}
+
+export async function exportPhrases(): Promise<ImportExportResult> {
+  return App.ExportPhrases() as Promise<ImportExportResult>;
 }
 
 // ── 词频 API ──
@@ -556,6 +566,10 @@ export async function getServiceStatus(): Promise<ServiceStatus | null> {
 // 重置用户数据
 export async function resetUserData(schemaID: string = ""): Promise<void> {
   return App.ResetUserData(schemaID);
+}
+
+export async function deleteSchemaData(schemaID: string): Promise<void> {
+  return App.DeleteSchemaData(schemaID);
 }
 
 // 文件变化检测

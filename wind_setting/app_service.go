@@ -38,6 +38,14 @@ func (a *App) ResetUserData(schemaID string) error {
 	return a.rpcClient.SystemResetDB(schemaID)
 }
 
+// DeleteSchemaData 彻底删除方案的存储 bucket（用于清理残留方案）
+func (a *App) DeleteSchemaData(schemaID string) error {
+	if a.rpcClient == nil {
+		return fmt.Errorf("RPC 客户端未初始化")
+	}
+	return a.rpcClient.SystemDeleteSchema(schemaID)
+}
+
 // ========== 文件变化检测 ==========
 
 // FileChangeStatus 文件变化状态

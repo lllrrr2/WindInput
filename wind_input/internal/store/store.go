@@ -98,6 +98,22 @@ func (s *Store) ClearSchema(schemaID string) error {
 	})
 }
 
+// DeleteSchema completely removes a schema bucket from the Store.
+// Unlike ClearSchema, this does not recreate an empty bucket.
+func (s *Store) DeleteSchema(schemaID string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		schemas := tx.Bucket(bucketSchemas)
+		if schemas == nil {
+			return nil
+		}
+		key := []byte(schemaID)
+		if schemas.Bucket(key) != nil {
+			return schemas.DeleteBucket(key)
+		}
+		return nil
+	})
+}
+
 // ClearAllSchemas removes all schema data by deleting and recreating the
 // top-level Schemas bucket. Meta (version, device_id) is preserved.
 func (s *Store) ClearAllSchemas() error {
