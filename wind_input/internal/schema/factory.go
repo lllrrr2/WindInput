@@ -127,14 +127,26 @@ func createCodeTableEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManag
 		}
 
 		// 注入 LearningStrategy（造词）
-		learningStrategy := NewLearningStrategy(&s.Learning, dm.GetStoreUserLayer())
-		if al, ok := learningStrategy.(*AutoLearning); ok {
-			if dm.GetStoreTempLayer() != nil {
-				al.SetTempLayer(dm.GetStoreTempLayer())
+		// 码表引擎：auto_learn 或 auto_phrase 启用时使用码表自动造词
+		if s.Learning.IsAutoPhraseEnabled() || s.Learning.IsAutoLearnEnabled() {
+			autoPhrase := NewCodeTableLearningStrategy(&s.Learning, logger)
+			if dm.GetStoreUserLayer() != nil {
+				autoPhrase.SetUserLayer(dm.GetStoreUserLayer())
 			}
-			al.SetSystemChecker(dm)
+			if dm.GetStoreTempLayer() != nil {
+				autoPhrase.SetTempLayer(dm.GetStoreTempLayer())
+			}
+			autoPhrase.SetSystemChecker(dm)
+			// 编码计算器：使用编码规则 + 码表反向索引（惰性构建）
+			encoder := s.Encoder
+			if encoder != nil && len(encoder.Rules) > 0 && engine.GetCodeTable() != nil {
+				calc := NewEncoderWordCodeCalc(encoder.Rules, engine.GetCodeTable())
+				autoPhrase.SetWordCodeCalculator(calc)
+			}
+			engine.SetLearningStrategy(autoPhrase)
+		} else {
+			engine.SetLearningStrategy(&ManualLearning{})
 		}
-		engine.SetLearningStrategy(learningStrategy)
 	}
 
 	// 后台预生成拼音 wdb
@@ -747,11 +759,28 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 			codetableFreqHandler := dict.NewFreqHandler(dm.GetStore(), s.DataSchemaID())
 			codetableEngine.SetFreqHandler(codetableFreqHandler)
 		}
-		codetableLearning := NewLearningStrategy(&s.Learning, dm.GetStoreUserLayer())
-		if al, ok := codetableLearning.(*AutoLearning); ok && dm.GetStoreTempLayer() != nil {
-			al.SetTempLayer(dm.GetStoreTempLayer())
+		// 混输码表子引擎：auto_learn 或 auto_phrase 启用时使用码表自动造词
+		if s.Learning.IsAutoPhraseEnabled() || s.Learning.IsAutoLearnEnabled() {
+			autoPhrase := NewCodeTableLearningStrategy(&s.Learning, logger)
+			if dm.GetStoreUserLayer() != nil {
+				autoPhrase.SetUserLayer(dm.GetStoreUserLayer())
+			}
+			if dm.GetStoreTempLayer() != nil {
+				autoPhrase.SetTempLayer(dm.GetStoreTempLayer())
+			}
+			autoPhrase.SetSystemChecker(dm)
+			encoder := s.Encoder
+			if encoder == nil && primarySchema != nil {
+				encoder = primarySchema.Encoder
+			}
+			if encoder != nil && len(encoder.Rules) > 0 && codetableEngine.GetCodeTable() != nil {
+				calc := NewEncoderWordCodeCalc(encoder.Rules, codetableEngine.GetCodeTable())
+				autoPhrase.SetWordCodeCalculator(calc)
+			}
+			codetableEngine.SetLearningStrategy(autoPhrase)
+		} else {
+			codetableEngine.SetLearningStrategy(&ManualLearning{})
 		}
-		codetableEngine.SetLearningStrategy(codetableLearning)
 	}
 
 	// === 3. 创建拼音引擎（使用独立的 CompositeDict）===

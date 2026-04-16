@@ -149,8 +149,9 @@ type WeightSpec struct {
 
 // LearningSpec 学习策略配置
 type LearningSpec struct {
-	AutoLearn *AutoLearnSpec `yaml:"auto_learn,omitempty"` // 自动造词配置
-	Freq      *FreqSpec      `yaml:"freq,omitempty"`       // 自动调频配置
+	AutoLearn  *AutoLearnSpec  `yaml:"auto_learn,omitempty"`  // 自动造词配置（拼音：选词即学）
+	AutoPhrase *AutoPhraseSpec `yaml:"auto_phrase,omitempty"` // 自动造词配置（码表：连续单字组词）
+	Freq       *FreqSpec       `yaml:"freq,omitempty"`        // 自动调频配置
 
 	UnigramPath      string `yaml:"unigram_path,omitempty"`
 	TempMaxEntries   int    `yaml:"temp_max_entries,omitempty"`   // 临时词库最大条目数（默认 5000）
@@ -166,6 +167,16 @@ type AutoLearnSpec struct {
 	AddWeight      int  `yaml:"add_weight,omitempty"`      // 新词初始权重（默认 800）
 }
 
+// AutoPhraseSpec 码表自动造词配置（连续单字 + 终止符 = 自动组词）
+type AutoPhraseSpec struct {
+	Enabled        bool `yaml:"enabled"`                   // 是否启用
+	MinPhraseLen   int  `yaml:"min_phrase_len,omitempty"`  // 最小造词字数（默认 2）
+	MaxPhraseLen   int  `yaml:"max_phrase_len,omitempty"`  // 最大造词字数（默认 5）
+	AddWeight      int  `yaml:"add_weight,omitempty"`      // 新词初始权重（默认 800）
+	WeightDelta    int  `yaml:"weight_delta,omitempty"`    // 每次命中权重增量（默认 20）
+	CountThreshold int  `yaml:"count_threshold,omitempty"` // 误选保护阈值（默认 2）
+}
+
 // FreqSpec 自动调频配置
 type FreqSpec struct {
 	Enabled     bool    `yaml:"enabled"`                 // 是否启用自动调频
@@ -178,9 +189,14 @@ type FreqSpec struct {
 	StreakCap   float64 `yaml:"streak_cap,omitempty"`    // 连续选择上限（默认 250）
 }
 
-// IsAutoLearnEnabled 是否启用自动造词
+// IsAutoLearnEnabled 是否启用自动造词（拼音：选词即学）
 func (ls *LearningSpec) IsAutoLearnEnabled() bool {
 	return ls.AutoLearn != nil && ls.AutoLearn.Enabled
+}
+
+// IsAutoPhraseEnabled 是否启用码表自动造词
+func (ls *LearningSpec) IsAutoPhraseEnabled() bool {
+	return ls.AutoPhrase != nil && ls.AutoPhrase.Enabled
 }
 
 // IsFreqEnabled 是否启用自动调频
@@ -209,6 +225,36 @@ func (ls *LearningSpec) GetAutoLearnConfig() AutoLearnSpec {
 		}
 		if ls.AutoLearn.AddWeight > 0 {
 			cfg.AddWeight = ls.AutoLearn.AddWeight
+		}
+	}
+	return cfg
+}
+
+// GetAutoPhraseConfig 获取码表自动造词配置（带默认值填充）
+func (ls *LearningSpec) GetAutoPhraseConfig() AutoPhraseSpec {
+	cfg := AutoPhraseSpec{
+		Enabled:        ls.IsAutoPhraseEnabled(),
+		MinPhraseLen:   2,
+		MaxPhraseLen:   5,
+		AddWeight:      800,
+		WeightDelta:    20,
+		CountThreshold: 2,
+	}
+	if ls.AutoPhrase != nil {
+		if ls.AutoPhrase.MinPhraseLen > 0 {
+			cfg.MinPhraseLen = ls.AutoPhrase.MinPhraseLen
+		}
+		if ls.AutoPhrase.MaxPhraseLen > 0 {
+			cfg.MaxPhraseLen = ls.AutoPhrase.MaxPhraseLen
+		}
+		if ls.AutoPhrase.AddWeight > 0 {
+			cfg.AddWeight = ls.AutoPhrase.AddWeight
+		}
+		if ls.AutoPhrase.WeightDelta > 0 {
+			cfg.WeightDelta = ls.AutoPhrase.WeightDelta
+		}
+		if ls.AutoPhrase.CountThreshold > 0 {
+			cfg.CountThreshold = ls.AutoPhrase.CountThreshold
 		}
 	}
 	return cfg

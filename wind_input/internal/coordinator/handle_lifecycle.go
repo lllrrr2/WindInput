@@ -181,6 +181,11 @@ func (c *Coordinator) updateHostRenderState() {
 func (c *Coordinator) HandleFocusLost() {
 	c.logger.Debug("Focus lost, clearing state and hiding toolbar")
 
+	// 焦点丢失 = 短语终止符，通知造词策略（码表自动造词）
+	if c.engineMgr != nil {
+		c.engineMgr.OnPhraseTerminated()
+	}
+
 	// 焦点变化后异步释放内存（非阻塞，不影响响应速度）
 	defer func() {
 		go func() {
@@ -255,6 +260,11 @@ func (c *Coordinator) HandleCompositionTerminated() {
 // This is called from TSF's Deactivate method, before the client disconnects
 func (c *Coordinator) HandleIMEDeactivated() {
 	c.logger.Info("IME deactivated (user switched to another IME), hiding toolbar")
+
+	// IME 停用 = 短语终止符，通知造词策略（码表自动造词）
+	if c.engineMgr != nil {
+		c.engineMgr.OnPhraseTerminated()
+	}
 
 	c.mu.Lock()
 	c.imeActivated = false

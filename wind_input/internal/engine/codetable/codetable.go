@@ -451,19 +451,29 @@ func (e *Engine) OnCandidateSelected(code, text string) {
 		return
 	}
 
-	// 前置过滤（码表特有）：单字不调频
-	if e.config != nil && e.config.SkipSingleCharFreq && len([]rune(text)) <= 1 {
-		return
-	}
+	skipFreq := e.config != nil && e.config.SkipSingleCharFreq && len([]rune(text)) <= 1
 
-	// 调频
-	if e.freqHandler != nil {
+	// 调频（单字可配置跳过）
+	if e.freqHandler != nil && !skipFreq {
 		e.freqHandler.Record(code, text)
 	}
 
-	// 造词
+	// 造词（不受 SkipSingleCharFreq 影响，自动造词需要追踪单字序列）
 	if e.learningStrategy != nil {
 		e.learningStrategy.OnWordCommitted(code, text)
+	}
+}
+
+// OnPhraseTerminated 短语终止信号，转发给造词策略（如果支持）
+func (e *Engine) OnPhraseTerminated() {
+	if e.learningStrategy == nil {
+		return
+	}
+	type phraseTerminator interface {
+		OnPhraseTerminated()
+	}
+	if pt, ok := e.learningStrategy.(phraseTerminator); ok {
+		pt.OnPhraseTerminated()
 	}
 }
 

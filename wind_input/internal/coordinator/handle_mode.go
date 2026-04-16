@@ -44,6 +44,11 @@ func (c *Coordinator) HandleToggleMode() (commitText string, chineseMode bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// 切换模式 = 短语终止符，通知造词策略（码表自动造词）
+	if c.chineseMode && c.engineMgr != nil {
+		c.engineMgr.OnPhraseTerminated()
+	}
+
 	// Check if CommitOnSwitch is enabled and there's pending input
 	// When switching from Chinese to English, commit the raw input code (not the candidate)
 	// because the user wants to type English, so we output the original typed characters

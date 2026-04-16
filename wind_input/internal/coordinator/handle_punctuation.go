@@ -146,6 +146,11 @@ func (c *Coordinator) isPunctuation(r rune) bool {
 func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) *bridge.KeyEventResult {
 	c.logger.Debug("handlePunctuation", "char", string(r), "buffer", c.inputBuffer)
 
+	// 标点 = 短语终止符，通知造词策略（码表自动造词）
+	if c.engineMgr != nil {
+		c.engineMgr.OnPhraseTerminated()
+	}
+
 	// Check if punct_commit is enabled in wubi/mixed config
 	punctCommitEnabled := false
 	if len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 {

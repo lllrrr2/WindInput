@@ -519,6 +519,11 @@ func (c *Coordinator) handleArrowDown() *bridge.KeyEventResult {
 }
 
 func (c *Coordinator) handleEnter() *bridge.KeyEventResult {
+	// 回车 = 短语终止符，通知造词策略（码表自动造词）
+	if c.engineMgr != nil {
+		c.engineMgr.OnPhraseTerminated()
+	}
+
 	// Commit all confirmed segments + raw input as text
 	if len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 {
 		// 检查回车键行为配置：clear 模式下清空编码

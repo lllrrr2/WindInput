@@ -212,6 +212,24 @@ func (m *Manager) OnCandidateSelected(code, text string, source ...candidate.Can
 	}
 }
 
+// OnPhraseTerminated 短语终止信号（标点、回车、焦点切换等）
+// 通知造词策略当前的连续单字序列已结束，触发自动组词
+func (m *Manager) OnPhraseTerminated() {
+	engine := m.GetCurrentEngine()
+	if engine == nil {
+		return
+	}
+	switch e := engine.(type) {
+	case *codetable.Engine:
+		e.OnPhraseTerminated()
+	case *mixed.Engine:
+		if ce := e.GetCodetableEngine(); ce != nil {
+			ce.OnPhraseTerminated()
+		}
+	}
+	// 拼音引擎不需要终止信号（使用 AutoLearning 选词即学）
+}
+
 // SaveUserFreqs 保存用户词频
 func (m *Manager) SaveUserFreqs() {
 	m.mu.RLock()

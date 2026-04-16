@@ -351,7 +351,11 @@ function getTempPinyinConfig(schemaID: string) {
 }
 
 // 学习配置
-function getLearningConfig(schemaID: string): { auto_learn: { enabled: boolean }; freq: { enabled: boolean; protect_top_n?: number }; protect_top_n?: number } {
+function getLearningConfig(schemaID: string): {
+  auto_learn: { enabled: boolean };
+  freq: { enabled: boolean; protect_top_n?: number };
+  protect_top_n?: number;
+} {
   const cfg = schemaConfigs.value[schemaID];
   if (!cfg) return { auto_learn: { enabled: false }, freq: { enabled: false } };
   if (!cfg.learning) (cfg as any).learning = {};
@@ -919,7 +923,9 @@ onUnmounted(() => {
           <div class="setting-item">
             <div class="setting-info">
               <label>自动造词</label>
-              <p class="setting-hint">选词时自动学习新词组</p>
+              <p class="setting-hint">
+                连续输入单字后以标点、词组或回车结束时，自动将单字序列组词并加入临时词库
+              </p>
             </div>
             <div class="setting-control">
               <Switch
@@ -1048,7 +1054,9 @@ onUnmounted(() => {
           <div class="setting-item">
             <div class="setting-info">
               <label>自动造词</label>
-              <p class="setting-hint">选词时自动学习新词组</p>
+              <p class="setting-hint">
+                选词时自动学习新词组，先加入临时词库，多次使用后晋升到用户词库
+              </p>
             </div>
             <div class="setting-control">
               <Switch

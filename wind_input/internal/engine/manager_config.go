@@ -217,8 +217,45 @@ func (m *Manager) UpdateLearningConfig(ls *schema.LearningSpec) {
 	}
 
 	// 构建 LearningStrategy
-	learningStrategy := schema.NewLearningStrategy(ls, dm.GetStoreUserLayer())
-	if al, ok := learningStrategy.(*schema.AutoLearning); ok {
+	var codetableLearning codetable.LearningStrategy
+	var pinyinLearning pinyin.LearningStrategy
+
+	// 检查当前引擎是否包含码表（码表或混输引擎）
+	hasCodetable := false
+	switch engine.(type) {
+	case *codetable.Engine:
+		hasCodetable = true
+	case *mixed.Engine:
+		hasCodetable = true
+	}
+
+	// 码表引擎：auto_learn 或 auto_phrase 启用时使用码表自动造词
+	if hasCodetable && (ls.IsAutoPhraseEnabled() || ls.IsAutoLearnEnabled()) {
+		autoPhrase := schema.NewCodeTableLearningStrategy(ls, m.logger)
+		if dm.GetStoreUserLayer() != nil {
+			autoPhrase.SetUserLayer(dm.GetStoreUserLayer())
+		}
+		if dm.GetStoreTempLayer() != nil {
+			autoPhrase.SetTempLayer(dm.GetStoreTempLayer())
+		}
+		autoPhrase.SetSystemChecker(dm)
+		if s := m.schemaManager.GetSchema(m.currentID); s != nil {
+			encoder := m.resolveEncoder(s)
+			if encoder != nil && len(encoder.Rules) > 0 {
+				if ct := m.getCodeTable(); ct != nil {
+					calc := schema.NewEncoderWordCodeCalc(encoder.Rules, ct)
+					autoPhrase.SetWordCodeCalculator(calc)
+				}
+			}
+		}
+		codetableLearning = autoPhrase
+	} else if hasCodetable {
+		codetableLearning = &schema.ManualLearning{}
+	}
+
+	// 拼音策略：始终使用 AutoLearning
+	pinyinLearning = schema.NewLearningStrategy(ls, dm.GetStoreUserLayer())
+	if al, ok := pinyinLearning.(*schema.AutoLearning); ok {
 		if dm.GetStoreTempLayer() != nil {
 			al.SetTempLayer(dm.GetStoreTempLayer())
 		}
@@ -229,25 +266,43 @@ func (m *Manager) UpdateLearningConfig(ls *schema.LearningSpec) {
 	switch e := engine.(type) {
 	case *codetable.Engine:
 		e.SetFreqHandler(freqHandler)
-		e.SetLearningStrategy(learningStrategy)
+		e.SetLearningStrategy(codetableLearning)
 	case *pinyin.Engine:
 		e.SetFreqHandler(freqHandler)
-		e.SetLearningStrategy(learningStrategy)
+		e.SetLearningStrategy(pinyinLearning)
 	case *mixed.Engine:
-		// 混输引擎：分别注入到码表和拼音子引擎
+		// 混输引擎：码表子引擎用码表策略，拼音子引擎用拼音策略
 		if ce := e.GetCodetableEngine(); ce != nil {
 			ce.SetFreqHandler(freqHandler)
-			ce.SetLearningStrategy(learningStrategy)
+			ce.SetLearningStrategy(codetableLearning)
 		}
 		if pe := e.GetPinyinEngine(); pe != nil {
 			pe.SetFreqHandler(freqHandler)
-			pe.SetLearningStrategy(learningStrategy)
+			pe.SetLearningStrategy(pinyinLearning)
 		}
 	}
 
 	m.logger.Info("学习配置已热更新",
 		"freqEnabled", ls.IsFreqEnabled(),
-		"autoLearnEnabled", ls.IsAutoLearnEnabled())
+		"autoLearnEnabled", ls.IsAutoLearnEnabled(),
+		"autoPhraseEnabled", ls.IsAutoPhraseEnabled(),
+		"codetableAutoPhrase", codetableLearning != nil)
+}
+
+// getCodeTable 从当前引擎获取码表（须持有 mu 锁）
+func (m *Manager) getCodeTable() *dict.CodeTable {
+	if m.currentEngine == nil {
+		return nil
+	}
+	switch e := m.currentEngine.(type) {
+	case *codetable.Engine:
+		return e.GetCodeTable()
+	case *mixed.Engine:
+		if ce := e.GetCodetableEngine(); ce != nil {
+			return ce.GetCodeTable()
+		}
+	}
+	return nil
 }
 
 // loadCodetableReverseForPinyin 从方案配置中查找码表反查路径并加载
