@@ -78,21 +78,21 @@ func TestWriteBuffer_BasicFlush(t *testing.T) {
 		})
 	}
 
-	// Give the flush goroutine time to complete.
+	// Poll the DB directly: Pending()==0 only means ops were dequeued,
+	// not that the DB transaction has committed.
 	deadline := time.Now().Add(2 * time.Second)
+	var val []byte
 	for time.Now().Before(deadline) {
-		if wb.Pending() == 0 {
+		if keyExists(t, db, testBucket, "a") {
+			val = readValue(t, db, testBucket, "a")
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if wb.Pending() != 0 {
-		t.Errorf("expected 0 pending after auto-flush, got %d", wb.Pending())
+	if val == nil {
+		t.Fatalf("auto-flush did not write key within deadline")
 	}
-
-	// Verify data in db.
-	val := readValue(t, db, testBucket, "a")
 	if string(val) != "v" {
 		t.Errorf("expected value 'v', got %q", val)
 	}
@@ -114,20 +114,21 @@ func TestWriteBuffer_TimerFlush(t *testing.T) {
 		Value:  []byte("timer_val"),
 	})
 
-	// Wait for timer-driven flush (interval = 100ms, allow 2s).
+	// Poll the DB directly: Pending()==0 only means ops were dequeued,
+	// not that the DB transaction has committed.
 	deadline := time.Now().Add(2 * time.Second)
+	var val []byte
 	for time.Now().Before(deadline) {
-		if wb.Pending() == 0 {
+		if keyExists(t, db, testBucket, "timer_key") {
+			val = readValue(t, db, testBucket, "timer_key")
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	if wb.Pending() != 0 {
-		t.Errorf("expected 0 pending after timer flush, got %d", wb.Pending())
+	if val == nil {
+		t.Fatalf("timer flush did not write key within deadline")
 	}
-
-	val := readValue(t, db, testBucket, "timer_key")
 	if string(val) != "timer_val" {
 		t.Errorf("expected timer_val, got %q", val)
 	}
