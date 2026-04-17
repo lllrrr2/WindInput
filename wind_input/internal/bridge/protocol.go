@@ -117,6 +117,8 @@ type MessageHandler interface {
 	HandleCommitRequest(data CommitRequestData) *CommitResultData
 	// Mode notification from TSF (local toggle)
 	HandleModeNotify(data ModeNotifyData)
+	// System mode switch (Ctrl+Space): system has decided the target mode, must follow
+	HandleSystemModeSwitch(chineseMode bool) (commitText string)
 	// Context menu request from TSF (screen coordinates)
 	HandleShowContextMenu(screenX, screenY int)
 	// Selection changed outside of composition (from ITfTextEditSink::OnEndEdit)

@@ -729,6 +729,33 @@ BOOL CIPCClient::SendModeNotify(bool chineseMode, bool clearInput)
     return _SendBinaryMessage(CMD_MODE_NOTIFY, &flags, sizeof(flags), true /* async */);
 }
 
+BOOL CIPCClient::SendSystemModeSwitch(bool chineseMode, ServiceResponse& response)
+{
+    if (!_ShouldAttemptOperation())
+    {
+        return FALSE;
+    }
+
+    if (!IsConnected() && !Connect())
+    {
+        return FALSE;
+    }
+
+    // Build status flags (same format as ModeNotify)
+    uint32_t flags = 0;
+    if (chineseMode) flags |= STATUS_CHINESE_MODE;
+
+    _LogInfo(L"Sending system_mode_switch (sync): chineseMode=%d", chineseMode);
+
+    // Send sync - wait for response (CommitText or ModeChanged)
+    if (!_SendBinaryMessage(CMD_SYSTEM_MODE_SWITCH, &flags, sizeof(flags)))
+    {
+        return FALSE;
+    }
+
+    return ReceiveResponse(response);
+}
+
 BOOL CIPCClient::SendToggleMode(ServiceResponse& response)
 {
     if (!_ShouldAttemptOperation())

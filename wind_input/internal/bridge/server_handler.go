@@ -98,6 +98,9 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 	case ipc.CmdToggleMode:
 		return s.handleToggleMode(clientID)
 
+	case ipc.CmdSystemModeSwitch:
+		return s.handleSystemModeSwitch(payload, clientID)
+
 	case ipc.CmdMenuCommand:
 		return s.handleMenuCommand(payload, clientID)
 
@@ -315,6 +318,29 @@ func (s *Server) handleToggleMode(clientID int) []byte {
 		"chineseMode", chineseMode, "commitText", commitText)
 
 	// Return ModeChanged response (with optional commit text if there was pending input)
+	if commitText != "" {
+		return s.codec.EncodeCommitText(commitText, "", true, chineseMode)
+	}
+	return s.codec.EncodeModeChanged(chineseMode)
+}
+
+func (s *Server) handleSystemModeSwitch(payload []byte, clientID int) []byte {
+	if len(payload) < 4 {
+		s.logger.Error("System mode switch payload too short", "clientID", clientID)
+		return s.codec.EncodeModeChanged(false)
+	}
+
+	// Parse flags (same format as StatusFlags)
+	flags := binary.LittleEndian.Uint32(payload[0:4])
+	chineseMode := (flags & ipc.StatusChineseMode) != 0
+
+	s.logger.Info("System mode switch", "clientID", clientID, "targetMode", chineseMode)
+
+	commitText := s.handler.HandleSystemModeSwitch(chineseMode)
+
+	s.logger.Debug("System mode switch result", "clientID", clientID,
+		"chineseMode", chineseMode, "commitText", commitText)
+
 	if commitText != "" {
 		return s.codec.EncodeCommitText(commitText, "", true, chineseMode)
 	}

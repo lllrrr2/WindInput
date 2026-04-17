@@ -17,6 +17,7 @@ const (
 	CmdIMEDeactivated        uint16 = 0x0204 // IME deactivated (user switched to another IME)
 	CmdModeNotify            uint16 = 0x0205 // Mode changed notification (TSF local toggle, async)
 	CmdToggleMode            uint16 = 0x0207 // Toggle mode request (from UI click)
+	CmdSystemModeSwitch      uint16 = 0x020B // System mode switch (Ctrl+Space, sync, carries target mode)
 	CmdMenuCommand           uint16 = 0x0208 // Menu command (toggle_mode, toggle_width, etc.)
 	CmdCompositionTerminated uint16 = 0x0209 // Composition unexpectedly terminated (e.g., user clicked in input field)
 	CmdShowContextMenu       uint16 = 0x020A // 请求显示右键菜单（TSF发送屏幕坐标）

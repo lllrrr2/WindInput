@@ -146,6 +146,10 @@ public:
     // Go service will toggle mode and return ModeChanged response
     BOOL SendToggleMode(ServiceResponse& response);
 
+    // System mode switch (Ctrl+Space): sync request to Go with target mode
+    // Go will check CommitOnSwitch and return commitText if needed
+    BOOL SendSystemModeSwitch(bool chineseMode, ServiceResponse& response);
+
     // Check if connected
     BOOL IsConnected() const { return _hPipe != INVALID_HANDLE_VALUE; }
 

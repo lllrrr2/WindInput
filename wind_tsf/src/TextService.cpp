@@ -1429,22 +1429,48 @@ STDAPI CTextService::OnChange(REFGUID rguid)
     if ((bOpen && _bChineseMode) || (!bOpen && !_bChineseMode))
         return S_OK;
 
-    // End any active composition when switching to English
-    if (!bOpen)
-        EndComposition();
+    // Sync request to Go service: let Go handle CommitOnSwitch before we end composition
+    if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
+    {
+        ServiceResponse response;
+        if (_pIPCClient->SendSystemModeSwitch(bOpen ? true : false, response))
+        {
+            // Handle response from Go: CommitText (has pending input) or ModeChanged (no pending input)
+            if (response.type == ResponseType::CommitText && !response.text.empty())
+            {
+                // Commit the pending text atomically (ends composition + inserts text)
+                CommitText(response.text);
+                WIND_LOG_INFO_FMT(L"System mode switch: committed pending text (len=%zu)\n", response.text.length());
+            }
+            else
+            {
+                // No pending text, just end composition (clear without committing)
+                if (!bOpen)
+                    EndComposition();
+            }
 
-    // Update local state
-    _bChineseMode = bOpen;
+            // Apply mode from response
+            _bChineseMode = response.chineseMode;
+        }
+        else
+        {
+            // IPC failed, fallback: end composition and update locally
+            if (!bOpen)
+                EndComposition();
+            _bChineseMode = bOpen;
+        }
+    }
+    else
+    {
+        // No IPC connection, fallback
+        if (!bOpen)
+            EndComposition();
+        _bChineseMode = bOpen;
+    }
 
     // Update language bar
     if (_pLangBarItemButton != nullptr)
         _pLangBarItemButton->UpdateLangBarButton(_bChineseMode);
-
-    // Notify Go service (async, fire-and-forget)
-    if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
-    {
-        _pIPCClient->SendModeNotify(bOpen ? true : false, true /* clearInput */);
-    }
 
     WIND_LOG_INFO_FMT(L"Mode switched via system compartment to %s\n", _bChineseMode ? L"Chinese" : L"English");
     return S_OK;

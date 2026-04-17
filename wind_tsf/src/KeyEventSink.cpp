@@ -1587,7 +1587,7 @@ void CKeyEventSink::OnSyncConfig(const std::string& key, const std::vector<uint8
         uint8_t count = value[1];
 
         std::vector<std::pair<wchar_t, wchar_t>> pairs;
-        for (int i = 0; i < count && (2 + i * 4 + 4) <= value.size(); i++)
+        for (size_t i = 0; i < count && (2 + i * 4 + 4) <= value.size(); i++)
         {
             uint16_t left = *reinterpret_cast<const uint16_t*>(value.data() + 2 + i * 4);
             uint16_t right = *reinterpret_cast<const uint16_t*>(value.data() + 2 + i * 4 + 2);

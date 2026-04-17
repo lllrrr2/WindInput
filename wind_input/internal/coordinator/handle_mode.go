@@ -39,6 +39,60 @@ func (c *Coordinator) HandleModeNotify(data bridge.ModeNotifyData) {
 	c.broadcastState()
 }
 
+// HandleSystemModeSwitch handles system-initiated mode switch (e.g., Ctrl+Space).
+// Unlike HandleToggleMode, the target mode is decided by the system — Go must follow.
+// Returns commitText if CommitOnSwitch is enabled and there's pending input.
+func (c *Coordinator) HandleSystemModeSwitch(chineseMode bool) (commitText string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// If mode is already the same, nothing to do
+	if c.chineseMode == chineseMode {
+		c.logger.Debug("System mode switch: already in target mode", "chineseMode", chineseMode)
+		return ""
+	}
+
+	// 切换模式 = 短语终止符，通知造词策略（码表自动造词）
+	if c.chineseMode && c.engineMgr != nil {
+		c.engineMgr.OnPhraseTerminated()
+	}
+
+	// Check CommitOnSwitch: when switching FROM Chinese, commit pending input code
+	if c.config != nil && c.config.Hotkeys.CommitOnSwitch && c.chineseMode {
+		commitText = c.getPendingBufferText()
+		if commitText != "" {
+			c.logger.Debug("SystemModeSwitch CommitOnSwitch: committing input code")
+		}
+	}
+
+	// Force set to target mode (not toggle)
+	c.chineseMode = chineseMode
+	c.logger.Debug("Mode switched via system", "chineseMode", c.chineseMode, "hasCommitText", commitText != "")
+
+	// Clear any pending input when switching modes
+	if c.hasPendingInput() {
+		c.clearState()
+		c.hideUI()
+	}
+
+	// Sync punctuation with mode if enabled
+	if c.punctFollowMode {
+		c.chinesePunctuation = c.chineseMode
+		c.punctConverter.Reset()
+	}
+
+	// Show mode indicator
+	c.showModeIndicator()
+
+	// Save runtime state if remember_last_state is enabled
+	c.saveRuntimeState()
+
+	// Broadcast state to toolbar and all TSF clients
+	c.broadcastState()
+
+	return commitText
+}
+
 // HandleToggleMode toggles the input mode and returns the new state
 func (c *Coordinator) HandleToggleMode() (commitText string, chineseMode bool) {
 	c.mu.Lock()
