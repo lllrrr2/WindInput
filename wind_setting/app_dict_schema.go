@@ -124,6 +124,29 @@ func (a *App) RemoveUserWordForSchema(schemaID, code, text string) error {
 	return a.rpcClient.DictRemove(schemaID, code, text)
 }
 
+// PagedDictResult 分页查询结果
+type PagedDictResult struct {
+	Words []UserWordItem `json:"words"`
+	Total int            `json:"total"`
+}
+
+// GetUserDictBySchemaPage 分页获取指定方案的用户词库
+func (a *App) GetUserDictBySchemaPage(schemaID, prefix string, limit, offset int) (*PagedDictResult, error) {
+	reply, err := a.rpcClient.DictSearch(schemaID, prefix, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户词库失败: %w", err)
+	}
+	return &PagedDictResult{
+		Words: convertWordEntries(reply.Words),
+		Total: reply.Total,
+	}, nil
+}
+
+// ClearUserDictForSchema 清空指定方案的用户词库
+func (a *App) ClearUserDictForSchema(schemaID string) (int, error) {
+	return a.rpcClient.DictClearUserWords(schemaID)
+}
+
 // SearchUserDictBySchema 搜索指定方案的用户词库
 func (a *App) SearchUserDictBySchema(schemaID, query string, limit int) ([]UserWordItem, error) {
 	reply, err := a.rpcClient.DictSearch(schemaID, query, limit, 0)
