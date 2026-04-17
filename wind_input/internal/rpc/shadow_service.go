@@ -105,3 +105,26 @@ func (s *ShadowService) GetRules(args *rpcapi.ShadowGetRulesArgs, reply *rpcapi.
 
 	return nil
 }
+
+// BatchSet 批量写入 Shadow 规则
+func (s *ShadowService) BatchSet(args *rpcapi.ShadowBatchSetArgs, reply *rpcapi.ShadowBatchSetReply) error {
+	schemaID := s.resolveSchemaID(args.SchemaID)
+	for _, pin := range args.Pins {
+		if err := s.store.PinShadow(schemaID, pin.Code, pin.Word, pin.Position); err != nil {
+			s.logger.Warn("ShadowBatchSet: pin failed", "code", pin.Code, "error", err)
+			continue
+		}
+		reply.PinCount++
+	}
+	for _, del := range args.Deletes {
+		if err := s.store.DeleteShadow(schemaID, del.Code, del.Word); err != nil {
+			s.logger.Warn("ShadowBatchSet: delete failed", "code", del.Code, "error", err)
+			continue
+		}
+		reply.DelCount++
+	}
+	if reply.PinCount > 0 || reply.DelCount > 0 {
+		s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "shadow", SchemaID: schemaID, Action: "batch_set"})
+	}
+	return nil
+}

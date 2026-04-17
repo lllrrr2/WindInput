@@ -172,6 +172,27 @@ func (s *Store) SearchUserWordsPrefix(schemaID, prefix string, limit int) ([]Use
 	return results, err
 }
 
+// ClearUserWords removes all user words for the given schema by deleting and
+// recreating the UserWords sub-bucket. Returns the number of entries removed.
+func (s *Store) ClearUserWords(schemaID string) (int, error) {
+	var count int
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		parent, err := schemaBucket(tx, schemaID, true)
+		if err != nil {
+			return err
+		}
+		if b := parent.Bucket(bucketUserWords); b != nil {
+			count = b.Stats().KeyN
+			if err := parent.DeleteBucket(bucketUserWords); err != nil {
+				return fmt.Errorf("delete UserWords bucket: %w", err)
+			}
+		}
+		_, err = parent.CreateBucket(bucketUserWords)
+		return err
+	})
+	return count, err
+}
+
 // UserWordCount returns the total number of user word entries for schemaID.
 func (s *Store) UserWordCount(schemaID string) (int, error) {
 	var count int

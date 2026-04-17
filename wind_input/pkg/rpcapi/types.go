@@ -161,6 +161,16 @@ type DictSchemaStatsReply struct {
 	TempWordCount int `json:"temp_word_count"`
 }
 
+// DictClearUserWordsArgs 清空用户词库请求
+type DictClearUserWordsArgs struct {
+	SchemaID string `json:"schema_id,omitempty"`
+}
+
+// DictClearUserWordsReply 清空用户词库响应
+type DictClearUserWordsReply struct {
+	Count int `json:"count"`
+}
+
 // DictBatchAddArgs 批量添加请求
 type DictBatchAddArgs struct {
 	SchemaID string      `json:"schema_id,omitempty"`
@@ -331,4 +341,86 @@ type SystemStatusReply struct {
 // NotifyReloadArgs 通知重载请求
 type NotifyReloadArgs struct {
 	Target string `json:"target"` // "config" | "phrases" | "shadow" | "userdict" | "all"
+}
+
+// SystemShutdownReply 关闭服务响应
+type SystemShutdownReply struct {
+	OK bool `json:"ok"`
+}
+
+// ── 导入导出扩展类型 ──
+
+// BatchEncodeArgs 批量反向编码请求
+type BatchEncodeArgs struct {
+	SchemaID string   `json:"schema_id,omitempty"`
+	Words    []string `json:"words"`
+}
+
+// EncodeResultItem 单个词语的编码结果
+type EncodeResultItem struct {
+	Word   string `json:"word"`
+	Code   string `json:"code"`
+	Status string `json:"status"` // ok, no_code, no_rule
+	Error  string `json:"error,omitempty"`
+}
+
+// BatchEncodeReply 批量反向编码响应
+type BatchEncodeReply struct {
+	Results []EncodeResultItem `json:"results"`
+}
+
+// FreqBatchPutArgs 批量写入词频请求
+type FreqBatchPutArgs struct {
+	SchemaID string         `json:"schema_id,omitempty"`
+	Entries  []FreqPutEntry `json:"entries"`
+}
+
+// FreqPutEntry 单条词频写入条目
+type FreqPutEntry struct {
+	Code     string `json:"code"`
+	Text     string `json:"text"`
+	Count    uint32 `json:"count"`
+	LastUsed int64  `json:"last_used"`
+	Streak   uint8  `json:"streak"`
+}
+
+// FreqBatchPutReply 批量写入词频响应
+type FreqBatchPutReply struct {
+	Count int `json:"count"`
+}
+
+// ShadowBatchSetArgs 批量写入 Shadow 规则请求
+type ShadowBatchSetArgs struct {
+	SchemaID string          `json:"schema_id,omitempty"`
+	Pins     []ShadowPinItem `json:"pins,omitempty"`
+	Deletes  []ShadowDelItem `json:"deletes,omitempty"`
+}
+
+// ShadowPinItem 批量 Pin 条目
+type ShadowPinItem struct {
+	Code     string `json:"code"`
+	Word     string `json:"word"`
+	Position int    `json:"position"`
+}
+
+// ShadowDelItem 批量 Delete 条目
+type ShadowDelItem struct {
+	Code string `json:"code"`
+	Word string `json:"word"`
+}
+
+// ShadowBatchSetReply 批量写入 Shadow 响应
+type ShadowBatchSetReply struct {
+	PinCount int `json:"pin_count"`
+	DelCount int `json:"del_count"`
+}
+
+// PhraseBatchAddArgs 批量添加短语请求
+type PhraseBatchAddArgs struct {
+	Phrases []PhraseAddArgs `json:"phrases"`
+}
+
+// PhraseBatchAddReply 批量添加短语响应
+type PhraseBatchAddReply struct {
+	Count int `json:"count"`
 }

@@ -13,10 +13,11 @@ import (
 
 // DictService 词库管理 RPC 服务
 type DictService struct {
-	store       *store.Store
-	dm          *dict.DictManager
-	logger      *slog.Logger
-	broadcaster *EventBroadcaster
+	store        *store.Store
+	dm           *dict.DictManager
+	logger       *slog.Logger
+	broadcaster  *EventBroadcaster
+	batchEncoder BatchEncoder
 }
 
 func (d *DictService) resolveSchemaID(id string) string {
@@ -34,10 +35,6 @@ func (d *DictService) Search(args *rpcapi.DictSearchArgs, reply *rpcapi.DictSear
 
 	schemaID := d.resolveSchemaID(args.SchemaID)
 	prefix := strings.ToLower(args.Prefix)
-	limit := args.Limit
-	if limit <= 0 {
-		limit = 50
-	}
 
 	allWords, err := d.store.SearchUserWordsPrefix(schemaID, prefix, 0)
 	if err != nil {
@@ -45,6 +42,25 @@ func (d *DictService) Search(args *rpcapi.DictSearchArgs, reply *rpcapi.DictSear
 	}
 
 	reply.Total = len(allWords)
+
+	// limit == -1 表示不分页，返回全部（导出场景）
+	// limit == 0 使用默认值 50
+	// limit > 0 按指定值分页
+	limit := args.Limit
+	if limit == -1 {
+		reply.Words = make([]rpcapi.WordEntry, len(allWords))
+		for i, w := range allWords {
+			reply.Words[i] = rpcapi.WordEntry{
+				Code: w.Code, Text: w.Text, Weight: w.Weight,
+				Count: w.Count, CreatedAt: w.CreatedAt,
+			}
+		}
+		return nil
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
 
 	start := args.Offset
 	if start > len(allWords) {
@@ -228,7 +244,19 @@ func (d *DictService) GetTemp(args *rpcapi.DictGetTempArgs, reply *rpcapi.DictSe
 
 	reply.Total = len(allWords)
 
+	// limit == -1 表示不分页，返回全部
 	limit := args.Limit
+	if limit == -1 {
+		reply.Words = make([]rpcapi.WordEntry, len(allWords))
+		for i, w := range allWords {
+			reply.Words[i] = rpcapi.WordEntry{
+				Code: w.Code, Text: w.Text, Weight: w.Weight,
+				Count: w.Count, CreatedAt: w.CreatedAt,
+			}
+		}
+		return nil
+	}
+
 	if limit <= 0 {
 		limit = 50
 	}
@@ -266,6 +294,24 @@ func (d *DictService) RemoveTemp(args *rpcapi.DictRemoveTempArgs, reply *rpcapi.
 }
 
 // ClearTemp 清空临时词库
+// ClearUserWords 清空指定方案的用户词库
+func (d *DictService) ClearUserWords(args *rpcapi.DictClearUserWordsArgs, reply *rpcapi.DictClearUserWordsReply) error {
+	if d.store == nil {
+		return fmt.Errorf("store not available")
+	}
+	schemaID := d.resolveSchemaID(args.SchemaID)
+	count, err := d.store.ClearUserWords(schemaID)
+	if err != nil {
+		return err
+	}
+	reply.Count = count
+	d.logger.Info("RPC Dict.ClearUserWords", "schemaID", schemaID, "cleared", count)
+	if count > 0 {
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "clear"})
+	}
+	return nil
+}
+
 func (d *DictService) ClearTemp(args *rpcapi.DictClearTempArgs, reply *rpcapi.DictClearTempReply) error {
 	if d.store == nil {
 		return fmt.Errorf("store not available")
@@ -412,6 +458,41 @@ func (d *DictService) ClearFreq(args *rpcapi.FreqClearArgs, reply *rpcapi.FreqCl
 	d.logger.Info("RPC Dict.ClearFreq", "schemaID", schemaID, "cleared", count)
 	if count > 0 {
 		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "freq", SchemaID: schemaID, Action: "clear"})
+	}
+	return nil
+}
+
+// BatchEncode 批量反向编码（词语 → 编码）
+func (d *DictService) BatchEncode(args *rpcapi.BatchEncodeArgs, reply *rpcapi.BatchEncodeReply) error {
+	if d.batchEncoder == nil {
+		return fmt.Errorf("编码器未初始化")
+	}
+	if len(args.Words) == 0 {
+		return nil
+	}
+	reply.Results = d.batchEncoder.BatchEncode(args.Words)
+	return nil
+}
+
+// FreqBatchPut 批量写入词频数据
+func (d *DictService) FreqBatchPut(args *rpcapi.FreqBatchPutArgs, reply *rpcapi.FreqBatchPutReply) error {
+	schemaID := d.resolveSchemaID(args.SchemaID)
+	count := 0
+	for _, e := range args.Entries {
+		rec := store.FreqRecord{
+			Count:    e.Count,
+			LastUsed: e.LastUsed,
+			Streak:   e.Streak,
+		}
+		if err := d.store.PutFreq(schemaID, e.Code, e.Text, rec); err != nil {
+			d.logger.Warn("FreqBatchPut: put failed", "code", e.Code, "error", err)
+			continue
+		}
+		count++
+	}
+	reply.Count = count
+	if count > 0 {
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "freq", SchemaID: schemaID, Action: "batch_put"})
 	}
 	return nil
 }

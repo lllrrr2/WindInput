@@ -37,6 +37,7 @@ type Server struct {
 
 	statusProvider StatusProvider
 	configReloader ConfigReloader
+	batchEncoder   BatchEncoder
 }
 
 // StatusProvider 系统状态提供者接口
@@ -51,6 +52,12 @@ type StatusProvider interface {
 // ConfigReloader 配置重载接口（由 coordinator.ReloadHandler 实现）
 type ConfigReloader interface {
 	ReloadConfig() error
+}
+
+// BatchEncoder 批量反向编码接口（由 engine.Manager 通过适配器实现）
+type BatchEncoder interface {
+	// BatchEncode 将词语列表批量编码为 (word, code) 对
+	BatchEncode(words []string) []rpcapi.EncodeResultItem
 }
 
 // NewServer 创建 IPC 服务端
@@ -79,6 +86,13 @@ func (s *Server) SetConfigReloader(reloader ConfigReloader) {
 	s.configReloader = reloader
 }
 
+// SetBatchEncoder 设置批量编码器
+func (s *Server) SetBatchEncoder(encoder BatchEncoder) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.batchEncoder = encoder
+}
+
 // Start 启动 IPC 服务
 func (s *Server) Start() error {
 	s.mu.Lock()
@@ -89,7 +103,7 @@ func (s *Server) Start() error {
 	s.mu.Unlock()
 
 	// 创建服务实例
-	dictSvc := &DictService{store: s.store, dm: s.dictManager, logger: s.logger, broadcaster: s.broadcaster}
+	dictSvc := &DictService{store: s.store, dm: s.dictManager, logger: s.logger, broadcaster: s.broadcaster, batchEncoder: s.batchEncoder}
 	shadowSvc := &ShadowService{store: s.store, dm: s.dictManager, logger: s.logger, broadcaster: s.broadcaster}
 	systemSvc := &SystemService{dm: s.dictManager, store: s.store, server: s, logger: s.logger, configReloader: s.configReloader}
 	phraseSvc := &PhraseService{store: s.store, dm: s.dictManager, logger: s.logger, broadcaster: s.broadcaster}
@@ -105,12 +119,15 @@ func (s *Server) Start() error {
 	RegisterMethod(s.router, "Dict.BatchAdd", dictSvc.BatchAdd)
 	RegisterMethod(s.router, "Dict.GetTemp", dictSvc.GetTemp)
 	RegisterMethod(s.router, "Dict.RemoveTemp", dictSvc.RemoveTemp)
+	RegisterMethod(s.router, "Dict.ClearUserWords", dictSvc.ClearUserWords)
 	RegisterMethod(s.router, "Dict.ClearTemp", dictSvc.ClearTemp)
 	RegisterMethod(s.router, "Dict.PromoteTemp", dictSvc.PromoteTemp)
 	RegisterMethod(s.router, "Dict.PromoteAllTemp", dictSvc.PromoteAllTemp)
 	RegisterMethod(s.router, "Dict.GetFreqList", dictSvc.GetFreqList)
 	RegisterMethod(s.router, "Dict.DeleteFreq", dictSvc.DeleteFreq)
 	RegisterMethod(s.router, "Dict.ClearFreq", dictSvc.ClearFreq)
+	RegisterMethod(s.router, "Dict.BatchEncode", dictSvc.BatchEncode)
+	RegisterMethod(s.router, "Dict.FreqBatchPut", dictSvc.FreqBatchPut)
 
 	// 注册 Shadow 方法
 	RegisterMethod(s.router, "Shadow.Pin", shadowSvc.Pin)
@@ -118,6 +135,7 @@ func (s *Server) Start() error {
 	RegisterMethod(s.router, "Shadow.RemoveRule", shadowSvc.RemoveRule)
 	RegisterMethod(s.router, "Shadow.GetRules", shadowSvc.GetRules)
 	RegisterMethod(s.router, "Shadow.GetAllRules", shadowSvc.GetAllRules)
+	RegisterMethod(s.router, "Shadow.BatchSet", shadowSvc.BatchSet)
 
 	// 注册 System 方法
 	RegisterMethod(s.router, "System.Ping", systemSvc.Ping)
@@ -138,6 +156,7 @@ func (s *Server) Start() error {
 	RegisterMethod(s.router, "Phrase.Update", phraseSvc.Update)
 	RegisterMethod(s.router, "Phrase.Remove", phraseSvc.Remove)
 	RegisterMethod(s.router, "Phrase.ResetDefaults", phraseSvc.ResetDefaults)
+	RegisterMethod(s.router, "Phrase.BatchAdd", phraseSvc.BatchAdd)
 
 	// 创建命名管道监听器
 	pipeConfig := &winio.PipeConfig{

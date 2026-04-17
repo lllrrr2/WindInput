@@ -203,6 +203,13 @@ func (c *Client) DictRemoveTemp(schemaID, code, text string) error {
 }
 
 // DictClearTemp 清空临时词库
+// DictClearUserWords 清空指定方案的用户词库
+func (c *Client) DictClearUserWords(schemaID string) (int, error) {
+	var reply DictClearUserWordsReply
+	err := c.call("Dict.ClearUserWords", &DictClearUserWordsArgs{SchemaID: schemaID}, &reply)
+	return reply.Count, err
+}
+
 func (c *Client) DictClearTemp(schemaID string) (int, error) {
 	var reply DictClearTempReply
 	err := c.call("Dict.ClearTemp", &DictClearTempArgs{
@@ -339,6 +346,12 @@ func (c *Client) SystemDeleteSchema(schemaID string) error {
 	}, &reply)
 }
 
+// SystemShutdown 请求服务优雅关闭（保存数据后退出）
+func (c *Client) SystemShutdown() error {
+	var reply SystemShutdownReply
+	return c.call("System.Shutdown", &Empty{}, &reply)
+}
+
 // ── Phrase 方法 ──
 
 // PhraseList 获取所有短语
@@ -399,6 +412,36 @@ func (c *Client) FreqClear(schemaID string) (int, error) {
 func (c *Client) SystemListSchemas() (*ListSchemasReply, error) {
 	var reply ListSchemasReply
 	err := c.call("System.ListSchemas", &Empty{}, &reply)
+	return &reply, err
+}
+
+// ── 导入导出扩展方法 ──
+
+// DictBatchEncode 批量反向编码（词语 → 编码）
+func (c *Client) DictBatchEncode(schemaID string, words []string) (*BatchEncodeReply, error) {
+	var reply BatchEncodeReply
+	err := c.call("Dict.BatchEncode", &BatchEncodeArgs{SchemaID: schemaID, Words: words}, &reply)
+	return &reply, err
+}
+
+// FreqBatchPut 批量写入词频数据
+func (c *Client) FreqBatchPut(schemaID string, entries []FreqPutEntry) (*FreqBatchPutReply, error) {
+	var reply FreqBatchPutReply
+	err := c.call("Dict.FreqBatchPut", &FreqBatchPutArgs{SchemaID: schemaID, Entries: entries}, &reply)
+	return &reply, err
+}
+
+// ShadowBatchSet 批量写入 Shadow 规则
+func (c *Client) ShadowBatchSet(schemaID string, pins []ShadowPinItem, deletes []ShadowDelItem) (*ShadowBatchSetReply, error) {
+	var reply ShadowBatchSetReply
+	err := c.call("Shadow.BatchSet", &ShadowBatchSetArgs{SchemaID: schemaID, Pins: pins, Deletes: deletes}, &reply)
+	return &reply, err
+}
+
+// PhraseBatchAdd 批量添加短语
+func (c *Client) PhraseBatchAdd(phrases []PhraseAddArgs) (*PhraseBatchAddReply, error) {
+	var reply PhraseBatchAddReply
+	err := c.call("Phrase.BatchAdd", &PhraseBatchAddArgs{Phrases: phrases}, &reply)
 	return &reply, err
 }
 

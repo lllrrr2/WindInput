@@ -20,6 +20,8 @@ import (
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
 	"github.com/huanfeng/wind_input/pkg/config"
+	"github.com/huanfeng/wind_input/pkg/encoding"
+	"github.com/huanfeng/wind_input/pkg/rpcapi"
 )
 
 var mutexName = "Global\\WindInput" + buildvariant.Suffix() + "IMEService"
@@ -35,6 +37,40 @@ func (a *statusAdapter) GetEngineType() string { return a.coord.GetCurrentEngine
 func (a *statusAdapter) IsChineseMode() bool   { return a.coord.GetChineseMode() }
 func (a *statusAdapter) IsFullWidth() bool     { return a.coord.GetFullWidth() }
 func (a *statusAdapter) IsChinesePunct() bool  { return a.coord.GetChinesePunctuation() }
+
+// batchEncoderAdapter 适配 engine.Manager 为 rpc.BatchEncoder 接口
+type batchEncoderAdapter struct {
+	engineMgr *engine.Manager
+}
+
+func (a *batchEncoderAdapter) BatchEncode(words []string) []rpcapi.EncodeResultItem {
+	reverseIndex := a.engineMgr.GetReverseIndex()
+	schemaRules := a.engineMgr.GetEncoderRules()
+
+	encRules := make([]encoding.SchemaEncoderRule, len(schemaRules))
+	for i, sr := range schemaRules {
+		encRules[i] = encoding.SchemaEncoderRule{
+			LengthEqual:   sr.LengthEqual,
+			LengthInRange: sr.LengthInRange,
+			Formula:       sr.Formula,
+		}
+	}
+	rules := encoding.ConvertSchemaRules(encRules)
+
+	encoder := encoding.NewReverseEncoder(reverseIndex, rules)
+	results := encoder.EncodeBatch(words)
+
+	items := make([]rpcapi.EncodeResultItem, len(results))
+	for i, r := range results {
+		items[i] = rpcapi.EncodeResultItem{
+			Word:   r.Word,
+			Code:   r.Code,
+			Status: string(r.Status),
+			Error:  r.Error,
+		}
+	}
+	return items
+}
 
 // showErrorMessageBox 显示错误弹框（MB_ICONERROR）
 func showErrorMessageBox(message string) {
@@ -360,6 +396,7 @@ func main() {
 	rpcServer := imrpc.NewServer(logger, dictManager, dictManager.GetStore())
 	rpcServer.SetConfigReloader(coordinator.NewReloadHandler(coord, cfg, schemaMgr, engineMgr, dictManager, logger))
 	rpcServer.SetStatusProvider(&statusAdapter{coord: coord, dm: dictManager})
+	rpcServer.SetBatchEncoder(&batchEncoderAdapter{engineMgr: engineMgr})
 	defer rpcServer.Stop()
 	rpcServer.StartAsync()
 

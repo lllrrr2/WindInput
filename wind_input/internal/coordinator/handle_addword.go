@@ -195,43 +195,21 @@ func (c *Coordinator) calcWordCodeForCurrentSchema(word string) string {
 		return ""
 	}
 
-	// 为每个字查找全码（优先取最长的编码，通常是 4 码全码）
-	charCodes := make(map[string]string)
-	for _, ch := range word {
-		charStr := string(ch)
-		if _, ok := charCodes[charStr]; ok {
-			continue
-		}
-		codes, found := reverseIndex[charStr]
-		if !found || len(codes) == 0 {
-			c.logger.Debug("addword: no code found for char", "char", charStr)
-			return ""
-		}
-		// 取最长的编码（全码）
-		best := codes[0]
-		for _, code := range codes {
-			if len(code) > len(best) {
-				best = code
-			}
-		}
-		charCodes[charStr] = best
-	}
-
-	// 转换 schema.EncoderRule → encoding.Rule
-	rules := make([]encoding.Rule, len(schemaRules))
+	// 转换 schema.EncoderRule → encoding.SchemaEncoderRule → encoding.Rule
+	encRules := make([]encoding.SchemaEncoderRule, len(schemaRules))
 	for i, sr := range schemaRules {
-		rules[i] = encoding.Rule{
-			LengthEqual: sr.LengthEqual,
-			Formula:     sr.Formula,
-		}
-		if len(sr.LengthInRange) == 2 {
-			rules[i].LengthRange = [2]int{sr.LengthInRange[0], sr.LengthInRange[1]}
+		encRules[i] = encoding.SchemaEncoderRule{
+			LengthEqual:   sr.LengthEqual,
+			LengthInRange: sr.LengthInRange,
+			Formula:       sr.Formula,
 		}
 	}
+	rules := encoding.ConvertSchemaRules(encRules)
 
-	code, err := encoding.CalcWordCode(word, charCodes, rules)
+	encoder := encoding.NewReverseEncoder(reverseIndex, rules)
+	code, err := encoder.Encode(word)
 	if err != nil {
-		c.logger.Debug("addword: CalcWordCode failed", "word", word, "error", err)
+		c.logger.Debug("addword: encode failed", "word", word, "error", err)
 		return ""
 	}
 	return code

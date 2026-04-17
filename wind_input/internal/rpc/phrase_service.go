@@ -196,3 +196,41 @@ func (p *PhraseService) ResetDefaults(args *rpcapi.Empty, reply *rpcapi.Empty) e
 	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: "phrase", Action: "reset"})
 	return nil
 }
+
+// BatchAdd 批量添加短语
+func (p *PhraseService) BatchAdd(args *rpcapi.PhraseBatchAddArgs, reply *rpcapi.PhraseBatchAddReply) error {
+	count := 0
+	for _, a := range args.Phrases {
+		if a.Code == "" || (a.Text == "" && a.Texts == "") {
+			continue
+		}
+		pType := a.Type
+		if pType == "" {
+			pType = "static"
+		}
+		pos := a.Position
+		if pos <= 0 {
+			pos = 1
+		}
+		rec := store.PhraseRecord{
+			Code:     a.Code,
+			Text:     a.Text,
+			Texts:    a.Texts,
+			Name:     a.Name,
+			Type:     pType,
+			Position: pos,
+			Enabled:  true,
+		}
+		if err := p.store.AddPhrase(rec); err != nil {
+			p.logger.Warn("PhraseBatchAdd: add failed", "code", a.Code, "error", err)
+			continue
+		}
+		count++
+	}
+	reply.Count = count
+	if count > 0 {
+		p.reloadPhrases()
+		p.broadcaster.Broadcast(rpcapi.EventMessage{Type: "phrase", Action: "batch_add"})
+	}
+	return nil
+}
