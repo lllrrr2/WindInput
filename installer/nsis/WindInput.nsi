@@ -51,6 +51,11 @@ Var hBackupToDesktop
 !error "Missing file: ${BUILD_DIR}\wind_setting.exe. Run build_all.ps1 -WailsMode release first."
 !endif
 
+!if /FileExists "${BUILD_DIR}\wind_portable.exe"
+!else
+!error "Missing file: ${BUILD_DIR}\wind_portable.exe. Run build_all.ps1 first."
+!endif
+
 !if /FileExists "${BUILD_DIR}\data\schemas\pinyin\cn_dicts\8105.dict.yaml"
 !else
 !error "Missing file: ${BUILD_DIR}\data\schemas\pinyin\cn_dicts\8105.dict.yaml. Run build_all.ps1 first."
@@ -311,6 +316,8 @@ Section "Install"
   DetailPrint "正在停止旧进程..."
   nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_setting.exe >nul 2>&1'
   Pop $0 ; discard nsExec exit code
+  nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_portable.exe >nul 2>&1'
+  Pop $0 ; discard nsExec exit code
   nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_input.exe >nul 2>&1'
   Pop $0 ; discard nsExec exit code
   Sleep 1000
@@ -335,6 +342,7 @@ install_unreg_done:
   File "${BUILD_DIR}\wind_tsf_x86.dll"
   File "${BUILD_DIR}\wind_input.exe"
   File "${BUILD_DIR}\wind_setting.exe"
+  File "${BUILD_DIR}\wind_portable.exe"
   IfErrors 0 install_stage_ok
     IfSilent +2 0
     MessageBox MB_ICONSTOP|MB_OK "解压文件失败。"
@@ -405,6 +413,20 @@ install_input_done:
     Abort
 install_setting_done:
 
+  ; -- wind_portable.exe --
+  DetailPrint "正在安装 wind_portable.exe..."
+  Push "$INSTDIR\wind_portable.exe"
+  Push "$INSTDIR\wind_portable.exe.old"
+  Call BackupIfLocked
+  ClearErrors
+  CopyFiles /SILENT "$PLUGINSDIR\stage\wind_portable.exe" "$INSTDIR\wind_portable.exe"
+  IfErrors 0 install_portable_done
+    IfSilent +2 0
+    MessageBox MB_ICONSTOP|MB_OK "安装 wind_portable.exe 失败。"
+    SetErrorLevel 3
+    Abort
+install_portable_done:
+
   ; --- Step 4b: Grant read/execute to ALL APPLICATION PACKAGES for TSF DLLs ---
   DetailPrint "正在设置现代宿主 DLL 权限..."
   nsExec::ExecToLog 'cmd /c icacls "$INSTDIR\wind_tsf.dll" /grant *S-1-15-2-1:^(RX^) /c'
@@ -418,6 +440,7 @@ install_setting_done:
   Delete "$PLUGINSDIR\stage\wind_tsf_x86.dll"
   Delete "$PLUGINSDIR\stage\wind_input.exe"
   Delete "$PLUGINSDIR\stage\wind_setting.exe"
+  Delete "$PLUGINSDIR\stage\wind_portable.exe"
   RMDir "$PLUGINSDIR\stage"
   ; Schedule reboot deletion for any .old_* / .bak files that can't be deleted now
   FindFirst $0 $1 "$INSTDIR\*.old_*"
@@ -543,6 +566,8 @@ Section "Uninstall"
   DetailPrint "正在停止进程..."
   nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_setting.exe >nul 2>&1'
   Pop $0 ; discard nsExec exit code
+  nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_portable.exe >nul 2>&1'
+  Pop $0 ; discard nsExec exit code
   nsExec::ExecToLog 'cmd /c taskkill /F /IM wind_input.exe >nul 2>&1'
   Pop $0 ; discard nsExec exit code
   Sleep 1000
@@ -596,6 +621,13 @@ uninst_input_done:
     Delete /REBOOTOK "$INSTDIR\wind_setting.exe"
     SetRebootFlag true
 uninst_setting_done:
+  Push "$INSTDIR\wind_portable.exe"
+  Push "$INSTDIR\wind_portable.exe.old"
+  Call un.BackupIfLocked
+  IfErrors 0 uninst_portable_done
+    Delete /REBOOTOK "$INSTDIR\wind_portable.exe"
+    SetRebootFlag true
+uninst_portable_done:
 
   ; --- Step 4: Remove remaining files and directories ---
   Delete /REBOOTOK "$INSTDIR\uninstall.exe"

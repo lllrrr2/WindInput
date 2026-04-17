@@ -10,8 +10,10 @@ if ($DebugVariant) {
     $DllNameX86 = "wind_tsf_debug_x86.dll"
     $ExeName = "wind_input_debug.exe"
     $SettingName = "wind_setting_debug.exe"
+    $PortableName = "wind_portable_debug.exe"
     $ServiceProcessName = "wind_input_debug"
     $SettingProcessName = "wind_setting_debug"
+    $PortableProcessName = "wind_portable_debug"
     $RunKeyName = "WindInputDebug"
     $ShortcutName = "清风输入法 Debug 设置"
     $DisplayName = "清风输入法 (Debug)"
@@ -22,8 +24,10 @@ if ($DebugVariant) {
     $DllNameX86 = "wind_tsf_x86.dll"
     $ExeName = "wind_input.exe"
     $SettingName = "wind_setting.exe"
+    $PortableName = "wind_portable.exe"
     $ServiceProcessName = "wind_input"
     $SettingProcessName = "wind_setting"
+    $PortableProcessName = "wind_portable"
     $RunKeyName = "WindInput"
     $ShortcutName = "清风输入法 设置"
     $DisplayName = "清风输入法"
@@ -40,6 +44,7 @@ Write-Host ""
 # [1/8] 停止服务
 Write-Host "[1/8] 停止服务..."
 Get-Process -Name $SettingProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name $PortableProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-Process -Name $ServiceProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 

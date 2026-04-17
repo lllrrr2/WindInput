@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("all", "dll", "service", "setting")]
+    [ValidateSet("all", "dll", "service", "setting", "portable")]
     [string[]]$Module = @("all"),
 
     [ValidateSet("debug", "release", "skip")]
@@ -22,6 +22,7 @@ $BuildAll = $Module -contains "all"
 $BuildService = $BuildAll -or ($Module -contains "service")
 $BuildDll = $BuildAll -or ($Module -contains "dll")
 $BuildSetting = $BuildAll -or ($Module -contains "setting")
+$BuildPortable = $BuildAll -or ($Module -contains "portable")
 
 Write-Host "======================================"
 Write-Host "WindInput - Build"
@@ -65,9 +66,9 @@ Write-Host "版本: $AppVersion (构建号: $AppVersionNum)"
 # 步进计数器
 $script:StepIdx = 0
 if ($BuildAll) {
-    $script:TotalSteps = 6
+    $script:TotalSteps = 7
 } else {
-    $script:TotalSteps = (@($BuildService, $BuildDll, $BuildSetting) | Where-Object { $_ }).Count
+    $script:TotalSteps = (@($BuildService, $BuildDll, $BuildSetting, $BuildPortable) | Where-Object { $_ }).Count
 }
 
 function Write-Step([string]$Message) {
@@ -80,6 +81,7 @@ if (-not $BuildAll) {
     if ($BuildDll) { $moduleNames += "TSF DLL" }
     if ($BuildService) { $moduleNames += "GO 服务" }
     if ($BuildSetting) { $moduleNames += "设置" }
+    if ($BuildPortable) { $moduleNames += "便携启动器" }
     Write-Host "构建模块: $($moduleNames -join ', ')"
 }
 Write-Host ""
@@ -292,6 +294,38 @@ function Build-SettingUI {
     Write-Host ""
 }
 
+function Build-PortableLauncher {
+    $portableDstName = if ($DebugVariant) { "wind_portable_debug.exe" } else { "wind_portable.exe" }
+    Write-Step "构建便携启动器($portableDstName)..."
+
+    Push-Location (Join-Path $ScriptDir "wind_portable")
+    try {
+        if (Get-Command go-winres -ErrorAction SilentlyContinue) {
+            & go-winres make --in winres\winres.json --product-version "$AppVersion" --file-version "$AppVersionNum"
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[警告] go-winres 生成便携启动器资源失败，继续构建（无版本信息）" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "[警告] go-winres 未安装，跳过便携启动器资源生成" -ForegroundColor Yellow
+        }
+
+        $portableLdflags = "-s -w -H windowsgui -X main.version=$AppVersion"
+        if ($DebugVariant) {
+            $portableLdflags += " -X github.com/huanfeng/wind_input/pkg/buildvariant.variant=debug"
+        }
+        & go build -ldflags $portableLdflags -o (Join-Path $BuildDir $portableDstName) .
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[错误] 便携启动器构建失败" -ForegroundColor Red
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+
+    Write-Host "便携启动器构建成功"
+    Write-Host ""
+}
+
 function Download-RemoteFile {
     param([string]$BaseUrl, [string]$FileName, [string]$TargetDir, [string]$Description)
     $targetPath = Join-Path $TargetDir $FileName
@@ -499,6 +533,7 @@ function Prepare-DataFiles {
 if ($BuildService) { Build-GoService }
 if ($BuildDll) { Build-CppDll }
 if ($BuildSetting) { Build-SettingUI }
+if ($BuildPortable) { Build-PortableLauncher }
 if ($BuildAll) {
     Download-Dictionaries
     Prepare-DataFiles
@@ -513,11 +548,13 @@ $dllLabel = if ($DebugVariant) { "wind_tsf_debug.dll" } else { "wind_tsf.dll" }
 $dllX86Label = if ($DebugVariant) { "wind_tsf_debug_x86.dll" } else { "wind_tsf_x86.dll" }
 $exeLabel = if ($DebugVariant) { "wind_input_debug.exe" } else { "wind_input.exe" }
 $settingLabel = if ($DebugVariant) { "wind_setting_debug.exe" } else { "wind_setting.exe" }
+$portableLabel = if ($DebugVariant) { "wind_portable_debug.exe" } else { "wind_portable.exe" }
 
 $checkFiles = @()
 if ($BuildDll) { $checkFiles += $dllLabel, $dllX86Label }
 if ($BuildService) { $checkFiles += $exeLabel }
 if ($BuildSetting -and $WailsMode -ne "skip") { $checkFiles += $settingLabel }
+if ($BuildPortable) { $checkFiles += $portableLabel }
 
 foreach ($f in $checkFiles) {
     if (-not (Test-Path (Join-Path $BuildDir $f))) {
@@ -575,6 +612,7 @@ Write-Host "  .\build_all.ps1 -WailsMode skip                (全量构建, 跳�
 Write-Host "  .\build_all.ps1 -Module dll                    (仅构建 TSF DLL)"
 Write-Host "  .\build_all.ps1 -Module service                (仅构建 GO 服务)"
 Write-Host "  .\build_all.ps1 -Module setting                (仅构建设置界面)"
+Write-Host "  .\build_all.ps1 -Module portable               (仅构建便携启动器)"
 Write-Host "  .\build_all.ps1 -Module dll,service            (构建 DLL + 服务)"
 Write-Host "  .\build_all.ps1 -DebugVariant                  (调试版变体)"
 exit 0

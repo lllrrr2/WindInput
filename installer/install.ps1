@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("all", "dll", "service", "setting")]
+    [ValidateSet("all", "dll", "service", "setting", "portable")]
     [string[]]$Module = @("all"),
 
     [switch]$DebugVariant
@@ -16,8 +16,10 @@ if ($DebugVariant) {
     $DllNameX86 = "wind_tsf_debug_x86.dll"
     $ExeName = "wind_input_debug.exe"
     $SettingName = "wind_setting_debug.exe"
+    $PortableName = "wind_portable_debug.exe"
     $ServiceProcessName = "wind_input_debug"
     $SettingProcessName = "wind_setting_debug"
+    $PortableProcessName = "wind_portable_debug"
     $RunKeyName = "WindInputDebug"
     $ShortcutFolder = "清风输入法 Debug"
     $ShortcutName = "清风输入法 Debug 设置"
@@ -30,8 +32,10 @@ if ($DebugVariant) {
     $DllNameX86 = "wind_tsf_x86.dll"
     $ExeName = "wind_input.exe"
     $SettingName = "wind_setting.exe"
+    $PortableName = "wind_portable.exe"
     $ServiceProcessName = "wind_input"
     $SettingProcessName = "wind_setting"
+    $PortableProcessName = "wind_portable"
     $RunKeyName = "WindInput"
     $ShortcutFolder = "清风输入法"
     $ShortcutName = "清风输入法 设置"
@@ -47,6 +51,7 @@ $DeployAll = $Module -contains "all"
 $DeployDll = $DeployAll -or ($Module -contains "dll")
 $DeployService = $DeployAll -or ($Module -contains "service")
 $DeploySetting = $DeployAll -or ($Module -contains "setting")
+$DeployPortable = $DeployAll -or ($Module -contains "portable")
 
 $RandomSuffix = Get-Random -Maximum 99999999
 
@@ -91,6 +96,7 @@ if (-not $DeployAll) {
     if ($DeployDll) { $moduleNames += "TSF DLL" }
     if ($DeployService) { $moduleNames += "GO 服务" }
     if ($DeploySetting) { $moduleNames += "设置" }
+    if ($DeployPortable) { $moduleNames += "便携启动器" }
 
     Write-Host "======================================"
     Write-Host "$DisplayName 模块部署"
@@ -215,6 +221,33 @@ if (-not $DeployAll) {
         Write-Host ""
     }
 
+    # --- 部署便携启动器 ---
+    if ($DeployPortable) {
+        Write-Host "=== 部署便携启动器 ==="
+
+        # 检查构建产物
+        $portableExe = Join-Path $BuildDir $PortableName
+        if (-not (Test-Path $portableExe)) {
+            Write-Host "[错误] 未找到 $PortableName，请先构建" -ForegroundColor Red
+            exit 1
+        }
+
+        # 停止旧进程
+        Write-Host "  - 停止旧便携启动器..."
+        Get-Process -Name $PortableProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+
+        # 删除旧文件
+        Remove-OldFile -FilePath (Join-Path $InstallDir $PortableName) -FileName $PortableName
+
+        # 复制新文件
+        Write-Host "  - 复制新文件..."
+        Copy-Item -Path $portableExe -Destination $InstallDir -Force
+
+        Write-Host "[完成] 便携启动器部署成功" -ForegroundColor Green
+        Write-Host ""
+    }
+
     # 清理备份文件
     Get-ChildItem -Path $InstallDir -Filter "*.old_*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     Get-ChildItem -Path $InstallDir -Filter "*.bak" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
@@ -248,6 +281,7 @@ foreach ($f in $requiredFiles) {
 # [2/12] 停止旧进程
 Write-Host "[2/12] 停止旧进程..."
 Get-Process -Name $SettingProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name $PortableProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-Process -Name $ServiceProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 
@@ -269,6 +303,7 @@ Remove-OldFile -FilePath $x86DllPath -FileName $DllNameX86
 Remove-OldFile -FilePath (Join-Path $InstallDir "wind_dwrite.dll") -FileName "wind_dwrite.dll"  # 清理旧版本遗留
 Remove-OldFile -FilePath (Join-Path $InstallDir $ExeName) -FileName $ExeName
 Remove-OldFile -FilePath (Join-Path $InstallDir $SettingName) -FileName $SettingName
+Remove-OldFile -FilePath (Join-Path $InstallDir $PortableName) -FileName $PortableName
 
 # [5/12] 复制文件
 Write-Host "[5/12] 复制文件..."
@@ -282,6 +317,14 @@ if (Test-Path $settingExe) {
     Write-Host "  - $SettingName 已复制"
 } else {
     Write-Host "[提示] 未找到 $SettingName,已跳过(可选)" -ForegroundColor Cyan
+}
+
+$portableExe = Join-Path $BuildDir $PortableName
+if (Test-Path $portableExe) {
+    Copy-Item -Path $portableExe -Destination $InstallDir -Force
+    Write-Host "  - $PortableName 已复制"
+} else {
+    Write-Host "[提示] 未找到 $PortableName,已跳过(可选)" -ForegroundColor Cyan
 }
 
 # 为现代宿主（开始菜单 / 搜索等 AppContainer 进程）授予 TSF DLL 读取执行权限
@@ -488,6 +531,7 @@ Write-Host "- $DllName (TSF 桥接 x64)"
 Write-Host "- $DllNameX86 (TSF 桥接 x86)"
 Write-Host "- $ExeName (输入法服务)"
 Write-Host "- $SettingName (设置界面)"
+Write-Host "- $PortableName (便携启动器)"
 Write-Host "- data\schemas\*.schema.yaml (输入方案配置)"
 Write-Host "- data\schemas\pinyin\rime_ice.dict.yaml (拼音词库入口)"
 Write-Host "- data\schemas\pinyin\cn_dicts\*.dict.yaml (拼音词库数据)"

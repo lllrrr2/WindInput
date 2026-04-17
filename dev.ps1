@@ -96,6 +96,124 @@ function Do-DeployModuleDebugVariant {
     if ($LASTEXITCODE -ne 0) { exit 1 }
 }
 
+# ============ 便携模式部署 ============
+
+$PortableDir = "D:\Software\WindInputPortable"
+$PortableDebugDir = "D:\Software\WindInputPortableDebug"
+
+function Portable-ReplaceFile {
+    param([string]$TargetDir, [string]$FileName, [string]$SrcPath)
+    $dstPath = Join-Path $TargetDir $FileName
+    if (-not (Test-Path $dstPath)) {
+        Copy-Item -Path $SrcPath -Destination $dstPath -Force
+        Write-Host "  - $FileName"
+        return
+    }
+    try {
+        Copy-Item -Path $SrcPath -Destination $dstPath -Force -ErrorAction Stop
+        Write-Host "  - $FileName"
+        return
+    } catch { }
+    $randomSuffix = Get-Random -Maximum 99999999
+    $oldName = "${FileName}.old_${randomSuffix}"
+    try {
+        Rename-Item -Path $dstPath -NewName $oldName -Force -ErrorAction Stop
+        Copy-Item -Path $SrcPath -Destination $dstPath -Force
+        Write-Host "  - $FileName (旧文件已重命名为 $oldName)"
+    } catch {
+        Write-Host "  [错误] 无法替换 ${FileName}: $_" -ForegroundColor Red
+    }
+}
+
+function Do-PortableDeploy {
+    param([string]$TargetDir, [string]$BuildDir, [string]$PortableExe, [string]$ServiceExe, [string]$SettingExe)
+
+    Write-Host "======================================"
+    Write-Host "便携模式部署"
+    Write-Host "目标目录: $TargetDir"
+    Write-Host "======================================"
+    Write-Host ""
+
+    $portableProcName = [System.IO.Path]::GetFileNameWithoutExtension($PortableExe)
+    $serviceProcName = [System.IO.Path]::GetFileNameWithoutExtension($ServiceExe)
+    $settingProcName = [System.IO.Path]::GetFileNameWithoutExtension($SettingExe)
+
+    # 通过启动器优雅停止服务（注销 + 关闭）
+    Write-Host "[1/5] 停止旧服务..."
+    $oldPortable = Join-Path $TargetDir $PortableExe
+    if (Test-Path $oldPortable) {
+        Write-Host "  - 通过启动器停止服务..."
+        & $oldPortable -stop 2>&1 | ForEach-Object { Write-Host "    $_" }
+        Start-Sleep -Milliseconds 500
+    }
+
+    # 强制清理残留进程
+    Write-Host "[2/5] 清理残留进程..."
+    Get-Process -Name $settingProcName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process -Name $portableProcName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process -Name $serviceProcName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+
+    # 创建目录
+    Write-Host "[3/5] 准备目录..."
+    if (-not (Test-Path $TargetDir)) { New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null }
+
+    # 复制文件（处理被占用的 DLL/EXE）
+    Write-Host "[4/5] 复制文件..."
+    foreach ($name in @($PortableExe, $ServiceExe, $SettingExe)) {
+        $src = Join-Path $BuildDir $name
+        if (Test-Path $src) {
+            Portable-ReplaceFile -TargetDir $TargetDir -FileName $name -SrcPath $src
+        } else {
+            Write-Host "  [警告] 未找到 $name" -ForegroundColor Yellow
+        }
+    }
+
+    foreach ($dll in (Get-ChildItem -Path $BuildDir -Filter "wind_tsf*.dll" -ErrorAction SilentlyContinue)) {
+        Portable-ReplaceFile -TargetDir $TargetDir -FileName $dll.Name -SrcPath $dll.FullName
+    }
+
+    # 复制 data 目录
+    $dataDir = Join-Path $BuildDir "data"
+    if (Test-Path $dataDir) {
+        $targetDataDir = Join-Path $TargetDir "data"
+        if (Test-Path $targetDataDir) { Remove-Item -Path $targetDataDir -Recurse -Force -ErrorAction SilentlyContinue }
+        Copy-Item -Path $dataDir -Destination $TargetDir -Recurse -Force
+        Write-Host "  - data\ (词库、方案、主题)"
+    }
+
+    # 清理旧备份文件
+    Get-ChildItem -Path $TargetDir -Filter "*.old_*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+
+    # 启动便携启动器
+    Write-Host "[5/5] 启动便携启动器..."
+    $newPortable = Join-Path $TargetDir $PortableExe
+    if (Test-Path $newPortable) {
+        Start-Process -FilePath $newPortable
+        Write-Host "  - 已启动 $PortableExe"
+    }
+
+    Write-Host ""
+    Write-Host "======================================"
+    Write-Host "便携模式部署完成！"
+    Write-Host "目录: $TargetDir"
+    Write-Host "======================================"
+}
+
+function Do-BuildAndDeployPortable {
+    Do-BuildRelease
+    $BuildDir = Join-Path $ScriptDir "build"
+    Do-PortableDeploy -TargetDir $PortableDir -BuildDir $BuildDir `
+        -PortableExe "wind_portable.exe" -ServiceExe "wind_input.exe" -SettingExe "wind_setting.exe"
+}
+
+function Do-BuildAndDeployPortableDebug {
+    Do-BuildReleaseDebugVariant
+    $BuildDir = Join-Path $ScriptDir "build_debug"
+    Do-PortableDeploy -TargetDir $PortableDebugDir -BuildDir $BuildDir `
+        -PortableExe "wind_portable_debug.exe" -ServiceExe "wind_input_debug.exe" -SettingExe "wind_setting_debug.exe"
+}
+
 # ============ 交互式菜单 ============
 
 if (-not $Choice) {
@@ -118,10 +236,16 @@ if (-not $Choice) {
     Write-Host "  m1.   [TSF DLL]          构建 + 部署"
     Write-Host "  m2.   [GO 服务]          构建 + 部署"
     Write-Host "  m3.   [设置]             构建 + 部署"
+    Write-Host "  m4.   [便携启动器]       构建 + 部署"
     Write-Host "  m12.  [TSF DLL+GO 服务]  构建 + 部署"
     Write-Host "  m13.  [TSF DLL+设置]     构建 + 部署"
     Write-Host "  m23.  [GO 服务+设置]     构建 + 部署"
     Write-Host "  m123. [全部模块]         构建 + 部署"
+    Write-Host "  m1234.[全部+便携]        构建 + 部署"
+    Write-Host ""
+    Write-Host "  --- 便携模式 ---"
+    Write-Host "  p1. 构建(Release) + 部署便携版  -> $PortableDir"
+    Write-Host "  p2. 构建(Release) + 部署调试便携版 -> $PortableDebugDir"
     Write-Host ""
     Write-Host "  --- 调试版 ---"
     Write-Host "  d1. 卸载 / 构建(Release) / 安装"
@@ -136,10 +260,12 @@ if (-not $Choice) {
     Write-Host "  dm1.   [TSF DLL]          构建 + 部署"
     Write-Host "  dm2.   [GO 服务]          构建 + 部署"
     Write-Host "  dm3.   [设置]             构建 + 部署"
+    Write-Host "  dm4.   [便携启动器]       构建 + 部署"
     Write-Host "  dm12.  [TSF DLL+GO 服务]  构建 + 部署"
     Write-Host "  dm13.  [TSF DLL+设置]     构建 + 部署"
     Write-Host "  dm23.  [GO 服务+设置]     构建 + 部署"
     Write-Host "  dm123. [全部模块]         构建 + 部署"
+    Write-Host "  dm1234.[全部+便携]        构建 + 部署"
     Write-Host ""
     $Choice = Read-Host "请选择"
     if (-not $Choice) { exit 1 }
@@ -157,16 +283,21 @@ switch ($Choice) {
     "8"  { Do-BuildInstaller }
     "9"  { Do-BuildInstallerSkip }
     # 模块快速部署（正式版）
-    { $_ -match '^m[123]+$' } {
+    { $_ -match '^m[1234]+$' } {
         Ensure-Admin
         $digits = $_ -replace '^m', ''
         $modules = @()
         if ($digits -match '1') { $modules += "dll" }
         if ($digits -match '2') { $modules += "service" }
         if ($digits -match '3') { $modules += "setting" }
+        if ($digits -match '4') { $modules += "portable" }
         Do-BuildModule -Modules $modules
         Do-DeployModule -Modules $modules
     }
+
+    # 便携模式
+    "p1" { Do-BuildAndDeployPortable }
+    "p2" { Do-BuildAndDeployPortableDebug }
 
     # 调试版
     "d1" { Ensure-Admin; Do-UninstallDebugVariant; Do-BuildReleaseDebugVariant; Do-InstallDebugVariant }
@@ -178,13 +309,14 @@ switch ($Choice) {
     "d7" { Ensure-Admin; Do-UninstallDebugVariant; Do-InstallDebugVariant }
 
     # 模块快速部署（调试版）
-    { $_ -match '^dm[123]+$' } {
+    { $_ -match '^dm[1234]+$' } {
         Ensure-Admin
         $digits = $_ -replace '^dm', ''
         $modules = @()
         if ($digits -match '1') { $modules += "dll" }
         if ($digits -match '2') { $modules += "service" }
         if ($digits -match '3') { $modules += "setting" }
+        if ($digits -match '4') { $modules += "portable" }
         Do-BuildModuleDebugVariant -Modules $modules
         Do-DeployModuleDebugVariant -Modules $modules
     }
