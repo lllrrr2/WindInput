@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/huanfeng/wind_input/internal/coordinator"
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/pkg/config"
@@ -160,6 +161,14 @@ func (s *SystemService) DeleteSchema(args *rpcapi.SystemResetDBArgs, reply *rpca
 	}
 
 	reply.Success = true
+	return nil
+}
+
+// Shutdown 请求服务优雅关闭
+func (s *SystemService) Shutdown(args *rpcapi.Empty, reply *rpcapi.SystemShutdownReply) error {
+	s.logger.Info("RPC System.Shutdown: graceful shutdown requested")
+	reply.OK = true
+	go coordinator.RequestExit()
 	return nil
 }
 
