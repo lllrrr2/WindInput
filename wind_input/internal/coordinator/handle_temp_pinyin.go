@@ -40,7 +40,19 @@ func (c *Coordinator) getTempPinyinTriggerKey(key string, keyCode int) string {
 			}
 		case "z":
 			// z 键触发：仅在无候选时触发，z 同时作为拼音首字母
+			// 当 z 键重复上屏也启用时，z 先进入正常输入流程显示重复候选，
+			// 后续字母键再切入临时拼音（兼容模式）
 			if key == "z" && len(c.candidates) == 0 {
+				if c.engineMgr != nil && c.engineMgr.IsZKeyRepeatEnabled() {
+					// 有历史记录可重复时，让 z 走正常输入流程显示重复候选
+					if c.inputHistory != nil {
+						records := c.inputHistory.GetRecentRecords(1, 0)
+						if len(records) > 0 && records[0].Text != "" {
+							return ""
+						}
+					}
+					// 无历史记录，直接触发临时拼音
+				}
 				return "z"
 			}
 		}
@@ -148,6 +160,58 @@ func (c *Coordinator) exitTempPinyinMode(commit bool, text string) *bridge.KeyEv
 	c.tempPinyinCommitted = ""
 
 	return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
+}
+
+// isZKeyHybridMode 检查是否处于 Z 键混合模式（重复上屏 + 临时拼音同时启用）
+func (c *Coordinator) isZKeyHybridMode() bool {
+	if c.engineMgr == nil || !c.engineMgr.IsZKeyRepeatEnabled() {
+		return false
+	}
+	if c.config == nil {
+		return false
+	}
+	for _, tk := range c.config.Input.TempPinyin.TriggerKeys {
+		if tk == "z" {
+			return true
+		}
+	}
+	return false
+}
+
+// enterTempPinyinFromZHybrid 从 Z 键混合模式切入临时拼音，initialKey 为用户按下的字母
+func (c *Coordinator) enterTempPinyinFromZHybrid(initialKey string) *bridge.KeyEventResult {
+	// 清除当前 z 的输入状态
+	c.clearState()
+	c.hideUI()
+
+	// 进入临时拼音模式
+	if c.engineMgr != nil {
+		if err := c.engineMgr.EnsurePinyinLoaded(); err != nil {
+			c.logger.Warn("Failed to load pinyin engine for z hybrid", "error", err)
+			return nil
+		}
+		c.engineMgr.ActivateTempPinyin()
+	}
+
+	c.tempPinyinMode = true
+	c.tempPinyinTriggerKey = "z"
+	c.tempPinyinBuffer = initialKey
+	c.tempPinyinCommitted = ""
+
+	c.logger.Debug("Entered temp pinyin from z hybrid mode", "initialKey", initialKey)
+
+	// 更新拼音候选并显示 UI
+	ops := c.tempPinyinOps()
+	c.updatePinyinModeCandidates(ops)
+	c.showPinyinModeUI(ops)
+
+	prefix := c.tempPinyinPrefix()
+	preedit := prefix + initialKey
+	return &bridge.KeyEventResult{
+		Type:     bridge.ResponseTypeUpdateComposition,
+		Text:     preedit,
+		CaretPos: len(preedit),
+	}
 }
 
 // tempPinyinOps 创建临时拼音模式的操作回调

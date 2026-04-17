@@ -180,7 +180,13 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 				Index:  1,
 				Weight: 999999999, // 确保排在最前
 			}
-			c.candidates = append([]ui.Candidate{repeatCand}, c.candidates...)
+			// Z键混合模式（重复+临时拼音同时启用）：只显示重复候选，
+			// 后续字母键切入临时拼音，与快捷输入模式行为一致
+			if c.isZKeyHybridMode() {
+				c.candidates = []ui.Candidate{repeatCand}
+			} else {
+				c.candidates = append([]ui.Candidate{repeatCand}, c.candidates...)
+			}
 			// 重新编号
 			for i := range c.candidates {
 				c.candidates[i].Index = i + 1
