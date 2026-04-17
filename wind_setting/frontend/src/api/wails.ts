@@ -398,10 +398,30 @@ export async function getEnabledSchemasWithDictStats(): Promise<
   return App.GetEnabledSchemasWithDictStats() as unknown as SchemaDictStatsItem[];
 }
 
+export async function clearUserDictForSchema(
+  schemaID: string,
+): Promise<number> {
+  return App.ClearUserDictForSchema(schemaID);
+}
+
 export async function getUserDictBySchema(
   schemaID: string,
 ): Promise<UserWordItem[]> {
   return App.GetUserDictBySchema(schemaID);
+}
+
+export interface PagedDictResult {
+  words: UserWordItem[];
+  total: number;
+}
+
+export async function getUserDictBySchemaPage(
+  schemaID: string,
+  prefix: string,
+  limit: number,
+  offset: number,
+): Promise<PagedDictResult> {
+  return App.GetUserDictBySchemaPage(schemaID, prefix, limit, offset) as unknown as PagedDictResult;
 }
 
 export async function addUserWordForSchema(
@@ -439,6 +459,132 @@ export async function exportUserDictForSchema(
   schemaID: string,
 ): Promise<ImportExportResult> {
   return App.ExportUserDictForSchema(schemaID) as unknown as ImportExportResult;
+}
+
+// ===== 词库导入导出（新版） =====
+
+export interface DictImportPreview {
+  schema_id: string;
+  schema_name: string;
+  generator: string;
+  exported_at: string;
+  sections: Record<string, number>;
+  source_file: string;
+}
+
+export interface TextListPreviewResult {
+  total: number;
+  success_count: number;
+  fail_count: number;
+  results: EncodeResultItem[];
+}
+
+export interface EncodeResultItem {
+  word: string;
+  code: string;
+  status: "ok" | "no_code" | "no_rule";
+  error?: string;
+}
+
+export interface ZipImportPreview {
+  schemas: ZipSchemaPreviewItem[];
+  has_phrases: boolean;
+  phrase_count: number;
+}
+
+export interface ZipSchemaPreviewItem {
+  schema_id: string;
+  schema_name: string;
+  sections: Record<string, number>;
+}
+
+// 导入 - 文件选择
+export async function selectImportFile(
+  format: string,
+): Promise<string> {
+  return App.SelectImportFile(format);
+}
+
+// 导入 - 预览
+export async function previewImportFile(
+  format: string,
+  filePath: string,
+): Promise<DictImportPreview> {
+  return App.PreviewImportFile(format, filePath) as unknown as DictImportPreview;
+}
+
+export async function previewTextList(
+  filePath: string,
+  schemaID: string,
+): Promise<TextListPreviewResult> {
+  return App.PreviewTextList(filePath, schemaID) as unknown as TextListPreviewResult;
+}
+
+export async function previewZipImport(
+  filePath: string,
+): Promise<ZipImportPreview> {
+  return App.PreviewZipImport(filePath) as unknown as ZipImportPreview;
+}
+
+// 导入 - 执行
+export async function executeImport(
+  filePath: string,
+  format: string,
+  schemaID: string,
+  sections: string[],
+  strategies: Record<string, string>,
+): Promise<ImportExportResult> {
+  return App.ExecuteImport(
+    filePath, format, schemaID, sections, strategies,
+  ) as unknown as ImportExportResult;
+}
+
+export async function executeTextListImport(
+  schemaID: string,
+  words: EncodeResultItem[],
+  weight: number,
+): Promise<ImportExportResult> {
+  return App.ExecuteTextListImport(
+    schemaID, words, weight,
+  ) as unknown as ImportExportResult;
+}
+
+export async function executeZipImport(
+  filePath: string,
+  selectedSchemas: string[],
+  includePhrases: boolean,
+  strategies: Record<string, string>,
+): Promise<ImportExportResult> {
+  return App.ExecuteZipImport(
+    filePath, selectedSchemas, includePhrases, strategies,
+  ) as unknown as ImportExportResult;
+}
+
+// 导出
+export async function exportSchemaData(
+  schemaID: string,
+  sections: string[],
+  schemaName: string,
+): Promise<ImportExportResult> {
+  return App.ExportSchemaData(
+    schemaID, sections, schemaName,
+  ) as unknown as ImportExportResult;
+}
+
+export async function exportPhrasesFile(
+  format: string,
+): Promise<ImportExportResult> {
+  return App.ExportPhrasesFile(format) as unknown as ImportExportResult;
+}
+
+export async function exportFullBackup(
+  schemaIDs: string[],
+  schemaNames: Record<string, string>,
+  includePhrases: boolean,
+): Promise<ImportExportResult> {
+  return App.ExportFullBackup(
+    schemaIDs, schemaNames, includePhrases,
+  ) as unknown as ImportExportResult;
 }
 
 // ===== 临时词库管理 =====

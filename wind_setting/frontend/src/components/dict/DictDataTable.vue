@@ -53,9 +53,21 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   "update:selection": [keys: Set<string>];
   "page-change": [page: number];
+  "search": [query: string];
 }>();
 
 const globalFilter = ref("");
+const searchInput = ref("");
+
+// 服务端分页模式下，搜索交给父组件处理
+function handleSearchInput(val: string) {
+  searchInput.value = val;
+  if (props.serverPagination) {
+    emit("search", val);
+  } else {
+    globalFilter.value = val;
+  }
+}
 const sorting = ref<SortingState>([]);
 const rowSelection = ref<RowSelectionState>({});
 
@@ -126,6 +138,20 @@ watch(
   },
 );
 
+const serverTotalPages = computed(() => {
+  if (!props.serverPagination) return 0;
+  return Math.ceil(props.serverPagination.total / props.serverPagination.pageSize);
+});
+
+function jumpToPage(val: string) {
+  const page = parseInt(val, 10);
+  if (isNaN(page) || !props.serverPagination) return;
+  const target = Math.max(0, Math.min(page - 1, serverTotalPages.value - 1));
+  if (target !== props.serverPagination.page) {
+    emit("page-change", target);
+  }
+}
+
 defineExpose({ table, globalFilter, clearSelection, selectedCount });
 </script>
 
@@ -143,7 +169,8 @@ defineExpose({ table, globalFilter, clearSelection, selectedCount });
 
       <Input
         v-if="searchable"
-        v-model="globalFilter"
+        :model-value="searchInput"
+        @update:model-value="handleSearchInput($event as string)"
         type="text"
         :placeholder="searchPlaceholder"
         class="w-[100px] min-w-[60px] shrink h-[var(--control-h-sm)]"
@@ -232,7 +259,7 @@ defineExpose({ table, globalFilter, clearSelection, selectedCount });
                   :colspan="columns.length"
                   class="h-24 text-center text-muted-foreground"
                 >
-                  {{ globalFilter ? searchEmptyText : emptyText }}
+                  {{ searchInput ? searchEmptyText : emptyText }}
                 </TableCell>
               </TableRow>
             </template>
@@ -246,7 +273,7 @@ defineExpose({ table, globalFilter, clearSelection, selectedCount });
       v-if="
         serverPagination && serverPagination.total > serverPagination.pageSize
       "
-      class="flex items-center justify-center gap-3 pt-2 shrink-0"
+      class="flex items-center justify-center gap-2 pt-2 shrink-0"
     >
       <Button
         variant="outline"
@@ -256,7 +283,7 @@ defineExpose({ table, globalFilter, clearSelection, selectedCount });
       >
         上一页
       </Button>
-      <span class="text-xs text-muted-foreground">
+      <span class="text-xs text-muted-foreground whitespace-nowrap">
         {{ serverPagination.page * serverPagination.pageSize + 1 }}-{{
           Math.min(
             (serverPagination.page + 1) * serverPagination.pageSize,
@@ -265,6 +292,16 @@ defineExpose({ table, globalFilter, clearSelection, selectedCount });
         }}
         / {{ serverPagination.total }}
       </span>
+      <Input
+        type="number"
+        :model-value="serverPagination.page + 1"
+        :min="1"
+        :max="serverTotalPages"
+        class="w-[52px] h-[var(--control-h-sm)] text-center text-xs"
+        @keydown.enter="jumpToPage(($event.target as HTMLInputElement).value)"
+        @blur="jumpToPage(($event.target as HTMLInputElement).value)"
+      />
+      <span class="text-xs text-muted-foreground">/ {{ serverTotalPages }}</span>
       <Button
         variant="outline"
         size="sm"

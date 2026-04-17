@@ -34,7 +34,7 @@
               v-if="showImportExport"
               variant="outline"
               size="sm"
-              @click="handleImport"
+              @click="openIeDialog('import')"
             >
               导入
             </Button>
@@ -42,7 +42,7 @@
               v-if="showImportExport"
               variant="outline"
               size="sm"
-              @click="handleExport"
+              @click="openIeDialog('export')"
             >
               导出
             </Button>
@@ -163,6 +163,20 @@
         </template>
       </div>
     </template>
+
+    <!-- 导入/导出对话框 -->
+    <ImportExportDialog
+      v-model:open="ieDialogOpen"
+      :current-schema-id="selection.schemaId"
+      :current-schema-name="selectedSchemaName"
+      :current-schema-mixed="selectedSchemaIsMixed"
+      :all-schema-ids="allSchemaIds"
+      :all-schema-names="allSchemaNames"
+      :non-mixed-schema-ids="nonMixedSchemaIds"
+      :initial-mode="selection.mode"
+      :initial-tab="ieInitialTab"
+      @imported="handleRefresh"
+    />
   </section>
 </template>
 
@@ -185,6 +199,7 @@ import UserDictPanel from "../components/dict/UserDictPanel.vue";
 import FreqPanel from "../components/dict/FreqPanel.vue";
 import TempDictPanel from "../components/dict/TempDictPanel.vue";
 import ShadowPanel from "../components/dict/ShadowPanel.vue";
+import ImportExportDialog from "../components/dict/ImportExportDialog.vue";
 
 const props = defineProps<{
   isWailsEnv: boolean;
@@ -234,12 +249,8 @@ const schemaSubTabLabel = computed(() => {
 
 // 导入导出可见性
 const showImportExport = computed(() => {
-  if (selection.value.mode === "phrases") return true;
-  if (selection.value.mode !== "schema") return false;
-  // 非混输的用户词库 tab
-  if (schemaSubTab.value === "userdict" && !selectedSchemaIsMixed.value)
-    return true;
-  return false;
+  // 所有模式都显示导入/导出按钮（具体逻辑在对话框中处理）
+  return selection.value.mode === "phrases" || selection.value.mode === "schema";
 });
 
 // ===== 面板引用 =====
@@ -248,6 +259,33 @@ const userDictPanelRef = ref<InstanceType<typeof UserDictPanel> | null>(null);
 const freqPanelRef = ref<InstanceType<typeof FreqPanel> | null>(null);
 const tempDictPanelRef = ref<InstanceType<typeof TempDictPanel> | null>(null);
 const shadowPanelRef = ref<InstanceType<typeof ShadowPanel> | null>(null);
+
+// 导入导出��话框
+const ieDialogOpen = ref(false);
+const ieInitialTab = ref<"import" | "export">("import");
+
+function openIeDialog(tab: "import" | "export") {
+  ieInitialTab.value = tab;
+  ieDialogOpen.value = true;
+}
+
+const allSchemaIds = computed(() =>
+  allSchemaStatuses.value.map((s) => s.schema_id),
+);
+const allSchemaNames = computed(() => {
+  const map: Record<string, string> = {};
+  for (const s of allSchemaStatuses.value) {
+    map[s.schema_id] = s.schema_name;
+  }
+  return map;
+});
+
+// 非混输方案 ID 列表（用于导入目标选择，词库不能导入到混输方案）
+const nonMixedSchemaIds = computed(() =>
+  allSchemaStatuses.value
+    .filter((s) => !s.is_mixed)
+    .map((s) => s.schema_id),
+);
 
 function onLoading(_loading: boolean) {}
 
@@ -315,48 +353,6 @@ async function reloadCurrentPanel() {
     case "shadow":
       shadowPanelRef.value?.loadData();
       break;
-  }
-}
-
-// ===== 导入/导出 =====
-async function handleImport() {
-  try {
-    if (selection.value.mode === "phrases") {
-      const result = await wailsApi.importPhrases();
-      if (result.cancelled) return;
-      toast(`导入成功，共 ${result.count} 条`, "success");
-      await nextTick();
-      phrasePanelRef.value?.loadData();
-    } else if (schemaSubTab.value === "userdict") {
-      const result = await wailsApi.importUserDictForSchema(
-        selection.value.schemaId,
-      );
-      if (result.cancelled) return;
-      toast(`导入成功，新增 ${result.count} 条`, "success");
-      await nextTick();
-      userDictPanelRef.value?.loadData();
-      await loadSchemaStatuses();
-    }
-  } catch (e: unknown) {
-    toast((e as Error).message || "导入失败", "error");
-  }
-}
-
-async function handleExport() {
-  try {
-    if (selection.value.mode === "phrases") {
-      const result = await wailsApi.exportPhrases();
-      if (result.cancelled) return;
-      toast(`导出成功，共 ${result.count} 条`, "success");
-    } else if (schemaSubTab.value === "userdict") {
-      const result = await wailsApi.exportUserDictForSchema(
-        selection.value.schemaId,
-      );
-      if (result.cancelled) return;
-      toast(`导出成功，共 ${result.count} 条`, "success");
-    }
-  } catch (e: unknown) {
-    toast((e as Error).message || "导出失败", "error");
   }
 }
 

@@ -446,6 +446,28 @@ export namespace main {
 	        this.schema_id = source["schema_id"];
 	    }
 	}
+	export class DictImportPreview {
+	    schema_id: string;
+	    schema_name: string;
+	    generator: string;
+	    exported_at: string;
+	    sections: Record<string, number>;
+	    source_file: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DictImportPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schema_id = source["schema_id"];
+	        this.schema_name = source["schema_name"];
+	        this.generator = source["generator"];
+	        this.exported_at = source["exported_at"];
+	        this.sections = source["sections"];
+	        this.source_file = source["source_file"];
+	    }
+	}
 	export class FileChangeStatus {
 	    config_changed: boolean;
 	    phrases_changed: boolean;
@@ -545,6 +567,56 @@ export namespace main {
 		}
 	}
 	
+	export class UserWordItem {
+	    code: string;
+	    text: string;
+	    weight: number;
+	    created_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UserWordItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.text = source["text"];
+	        this.weight = source["weight"];
+	        this.created_at = source["created_at"];
+	    }
+	}
+	export class PagedDictResult {
+	    words: UserWordItem[];
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PagedDictResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.words = this.convertValues(source["words"], UserWordItem);
+	        this.total = source["total"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PhraseItem {
 	    code: string;
 	    text?: string;
@@ -571,26 +643,6 @@ export namespace main {
 	        this.is_system = source["is_system"];
 	    }
 	}
-	export class SchemaConfigAutoLearn {
-	    enabled: boolean;
-	    count_threshold?: number;
-	    min_word_length?: number;
-	    weight_delta?: number;
-	    add_weight?: number;
-
-	    static createFrom(source: any = {}) {
-	        return new SchemaConfigAutoLearn(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.enabled = source["enabled"];
-	        this.count_threshold = source["count_threshold"];
-	        this.min_word_length = source["min_word_length"];
-	        this.weight_delta = source["weight_delta"];
-	        this.add_weight = source["add_weight"];
-	    }
-	}
 	export class SchemaConfigFreq {
 	    enabled: boolean;
 	    protect_top_n?: number;
@@ -600,11 +652,11 @@ export namespace main {
 	    base_scale?: number;
 	    streak_scale?: number;
 	    streak_cap?: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SchemaConfigFreq(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
@@ -617,6 +669,26 @@ export namespace main {
 	        this.streak_cap = source["streak_cap"];
 	    }
 	}
+	export class SchemaConfigAutoLearn {
+	    enabled: boolean;
+	    count_threshold?: number;
+	    min_word_length?: number;
+	    weight_delta?: number;
+	    add_weight?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SchemaConfigAutoLearn(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.count_threshold = source["count_threshold"];
+	        this.min_word_length = source["min_word_length"];
+	        this.weight_delta = source["weight_delta"];
+	        this.add_weight = source["add_weight"];
+	    }
+	}
 	export class SchemaConfigLearning {
 	    auto_learn?: SchemaConfigAutoLearn;
 	    freq?: SchemaConfigFreq;
@@ -624,20 +696,38 @@ export namespace main {
 	    unigram_path?: string;
 	    temp_max_entries?: number;
 	    temp_promote_count?: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SchemaConfigLearning(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.auto_learn = source["auto_learn"] ? SchemaConfigAutoLearn.createFrom(source["auto_learn"]) : undefined;
-	        this.freq = source["freq"] ? SchemaConfigFreq.createFrom(source["freq"]) : undefined;
+	        this.auto_learn = this.convertValues(source["auto_learn"], SchemaConfigAutoLearn);
+	        this.freq = this.convertValues(source["freq"], SchemaConfigFreq);
 	        this.protect_top_n = source["protect_top_n"];
 	        this.unigram_path = source["unigram_path"];
 	        this.temp_max_entries = source["temp_max_entries"];
 	        this.temp_promote_count = source["temp_promote_count"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SchemaConfigDict {
 	    id: string;
@@ -741,6 +831,8 @@ export namespace main {
 		    return a;
 		}
 	}
+	
+	
 	
 	
 	
@@ -885,6 +977,42 @@ export namespace main {
 	        this.count = source["count"];
 	    }
 	}
+	export class TextListPreviewResult {
+	    total: number;
+	    success_count: number;
+	    fail_count: number;
+	    results: rpcapi.EncodeResultItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TextListPreviewResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.success_count = source["success_count"];
+	        this.fail_count = source["fail_count"];
+	        this.results = this.convertValues(source["results"], rpcapi.EncodeResultItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ThemeInfo {
 	    name: string;
 	    display_name: string;
@@ -909,29 +1037,80 @@ export namespace main {
 	        this.has_variants = source["has_variants"];
 	    }
 	}
-	export class UserWordItem {
-	    code: string;
-	    text: string;
-	    weight: number;
-	    created_at: string;
+	
+	export class ZipSchemaPreviewItem {
+	    schema_id: string;
+	    schema_name: string;
+	    sections: Record<string, number>;
 	
 	    static createFrom(source: any = {}) {
-	        return new UserWordItem(source);
+	        return new ZipSchemaPreviewItem(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.code = source["code"];
-	        this.text = source["text"];
-	        this.weight = source["weight"];
-	        this.created_at = source["created_at"];
+	        this.schema_id = source["schema_id"];
+	        this.schema_name = source["schema_name"];
+	        this.sections = source["sections"];
 	    }
+	}
+	export class ZipImportPreview {
+	    schemas: ZipSchemaPreviewItem[];
+	    has_phrases: boolean;
+	    phrase_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ZipImportPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.schemas = this.convertValues(source["schemas"], ZipSchemaPreviewItem);
+	        this.has_phrases = source["has_phrases"];
+	        this.phrase_count = source["phrase_count"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
 
 export namespace rpcapi {
 	
+	export class EncodeResultItem {
+	    word: string;
+	    code: string;
+	    status: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EncodeResultItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.word = source["word"];
+	        this.code = source["code"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
 	export class SystemStatusReply {
 	    running: boolean;
 	    schema_id: string;
