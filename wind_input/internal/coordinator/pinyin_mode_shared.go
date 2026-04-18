@@ -226,7 +226,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 		return ops.exitMode(false, "")
 
 	default:
-		// 其他按键（标点等）：有候选时先检查以词定字键，否则选首候选+标点
+		// 其他按键（标点等）：有候选时先检查以词定字键，否则选当前高亮候选+标点
 		if len(c.candidates) > 0 {
 			if data.Modifiers&ModShift == 0 && c.isSelectCharFirstKey(key, data.KeyCode) {
 				return c.selectPinyinModeChar(ops, 0)
@@ -235,7 +235,11 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 				return c.selectPinyinModeChar(ops, 1)
 			}
 			pageStart := (c.currentPage - 1) * c.candidatesPerPage
-			cand := c.candidates[pageStart]
+			absIdx := pageStart + c.selectedIndex
+			if absIdx >= len(c.candidates) {
+				absIdx = pageStart
+			}
+			cand := c.candidates[absIdx]
 			text := cand.Text
 			if c.fullWidth {
 				text = transform.ToFullWidth(text)

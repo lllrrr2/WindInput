@@ -172,9 +172,9 @@ func (c *Coordinator) handleQuickInputKey(key string, data *bridge.KeyEventData)
 	case vk == ipc.VK_ESCAPE:
 		return c.exitQuickInputMode(false, "")
 
-	// === 导航键（仅按 VK 码，不使用配置化的翻页/高亮键） ===
+	// === 导航键（使用与正常模式一致的配置键） ===
 
-	case vk == ipc.VK_PRIOR: // PageUp
+	case c.isPageUpKey(key, int(vk), uint32(data.Modifiers)):
 		if c.currentPage > 1 {
 			c.currentPage--
 			c.selectedIndex = 0
@@ -182,7 +182,7 @@ func (c *Coordinator) handleQuickInputKey(key string, data *bridge.KeyEventData)
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	case vk == ipc.VK_NEXT: // PageDown
+	case c.isPageDownKey(key, int(vk), uint32(data.Modifiers)):
 		if c.currentPage < c.totalPages {
 			c.currentPage++
 			c.selectedIndex = 0
@@ -190,7 +190,7 @@ func (c *Coordinator) handleQuickInputKey(key string, data *bridge.KeyEventData)
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	case vk == ipc.VK_UP:
+	case c.isHighlightUpKey(vk, uint32(data.Modifiers)):
 		if len(c.candidates) > 0 {
 			if c.selectedIndex > 0 {
 				c.selectedIndex--
@@ -208,7 +208,7 @@ func (c *Coordinator) handleQuickInputKey(key string, data *bridge.KeyEventData)
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	case vk == ipc.VK_DOWN:
+	case c.isHighlightDownKey(vk, uint32(data.Modifiers)):
 		if len(c.candidates) > 0 {
 			startIdx := (c.currentPage - 1) * c.candidatesPerPage
 			endIdx := startIdx + c.candidatesPerPage

@@ -423,31 +423,28 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 		return nil
 	}
 
-	// 其他按键（如标点）：上屏缓冲内容，然后处理按键
+	// 其他按键（如标点）：上屏当前高亮候选+标点
 	if len(c.tempEnglishBuffer) > 0 {
+		// 取当前高亮候选（与空格上屏逻辑一致）
 		text := c.tempEnglishBuffer
+		if len(c.candidates) > 0 {
+			pageStart := (c.currentPage - 1) * c.candidatesPerPage
+			absIdx := pageStart + c.selectedIndex
+			if absIdx < len(c.candidates) {
+				text = c.candidates[absIdx].Text
+			}
+		}
 		if c.fullWidth {
 			text = transform.ToFullWidth(text)
 		}
-		c.tempEnglishMode = false
-		c.tempEnglishBuffer = ""
-		c.tempEnglishCursorPos = 0
-		c.tempEnglishCandidates = nil
-		c.candidates = nil
-		c.hideUI()
+		punctText := ""
 		if len(key) == 1 && c.isPunctuation(rune(key[0])) {
 			punctResult := c.handlePunctuation(rune(key[0]), false, 0)
 			if punctResult != nil {
-				return &bridge.KeyEventResult{
-					Type: bridge.ResponseTypeInsertText,
-					Text: text + punctResult.Text,
-				}
+				punctText = punctResult.Text
 			}
 		}
-		return &bridge.KeyEventResult{
-			Type: bridge.ResponseTypeInsertText,
-			Text: text,
-		}
+		return c.exitTempEnglishMode(true, text+punctText)
 	}
 
 	c.exitTempEnglishMode(false, "")
