@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
+	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/hotkey"
 	"github.com/huanfeng/wind_input/internal/transform"
@@ -115,12 +116,13 @@ type caretState struct {
 
 // tempModeState 临时输入模式（临时英文/临时拼音）状态
 type tempModeState struct {
-	tempEnglishMode      bool   // 是否处于临时英文模式
-	tempEnglishBuffer    string // 临时英文缓冲区
-	tempPinyinMode       bool   // 是否处于临时拼音模式
-	tempPinyinBuffer     string // 临时拼音输入缓冲区
-	tempPinyinCommitted  string // 临时拼音部分上屏累积文本
-	tempPinyinTriggerKey string // 临时拼音触发键类型（"backtick"/"semicolon"/"z"）
+	tempEnglishMode       bool                  // 是否处于临时英文模式
+	tempEnglishBuffer     string                // 临时英文缓冲区
+	tempEnglishCandidates []candidate.Candidate // 临时英文模式的英文候选列表
+	tempPinyinMode        bool                  // 是否处于临时拼音模式
+	tempPinyinBuffer      string                // 临时拼音输入缓冲区
+	tempPinyinCommitted   string                // 临时拼音部分上屏累积文本
+	tempPinyinTriggerKey  string                // 临时拼音触发键类型（"backtick"/"semicolon"/"z"）
 }
 
 // addWordState 快捷加词模式状态
@@ -304,6 +306,13 @@ func (c *Coordinator) getIconLabelNoLock() string {
 		return "A"
 	}
 	return "英"
+}
+
+// BuildCurrentStatus returns the current status for external callers (e.g., initial state push).
+func (c *Coordinator) BuildCurrentStatus() *bridge.StatusUpdateData {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buildStatusUpdate()
 }
 
 // buildStatusUpdate creates a StatusUpdateData from current state (caller must hold lock)

@@ -268,6 +268,23 @@ func main() {
 	dict.InitCommonCharsWithPath(commonCharsPath)
 	logger.Info("Common chars table initialized", "path", commonCharsPath, "count", dict.GetCommonCharCount())
 
+	// Early bridge server startup: create named pipe BEFORE heavy initialization.
+	// On first install, wdb generation can take seconds. Without early pipe startup,
+	// any TSF client (e.g., Notepad) would block in OnSetFocus waiting for the pipe.
+	// DeferredHandler returns safe defaults (PassThrough keys, "…" icon) until ready.
+	deferredHandler := bridge.NewDeferredHandler(logger)
+	bridgeServer := bridge.NewServer(deferredHandler, logger)
+	hostRenderMgr := bridge.NewHostRenderManager(logger, cfg.Advanced.HostRenderProcesses)
+	bridgeServer.SetHostRenderManager(hostRenderMgr)
+
+	go func() {
+		logger.Info("Starting Bridge IPC server (early)...")
+		if err := bridgeServer.Start(); err != nil {
+			logger.Error("Bridge server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
 	// Create engine manager
 	engineMgr := engine.NewManager(logger)
 	engineMgr.SetExeDir(dataRoot)
@@ -400,15 +417,15 @@ func main() {
 	defer rpcServer.Stop()
 	rpcServer.StartAsync()
 
-	// Create Bridge IPC server (connects to C++)
-	bridgeServer := bridge.NewServer(coord, logger)
-
-	// Create host render manager for Band window proxy rendering (Start Menu etc.)
-	hostRenderMgr := bridge.NewHostRenderManager(logger, cfg.Advanced.HostRenderProcesses)
-	bridgeServer.SetHostRenderManager(hostRenderMgr)
-
-	// Set bridge server on coordinator for state broadcasting
+	// Wire up coordinator to bridge server and mark service as ready.
+	// From this point on, DeferredHandler delegates all requests to the real coordinator.
 	coord.SetBridgeServer(bridgeServer)
+	deferredHandler.SetReady(coord)
+	logger.Info("Service initialization complete, bridge handler is now ready")
+
+	// Push current state to any TSF clients that connected during initialization.
+	// Without this, clients would show "…" until the next focus change.
+	bridgeServer.PushStateToAllClients(coord.BuildCurrentStatus())
 
 	// Listen for exit requests in a separate goroutine
 	go func() {
@@ -457,10 +474,6 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// Start Bridge server (blocks main thread)
-	logger.Info("Starting Bridge IPC server...")
-	if err := bridgeServer.Start(); err != nil {
-		logger.Error("Bridge server failed", "error", err)
-		os.Exit(1)
-	}
+	// Block main thread forever (exit/restart goroutines handle shutdown via os.Exit)
+	select {}
 }
