@@ -403,10 +403,32 @@ func (dm *DictManager) PinWord(code, word string, position int) {
 	}
 }
 
-// DeleteWord 删除（隐藏）词条
+// DeleteWord 删除词条。
+// 若词条存在于系统词库，则通过 Shadow 隐藏；
+// 若词条仅存在于用户/临时词库，则直接删除源记录（不污染 Shadow）。
 func (dm *DictManager) DeleteWord(code, word string) {
-	if dm.activeStoreShadow != nil {
-		dm.activeStoreShadow.Delete(code, word)
+	if dm.ExistsInSystemDict(code, word) {
+		// 系统词库中存在：只能通过 Shadow 隐藏
+		if dm.activeStoreShadow != nil {
+			dm.activeStoreShadow.Delete(code, word)
+		}
+		return
+	}
+
+	// 非系统词：直接从用户/临时词库删除
+	deleted := false
+	if dm.activeStoreUser != nil {
+		if err := dm.activeStoreUser.Remove(code, word); err == nil {
+			deleted = true
+		}
+	}
+	if dm.activeStoreTemp != nil {
+		if err := dm.activeStoreTemp.Remove(code, word); err == nil {
+			deleted = true
+		}
+	}
+	if deleted {
+		dm.logger.Debug("直接删除用户/临时词条", "code", code, "word", word)
 	}
 }
 

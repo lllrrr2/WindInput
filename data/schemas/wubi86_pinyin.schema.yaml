@@ -25,7 +25,7 @@ learning:
   auto_learn:
     enabled: false
   freq:
-    enabled: true
+    enabled: false
     protect_top_n: 1
   temp_max_entries: 5000
   temp_promote_count: 3

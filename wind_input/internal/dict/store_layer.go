@@ -180,6 +180,11 @@ func (l *StoreTempLayer) SearchPrefix(prefix string, limit int) []candidate.Cand
 	return userRecordsToCandidates(recs, "", limit)
 }
 
+// Remove 删除临时词条。
+func (l *StoreTempLayer) Remove(code string, text string) error {
+	return l.store.RemoveTempWord(l.schemaID, strings.ToLower(code), text)
+}
+
 // LearnWord 学习新词。返回 true 表示词条已达到晋升条件。
 func (l *StoreTempLayer) LearnWord(code, text string, weightDelta int) bool {
 	code = strings.ToLower(code)
