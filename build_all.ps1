@@ -100,9 +100,25 @@ function Build-GoService {
         # 生成版本资源文件 (.syso)
         Push-Location "cmd/service"
         if (Get-Command go-winres -ErrorAction SilentlyContinue) {
+            # Debug 版本修改 winres.json 中的描述信息
+            $winresJsonPath = "winres\winres.json"
+            if ($DebugVariant -and (Test-Path $winresJsonPath)) {
+                $winresJson = Get-Content $winresJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $winresJson.RT_MANIFEST.'#1'.'0409'.description = "清风输入法开发版服务"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.CompanyName = "清风输入法开发版"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.FileDescription = "清风输入法开发版服务进程"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.ProductName = "清风输入法开发版"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.LegalCopyright = "Copyright © 2026 清风输入法开发版"
+                $jsonText = $winresJson | ConvertTo-Json -Depth 10
+                [System.IO.File]::WriteAllText((Resolve-Path $winresJsonPath).Path, $jsonText, (New-Object System.Text.UTF8Encoding $false))
+            }
             & go-winres make --product-version "$AppVersion" --file-version "$AppVersionNum"
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[警告] go-winres 生成资源失败，继续构建（无版本信息）" -ForegroundColor Yellow
+            }
+            # 还原 winres.json
+            if ($DebugVariant -and (Test-Path $winresJsonPath)) {
+                & git checkout -- $winresJsonPath 2>$null
             }
         } else {
             Write-Host "[警告] go-winres 未安装，跳过版本资源生成" -ForegroundColor Yellow
@@ -239,7 +255,7 @@ function Build-SettingUI {
     $wailsJsonPath = Join-Path $ScriptDir "wind_setting\wails.json"
     if (Test-Path $wailsJsonPath) {
         $wailsJson = Get-Content $wailsJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $productDisplayName = if ($DebugVariant) { "清风输入法 Debug 设置" } else { "清风输入法 设置" }
+        $productDisplayName = if ($DebugVariant) { "清风输入法开发版 设置" } else { "清风输入法 设置" }
         if (-not $wailsJson.info) {
             $wailsJson | Add-Member -NotePropertyName "info" -NotePropertyValue ([PSCustomObject]@{
                 companyName = "清风输入法"
@@ -301,9 +317,25 @@ function Build-PortableLauncher {
     Push-Location (Join-Path $ScriptDir "wind_portable")
     try {
         if (Get-Command go-winres -ErrorAction SilentlyContinue) {
+            # Debug 版本修改 winres.json 中的描述信息
+            $winresJsonPath = "winres\winres.json"
+            if ($DebugVariant -and (Test-Path $winresJsonPath)) {
+                $winresJson = Get-Content $winresJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $winresJson.RT_MANIFEST.'#1'.'0409'.description = "清风输入法开发版便携启动器"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.CompanyName = "清风输入法开发版"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.FileDescription = "清风输入法开发版便携启动器"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.ProductName = "清风输入法开发版便携启动器"
+                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.LegalCopyright = "Copyright © 2026 清风输入法开发版"
+                $jsonText = $winresJson | ConvertTo-Json -Depth 10
+                [System.IO.File]::WriteAllText((Resolve-Path $winresJsonPath).Path, $jsonText, (New-Object System.Text.UTF8Encoding $false))
+            }
             & go-winres make --in winres\winres.json --product-version "$AppVersion" --file-version "$AppVersionNum"
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[警告] go-winres 生成便携启动器资源失败，继续构建（无版本信息）" -ForegroundColor Yellow
+            }
+            # 还原 winres.json
+            if ($DebugVariant -and (Test-Path $winresJsonPath)) {
+                & git checkout -- $winresJsonPath 2>$null
             }
         } else {
             Write-Host "[警告] go-winres 未安装，跳过便携启动器资源生成" -ForegroundColor Yellow

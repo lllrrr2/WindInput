@@ -28,7 +28,7 @@ func AppName() string {
 
 func DisplayName() string {
 	if variant == "debug" {
-		return "清风输入法 (Debug)"
+		return "清风输入法开发版"
 	}
 	return "清风输入法"
 }

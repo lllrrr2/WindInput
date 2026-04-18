@@ -681,9 +681,13 @@ uninst_cleanup_bak_end:
     RMDir /r "$LOCALAPPDATA\${APP_DIRNAME}\cache"
   ${EndIf}
 
-  ; 清理 wind_setting WebView2 缓存数据
+  ; 清理旧 wind_setting WebView2 缓存数据（位于 %APPDATA%\wind_setting.exe）
   DetailPrint "正在清理设置程序缓存..."
   RMDir /r "$APPDATA\wind_setting.exe"
+
+  ; 清理 wind_setting WebView2 缓存数据（位于 %TEMP%\wind_setting）
+  DetailPrint "正在清理设置程序缓存..."
+  RMDir /r "$TEMP\wind_setting"
 
   SetShellVarContext all
 

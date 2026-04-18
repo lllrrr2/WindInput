@@ -143,8 +143,8 @@ if (Test-Path $cacheDir) {
     Remove-Item -Path $cacheDir -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "  - 已清理词库缓存"
 }
-# 清理 wind_setting WebView2 缓存数据
-$settingCacheDir = Join-Path $env:APPDATA "$SettingProcessName.exe"
+# 清理 wind_setting WebView2 缓存数据（位于 %TEMP%\wind_setting）
+$settingCacheDir = Join-Path $env:TEMP $SettingProcessName
 if (Test-Path $settingCacheDir) {
     Remove-Item -Path $settingCacheDir -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "  - 已清理设置程序缓存"

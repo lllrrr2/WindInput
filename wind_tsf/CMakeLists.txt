@@ -30,6 +30,11 @@ endif()
 if(NOT DEFINED APP_VERSION_STR)
     set(APP_VERSION_STR "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 endif()
+if(WIND_DEBUG_VARIANT)
+    set(APP_DISPLAY_NAME "清风输入法开发版")
+else()
+    set(APP_DISPLAY_NAME "清风输入法")
+endif()
 
 # 从模板生成版本资源文件
 configure_file(

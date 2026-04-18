@@ -3,8 +3,10 @@ package main
 import (
 	"embed"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/huanfeng/wind_input/pkg/buildvariant"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -119,7 +121,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:     "清风输入法 设置",
+		Title:     buildvariant.DisplayName() + " 设置",
 		Width:     winWidth,
 		Height:    winHeight,
 		MinWidth:  minWidth,
@@ -137,6 +139,7 @@ func main() {
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
+			WebviewUserDataPath:  filepath.Join(os.TempDir(), "wind_setting"),
 		},
 	})
 
