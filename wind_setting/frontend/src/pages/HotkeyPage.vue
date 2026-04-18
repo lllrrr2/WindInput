@@ -252,176 +252,6 @@
       </div>
     </div>
 
-    <!-- 拼音辅助 -->
-    <div class="settings-card">
-      <div class="card-title">拼音辅助</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>拼音分隔符</label>
-          <p class="setting-hint">
-            拼音模式下用于消歧的分隔符，如输入 xi'an 得到「西安」
-          </p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.pinyin_separator"
-            @update:model-value="formData.input.pinyin_separator = $event"
-          >
-            <SelectTrigger class="w-[280px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto"
-                >自动（' 被选择键占用时改用 `）</SelectItem
-              >
-              <SelectItem value="quote">' 单引号</SelectItem>
-              <SelectItem value="backtick">` 反引号</SelectItem>
-              <SelectItem value="none">不使用</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>临时拼音触发键</label>
-          <p class="setting-hint">码表模式下按触发键临时切换拼音输入</p>
-        </div>
-        <div
-          class="setting-control"
-          style="flex-direction: column; align-items: flex-start"
-        >
-          <div class="checkbox-group">
-            <label
-              class="checkbox-item"
-              v-for="tk in [
-                { value: 'backtick', label: '` 反引号' },
-                { value: 'semicolon', label: '; 分号' },
-              ]"
-              :key="tk.value"
-            >
-              <input
-                type="checkbox"
-                :checked="
-                  formData.input.temp_pinyin.trigger_keys.includes(tk.value)
-                "
-                @change="
-                  toggleArrayValue(
-                    formData.input.temp_pinyin.trigger_keys,
-                    tk.value,
-                  )
-                "
-              />
-              <span>{{ tk.label }}</span>
-            </label>
-          </div>
-          <div style="margin-top: 4px">
-            <div class="checkbox-group">
-              <label class="checkbox-item">
-                <input
-                  type="checkbox"
-                  :checked="
-                    formData.input.temp_pinyin.trigger_keys.includes('z')
-                  "
-                  @change="
-                    toggleArrayValue(
-                      formData.input.temp_pinyin.trigger_keys,
-                      'z',
-                    )
-                  "
-                />
-                <span>z 键</span>
-              </label>
-            </div>
-            <p
-              v-if="formData.input.temp_pinyin.trigger_keys.includes('z')"
-              class="setting-hint warning-hint"
-            >
-              z 开头的编码将无法输入
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 临时英文 -->
-    <div class="settings-card">
-      <div class="card-title">临时英文</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>Shift+字母行为</label>
-          <p class="setting-hint">中文模式下按 Shift+字母时的行为</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.shift_temp_english.shift_behavior"
-            @update:model-value="
-              formData.input.shift_temp_english.shift_behavior = $event
-            "
-          >
-            <SelectTrigger class="w-[240px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="temp_english">进入临时英文模式</SelectItem>
-              <SelectItem value="direct_commit">直接上屏大写字母</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>显示英文候选</label>
-          <p class="setting-hint">临时英文模式下查询英文词库显示候选词</p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.input.shift_temp_english.show_english_candidates"
-            @update:checked="
-              formData.input.shift_temp_english.show_english_candidates = $event
-            "
-          />
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>临时英文触发键</label>
-          <p class="setting-hint">按触发键进入临时英文模式（输入全小写字母）</p>
-        </div>
-        <div
-          class="setting-control"
-          style="flex-direction: column; align-items: flex-start"
-        >
-          <div class="checkbox-group">
-            <label
-              class="checkbox-item"
-              v-for="tk in [
-                { value: 'backtick', label: '` 反引号' },
-                { value: 'semicolon', label: '; 分号' },
-                { value: 'slash', label: '/ 斜杠' },
-              ]"
-              :key="tk.value"
-            >
-              <input
-                type="checkbox"
-                :checked="
-                  formData.input.shift_temp_english.trigger_keys.includes(
-                    tk.value,
-                  )
-                "
-                @change="
-                  toggleArrayValue(
-                    formData.input.shift_temp_english.trigger_keys,
-                    tk.value,
-                  )
-                "
-              />
-              <span>{{ tk.label }}</span>
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- 功能快捷键 -->
     <div class="settings-card">
       <div class="card-title">功能快捷键</div>
@@ -572,21 +402,6 @@ function checkConflicts() {
     }
   }
 
-  // 临时英文触发键冲突检测
-  const tempEnglishKeys =
-    props.formData.input.shift_temp_english?.trigger_keys || [];
-  const tempPinyinKeys = props.formData.input.temp_pinyin?.trigger_keys || [];
-  const quickInputKey = props.formData.input.quick_input?.trigger_key;
-
-  for (const ek of tempEnglishKeys) {
-    if (tempPinyinKeys.includes(ek)) {
-      conflicts.push(`临时英文触发键 "${getKeyLabel(ek)}" 与临时拼音冲突`);
-    }
-    if (ek === quickInputKey) {
-      conflicts.push(`临时英文触发键 "${getKeyLabel(ek)}" 与快捷输入冲突`);
-    }
-  }
-
   emit("update:hotkeyConflicts", conflicts);
 }
 
@@ -705,7 +520,6 @@ watch(
     props.formData.input.select_key_groups,
     props.formData.input.highlight_keys,
     props.formData.input.select_char_keys,
-    props.formData.input.shift_temp_english?.trigger_keys,
   ],
   checkConflicts,
   { deep: true },
