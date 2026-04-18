@@ -486,6 +486,9 @@ install_cleanup_bak_end:
   File /nonfatal "${BUILD_DIR}\data\schemas\wubi86\wubi86_jidian_extra.dict.yaml"
   File /nonfatal "${BUILD_DIR}\data\schemas\wubi86\wubi86_jidian_extra_district.dict.yaml"
   File /nonfatal "${BUILD_DIR}\data\schemas\wubi86\wubi86_jidian_user.dict.yaml"
+  SetOutPath "$INSTDIR\data\schemas\english"
+  File /nonfatal "${BUILD_DIR}\data\schemas\english\en.dict.yaml"
+  File /nonfatal "${BUILD_DIR}\data\schemas\english\en_ext.dict.yaml"
 
   ; --- Step 6c: Default config and theme files ---
   DetailPrint "正在复制配置和主题文件..."

@@ -45,14 +45,15 @@ type EngineSpec struct {
 
 // MixedSpec 混输引擎配置
 type MixedSpec struct {
-	PrimarySchema        string `yaml:"primary_schema"`         // 主形码方案ID（如 wubi86）
-	SecondarySchema      string `yaml:"secondary_schema"`       // 拼音方案ID（如 pinyin）
-	MinPinyinLength      int    `yaml:"min_pinyin_length"`      // 拼音最小触发长度，默认2
-	CodetableWeightBoost int    `yaml:"codetable_weight_boost"` // 码表权重提升值，默认10000000
-	ShowSourceHint       bool   `yaml:"show_source_hint"`       // 是否在候选提示中显示来源标记
-	EnableAbbrevMatch    *bool  `yaml:"enable_abbrev_match"`    // 混输模式下是否启用简拼匹配（默认 false）
-	PinyinOnlyOverflow   *bool  `yaml:"pinyin_only_overflow"`   // 超过最大码长时仅查拼音（默认 true）
-	ZKeyRepeat           *bool  `yaml:"z_key_repeat,omitempty"` // Z键重复上屏：输入z时首选为上次上屏的内容
+	PrimarySchema        string `yaml:"primary_schema"`           // 主形码方案ID（如 wubi86）
+	SecondarySchema      string `yaml:"secondary_schema"`         // 拼音方案ID（如 pinyin）
+	MinPinyinLength      int    `yaml:"min_pinyin_length"`        // 拼音最小触发长度，默认2
+	CodetableWeightBoost int    `yaml:"codetable_weight_boost"`   // 码表权重提升值，默认10000000
+	ShowSourceHint       bool   `yaml:"show_source_hint"`         // 是否在候选提示中显示来源标记
+	EnableAbbrevMatch    *bool  `yaml:"enable_abbrev_match"`      // 混输模式下是否启用简拼匹配（默认 false）
+	PinyinOnlyOverflow   *bool  `yaml:"pinyin_only_overflow"`     // 超过最大码长时仅查拼音（默认 true）
+	ZKeyRepeat           *bool  `yaml:"z_key_repeat,omitempty"`   // Z键重复上屏：输入z时首选为上次上屏的内容
+	EnableEnglish        *bool  `yaml:"enable_english,omitempty"` // 混输模式下是否启用英文候选（默认 false）
 }
 
 // TempPinyinSpec 码表方案的临时拼音配置

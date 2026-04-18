@@ -123,6 +123,14 @@ export interface ToolbarConfig {
   visible: boolean;
 }
 
+// 临时英文模式配置
+export interface ShiftTempEnglishConfig {
+  enabled: boolean;
+  show_english_candidates: boolean;
+  shift_behavior: string; // "temp_english" | "direct_commit"
+  trigger_keys: string[];
+}
+
 // 临时拼音配置
 export interface TempPinyinConfig {
   trigger_keys: string[];
@@ -153,6 +161,7 @@ export interface InputConfig {
   highlight_keys: string[]; // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
   select_char_keys: string[]; // 以词定字按键: "comma_period"(,.), "minus_equal"(-=), "brackets"([])
   pinyin_separator: string; // 拼音分隔符: "auto", "quote", "backtick", "none"
+  shift_temp_english: ShiftTempEnglishConfig;
   temp_pinyin: TempPinyinConfig;
   auto_pair: AutoPairConfig;
   punct_custom: PunctCustomConfig;
@@ -428,6 +437,12 @@ export function getDefaultConfig(): Config {
       highlight_keys: ["arrows"],
       select_char_keys: [],
       pinyin_separator: "auto",
+      shift_temp_english: {
+        enabled: true,
+        show_english_candidates: true,
+        shift_behavior: "temp_english",
+        trigger_keys: [],
+      },
       temp_pinyin: {
         trigger_keys: ["backtick"],
       },

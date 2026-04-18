@@ -7,6 +7,7 @@ const (
 	SourceNone      CandidateSource = ""          // 未标记（单引擎模式）
 	SourceCodetable CandidateSource = "codetable" // 来自码表引擎
 	SourcePinyin    CandidateSource = "pinyin"    // 来自拼音引擎
+	SourceEnglish   CandidateSource = "english"   // 来自英文词库
 )
 
 // Candidate 候选词

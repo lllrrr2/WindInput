@@ -203,6 +203,10 @@ func ParsePairs(pairs []string) [][2]rune {
 type ShiftTempEnglishConfig struct {
 	Enabled               bool `yaml:"enabled" json:"enabled"`
 	ShowEnglishCandidates bool `yaml:"show_english_candidates" json:"show_english_candidates"`
+	// Shift+字母行为: "temp_english"(进入临时英文模式,默认), "direct_commit"(直接上屏大写字母)
+	ShiftBehavior string `yaml:"shift_behavior" json:"shift_behavior"`
+	// 触发键（符号键进入临时英文模式，类似临时拼音触发键）
+	TriggerKeys []string `yaml:"trigger_keys" json:"trigger_keys"`
 }
 
 // CapsLockBehaviorConfig CapsLock 行为配置
@@ -296,6 +300,8 @@ func DefaultConfig() *Config {
 			ShiftTempEnglish: ShiftTempEnglishConfig{
 				Enabled:               true,
 				ShowEnglishCandidates: true,
+				ShiftBehavior:         "temp_english",
+				TriggerKeys:           []string{},
 			},
 			CapsLockBehavior: CapsLockBehaviorConfig{
 				CancelOnModeSwitch: false,

@@ -118,6 +118,7 @@ type caretState struct {
 type tempModeState struct {
 	tempEnglishMode       bool                  // 是否处于临时英文模式
 	tempEnglishBuffer     string                // 临时英文缓冲区
+	tempEnglishCursorPos  int                   // 临时英文光标位置
 	tempEnglishCandidates []candidate.Candidate // 临时英文模式的英文候选列表
 	tempPinyinMode        bool                  // 是否处于临时拼音模式
 	tempPinyinBuffer      string                // 临时拼音输入缓冲区

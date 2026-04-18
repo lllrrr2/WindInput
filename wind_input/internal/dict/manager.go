@@ -479,6 +479,65 @@ func (dm *DictManager) GetStoreShadowLayer() *StoreShadowLayer {
 	return dm.activeStoreShadow
 }
 
+// ActivateEnglishStoreLayers 激活英文词库的 Store 层（用户词 + Shadow）
+// 英文词库使用固定 schemaID "english"，跨方案共享
+func (dm *DictManager) ActivateEnglishStoreLayers() {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+
+	if dm.store == nil {
+		return
+	}
+
+	const englishSchemaID = "english"
+
+	// 用户词库层
+	userLayer, ok := dm.storeUserLayers[englishSchemaID]
+	if !ok {
+		userLayer = NewStoreUserLayer(dm.store, englishSchemaID)
+		dm.storeUserLayers[englishSchemaID] = userLayer
+		dm.logger.Info("英文 Store 用户词库层已创建")
+	}
+	if dm.compositeDict.GetLayerByName(userLayer.Name()) == nil {
+		dm.compositeDict.AddLayer(userLayer)
+	}
+
+	// Shadow 层
+	shadowLayer, ok := dm.storeShadowLayers[englishSchemaID]
+	if !ok {
+		shadowLayer = NewStoreShadowLayer(dm.store, englishSchemaID)
+		dm.storeShadowLayers[englishSchemaID] = shadowLayer
+		dm.logger.Info("英文 Store Shadow 层已创建")
+	}
+	_ = shadowLayer
+}
+
+// DeactivateEnglishStoreLayers 停用英文词库的 Store 层
+func (dm *DictManager) DeactivateEnglishStoreLayers() {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+
+	const englishSchemaID = "english"
+
+	if userLayer, ok := dm.storeUserLayers[englishSchemaID]; ok {
+		dm.compositeDict.RemoveLayer(userLayer.Name())
+	}
+}
+
+// GetEnglishShadowLayer 获取英文 Shadow 层（供候选置顶/删除操作）
+func (dm *DictManager) GetEnglishShadowLayer() *StoreShadowLayer {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	return dm.storeShadowLayers["english"]
+}
+
+// GetEnglishUserLayer 获取英文用户词库层
+func (dm *DictManager) GetEnglishUserLayer() *StoreUserLayer {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	return dm.storeUserLayers["english"]
+}
+
 // Save 保存所有可写层
 func (dm *DictManager) Save() error {
 	// bbolt 自动持久化，无需手动保存

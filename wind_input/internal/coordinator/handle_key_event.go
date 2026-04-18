@@ -363,6 +363,11 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 		return c.enterTempPinyinMode(triggerKey)
 	}
 
+	// 检查是否应触发临时英文模式（触发键方式，Shift 时不触发）
+	if triggerKey := c.getTempEnglishTriggerKey(key, data.KeyCode); !hasShift && triggerKey != "" {
+		return c.enterTempEnglishModeWithTrigger(triggerKey)
+	}
+
 	// 检查是否应触发快捷输入模式（仅在未按 Shift 时，且临时拼音未拦截分号时）
 	if !hasShift && c.shouldTriggerQuickInput(key, data.KeyCode) {
 		return c.enterQuickInputMode()
@@ -375,8 +380,20 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 				// 已有输入缓冲时，将大写字母直接追加到输入缓冲
 				return c.handleAlphaKey(strings.ToUpper(key))
 			}
-			// 无输入缓冲时，进入临时英文模式
 			if c.config != nil && c.config.Input.ShiftTempEnglish.Enabled {
+				behavior := c.config.Input.ShiftTempEnglish.ShiftBehavior
+				if behavior == "direct_commit" {
+					// 直接上屏大写字母
+					outputKey := strings.ToUpper(key)
+					if c.fullWidth {
+						outputKey = transform.ToFullWidth(outputKey)
+					}
+					return &bridge.KeyEventResult{
+						Type: bridge.ResponseTypeInsertText,
+						Text: outputKey,
+					}
+				}
+				// 默认 "temp_english": 进入临时英文模式
 				return c.enterTempEnglishMode(key)
 			}
 		}

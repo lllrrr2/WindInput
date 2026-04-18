@@ -69,6 +69,10 @@ type Engine struct {
 	dictManager     *dict.DictManager // 词库管理器（用于 Shadow 规则访问）
 	logger          *slog.Logger
 
+	// 英文候选
+	enableEnglish   bool
+	englishSearchFn func(prefix string, limit int) []candidate.Candidate
+
 	// 编码反查：从主码表懒构建的反向索引（汉字→编码），用于给拼音候选添加主编码提示
 	reverseIndex map[string][]string
 }
@@ -215,6 +219,15 @@ func (e *Engine) convertCodetableOnly(input string, maxCandidates int) *ConvertR
 	}
 
 	candidates := codetableResult.Candidates
+
+	// 英文候选（码表模式下也可显示英文）
+	if e.enableEnglish && e.englishSearchFn != nil {
+		englishCandidates := e.englishSearchFn(input, maxCandidates)
+		for i := range englishCandidates {
+			englishCandidates[i].Source = candidate.SourceEnglish
+		}
+		candidates = append(candidates, englishCandidates...)
+	}
 
 	// 应用 Shadow 规则（置顶/删除）
 	if e.dictManager != nil {
@@ -405,6 +418,22 @@ func (e *Engine) convertMixed(input string, maxCandidates int) *ConvertResult {
 
 	wg.Wait()
 
+	// 查询英文候选
+	var englishCandidates []candidate.Candidate
+	if e.enableEnglish && e.englishSearchFn != nil {
+		englishCandidates = e.englishSearchFn(input, maxCandidates)
+		for i := range englishCandidates {
+			englishCandidates[i].Source = candidate.SourceEnglish
+			// 英文候选权重：低于码表精确匹配(+10M)，但高于拼音
+			// 精确匹配的英文词提权更多
+			if strings.ToLower(englishCandidates[i].Text) == input {
+				englishCandidates[i].Weight += e.config.CodetableWeightBoost / 2 // +5M
+			} else {
+				englishCandidates[i].Weight += 1000000 // +1M，略高于拼音降权后
+			}
+		}
+	}
+
 	// === 双向夹击权重策略 ===
 	//
 	// 码表侧（提权）：
@@ -441,10 +470,11 @@ func (e *Engine) convertMixed(input string, maxCandidates int) *ConvertResult {
 		}
 	}
 
-	// 合并：码表在前，拼音在后
-	merged := make([]candidate.Candidate, 0, len(codetableCandidates)+len(pinyinCandidates))
+	// 合并：码表在前，拼音在后，英文在最后
+	merged := make([]candidate.Candidate, 0, len(codetableCandidates)+len(pinyinCandidates)+len(englishCandidates))
 	merged = append(merged, codetableCandidates...)
 	merged = append(merged, pinyinCandidates...)
+	merged = append(merged, englishCandidates...)
 
 	// 按权重排序
 	sort.SliceStable(merged, func(i, j int) bool {
@@ -585,6 +615,12 @@ func (e *Engine) OnCandidateSelected(code, text string, source candidate.Candida
 // SetDictManager 设置词库管理器（用于 Shadow 规则访问）
 func (e *Engine) SetDictManager(dm *dict.DictManager) {
 	e.dictManager = dm
+}
+
+// SetEnglishSearch 设置英文词库查询函数
+func (e *Engine) SetEnglishSearch(fn func(prefix string, limit int) []candidate.Candidate) {
+	e.englishSearchFn = fn
+	e.enableEnglish = fn != nil
 }
 
 // --- Getter ---

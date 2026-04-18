@@ -27,8 +27,8 @@ type Manager struct {
 	// 方案管理器
 	schemaManager *schema.SchemaManager
 
-	// 可执行文件目录
-	exeDir string
+	// 数据根目录（exeDir/data）
+	dataRoot string
 
 	// 词库管理器
 	dictManager *dict.DictManager
@@ -36,6 +36,10 @@ type Manager struct {
 	// 反向索引缓存（字 → 编码列表）
 	cachedReverseIndex    map[string][]string
 	cachedReverseSchemaID string
+
+	// 英文词库
+	englishDict  *dict.EnglishDict
+	englishLayer *dict.EnglishDictLayer
 
 	// 日志
 	logger *slog.Logger
@@ -57,11 +61,11 @@ func (m *Manager) SetSchemaManager(sm *schema.SchemaManager) {
 	m.schemaManager = sm
 }
 
-// SetExeDir 设置可执行文件目录
-func (m *Manager) SetExeDir(dir string) {
+// SetDataRoot 设置数据根目录（exeDir/data）
+func (m *Manager) SetDataRoot(dir string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.exeDir = dir
+	m.dataRoot = dir
 }
 
 // SetDictManager 设置词库管理器
@@ -279,7 +283,7 @@ func (m *Manager) loadSchemaEngineLocked(schemaID string, opts ...schema.EngineC
 	if m.schemaManager != nil {
 		dataDir = m.schemaManager.GetDataDir()
 	}
-	bundle, err := schema.CreateEngineFromSchema(s, m.exeDir, dataDir, m.dictManager, m.logger, resolver, opts...)
+	bundle, err := schema.CreateEngineFromSchema(s, m.dataRoot, dataDir, m.dictManager, m.logger, resolver, opts...)
 	if err != nil {
 		return fmt.Errorf("创建方案 %q 引擎失败: %w", schemaID, err)
 	}
@@ -292,6 +296,12 @@ func (m *Manager) loadSchemaEngineLocked(schemaID string, opts ...schema.EngineC
 		m.engines[schemaID] = eng
 	case *mixed.Engine:
 		m.engines[schemaID] = eng
+		// 设置英文词库查询（如果方案启用了英文候选）
+		if s.Engine.Mixed != nil && s.Engine.Mixed.EnableEnglish != nil && *s.Engine.Mixed.EnableEnglish {
+			if err := m.EnsureEnglishLoaded(); err == nil {
+				eng.SetEnglishSearch(m.SearchEnglish)
+			}
+		}
 	default:
 		return fmt.Errorf("未知引擎类型: %T", bundle.Engine)
 	}

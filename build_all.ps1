@@ -358,6 +358,13 @@ function Download-Dictionaries {
     Download-RemoteFile "$RimeIceBaseUrl/cn_dicts" "base.dict.yaml" $RimePinyinCnDicts "基础词库, 约16MB"
     Download-RemoteFile "$RimeIceBaseUrl/cn_dicts" "tencent.dict.yaml" $RimePinyinCnDicts "腾讯词频, 约17MB"
 
+    # 英文词库 (rime-ice)
+    Write-Host "  英文词库 (rime-ice):"
+    $RimeEnglishDir = Join-Path $ScriptDir ".cache\rime\en_dicts"
+    if (-not (Test-Path $RimeEnglishDir)) { New-Item -ItemType Directory -Path $RimeEnglishDir -Force | Out-Null }
+    Download-RemoteFile "$RimeIceBaseUrl/en_dicts" "en.dict.yaml" $RimeEnglishDir "英文主词库, 约350KB"
+    Download-RemoteFile "$RimeIceBaseUrl/en_dicts" "en_ext.dict.yaml" $RimeEnglishDir "英文扩展词库, 约50KB"
+
     # 五笔词库 (rime-wubi86-jidian)
     Write-Host "  五笔词库 (rime-wubi86-jidian):"
     $RimeWubiDir = Join-Path $ScriptDir ".cache\rime-wubi"
@@ -458,6 +465,25 @@ function Prepare-DataFiles {
         Write-Host "  - 已复制五笔词库 ($wubiCopied 个文件)"
     } else {
         Write-Host "[警告] 未找到五笔词库文件" -ForegroundColor Yellow
+    }
+
+    # 复制英文词库
+    $RimeEnglishDir = Join-Path $ScriptDir ".cache\rime\en_dicts"
+    $englishDir = Join-Path $schemasDir "english"
+    if (-not (Test-Path $englishDir)) { New-Item -ItemType Directory -Path $englishDir -Force | Out-Null }
+    $englishFiles = @("en.dict.yaml", "en_ext.dict.yaml")
+    $englishCopied = 0
+    foreach ($ef in $englishFiles) {
+        $engSrc = Join-Path $RimeEnglishDir $ef
+        if (Test-Path $engSrc) {
+            Copy-Item -Path $engSrc -Destination (Join-Path $englishDir $ef) -Force
+            $englishCopied++
+        }
+    }
+    if ($englishCopied -gt 0) {
+        Write-Host "  - 已复制英文词库 ($englishCopied 个文件)"
+    } else {
+        Write-Host "[警告] 未找到英文词库文件" -ForegroundColor Yellow
     }
 
     # 复制常用字表

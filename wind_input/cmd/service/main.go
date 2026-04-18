@@ -287,7 +287,7 @@ func main() {
 
 	// Create engine manager
 	engineMgr := engine.NewManager(logger)
-	engineMgr.SetExeDir(dataRoot)
+	engineMgr.SetDataRoot(dataRoot)
 
 	// Initialize SchemaManager
 	dataDir, err := config.GetConfigDir()

@@ -313,8 +313,8 @@ func (m *Manager) loadCodetableReverseForPinyin(pinyinEngine *pinyin.Engine) {
 		}
 		for _, d := range s.GetDictsByRole(schema.DictRoleReverseLookup) {
 			rdPath := d.Path
-			if m.exeDir != "" && !isAbsPath(rdPath) {
-				rdPath = m.exeDir + "/" + rdPath
+			if m.dataRoot != "" && !isAbsPath(rdPath) {
+				rdPath = m.dataRoot + "/" + rdPath
 			}
 			if err := schema.LoadCodetableForPinyinEngine(pinyinEngine, rdPath, d.Type, info.ID, m.logger); err != nil {
 				m.logger.Warn("加载码表反查失败", "error", err)

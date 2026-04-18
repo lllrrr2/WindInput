@@ -354,7 +354,7 @@ Write-Host "[6/12] 复制数据目录(data/)..."
 $BuildDataDir = Join-Path $BuildDir "data"
 $InstallDataDir = Join-Path $InstallDir "data"
 
-$dataDirs = @("schemas", "schemas\pinyin", "schemas\pinyin\cn_dicts", "schemas\wubi86")
+$dataDirs = @("schemas", "schemas\pinyin", "schemas\pinyin\cn_dicts", "schemas\wubi86", "schemas\english")
 foreach ($d in $dataDirs) {
     $target = Join-Path $InstallDataDir $d
     if (-not (Test-Path $target)) { New-Item -ItemType Directory -Path $target -Force | Out-Null }
@@ -369,6 +369,8 @@ $dictFiles = @(
     @{ Src = "schemas\wubi86\wubi86_jidian_extra.dict.yaml"; Desc = "五笔扩展词库: wubi86_jidian_extra.dict.yaml"; Optional = $true },
     @{ Src = "schemas\wubi86\wubi86_jidian_extra_district.dict.yaml"; Desc = "五笔行政区域词库: wubi86_jidian_extra_district.dict.yaml"; Optional = $true },
     @{ Src = "schemas\wubi86\wubi86_jidian_user.dict.yaml"; Desc = "五笔用户词库模板: wubi86_jidian_user.dict.yaml"; Optional = $true },
+    @{ Src = "schemas\english\en.dict.yaml"; Desc = "英文主词库: en.dict.yaml"; Optional = $true },
+    @{ Src = "schemas\english\en_ext.dict.yaml"; Desc = "英文扩展词库: en_ext.dict.yaml"; Optional = $true },
     @{ Src = "schemas\common_chars.txt"; Desc = "常用字表: common_chars.txt" },
     @{ Src = "system.phrases.yaml"; Desc = "系统短语配置: system.phrases.yaml" }
 )
