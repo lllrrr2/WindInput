@@ -92,6 +92,32 @@ func toMap(v interface{}) (map[string]interface{}, bool) {
 }
 
 // deepEqual 深度比较两个值是否相等
+// 数值类型做归一化比较，避免 int vs float64 的误判
 func deepEqual(a, b interface{}) bool {
-	return reflect.DeepEqual(a, b)
+	if reflect.DeepEqual(a, b) {
+		return true
+	}
+	// 数值归一化：int/float64 统一转为 float64 比较
+	af, aIsNum := toFloat64(a)
+	bf, bIsNum := toFloat64(b)
+	if aIsNum && bIsNum {
+		return af == bf
+	}
+	return false
+}
+
+// toFloat64 尝试将数值转为 float64
+func toFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case float64:
+		return n, true
+	case uint64:
+		return float64(n), true
+	default:
+		return 0, false
+	}
 }
