@@ -334,6 +334,41 @@ BOOL CIPCClient::_StartService()
     }
 
     WCHAR* lastSlash = wcsrchr(dllPath, L'\\');
+
+    // Guard: check portable mode marker file for stopped flag
+    {
+        if (lastSlash)
+        {
+            WCHAR markerPath[MAX_PATH];
+            wcsncpy_s(markerPath, dllPath, (lastSlash - dllPath + 1));
+            wcscat_s(markerPath, MAX_PATH, L"wind_portable_mode");
+
+            HANDLE hFile = CreateFileW(
+                markerPath,
+                GENERIC_READ,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                nullptr,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+
+            if (hFile != INVALID_HANDLE_VALUE)
+            {
+                char buf[256] = {};
+                DWORD bytesRead = 0;
+                ReadFile(hFile, buf, sizeof(buf) - 1, &bytesRead, nullptr);
+                CloseHandle(hFile);
+                buf[bytesRead] = '\0';
+
+                if (strstr(buf, "stopped=1") != nullptr)
+                {
+                    _LogInfo(L"Portable mode stopped flag detected, not starting service");
+                    return FALSE;
+                }
+            }
+        }
+    }
+
     if (lastSlash)
     {
         wcscpy_s(lastSlash + 1, MAX_PATH - (lastSlash - dllPath + 1), L"wind_input.exe");

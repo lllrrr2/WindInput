@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -13,13 +14,59 @@ import (
 )
 
 var (
-	modInput               = windows.NewLazySystemDLL("input.dll")
-	procInstallLayoutOrTip = modInput.NewProc("InstallLayoutOrTip")
-	modShell32             = windows.NewLazySystemDLL("shell32.dll")
-	procShellExecuteW      = modShell32.NewProc("ShellExecuteW")
-	modKernel32Ext         = windows.NewLazySystemDLL("kernel32.dll")
-	procCreateMutexW       = modKernel32Ext.NewProc("CreateMutexW")
+	modInput                     = windows.NewLazySystemDLL("input.dll")
+	procInstallLayoutOrTip       = modInput.NewProc("InstallLayoutOrTip")
+	modShell32                   = windows.NewLazySystemDLL("shell32.dll")
+	procShellExecuteW            = modShell32.NewProc("ShellExecuteW")
+	modKernel32Ext               = windows.NewLazySystemDLL("kernel32.dll")
+	procCreateMutexW             = modKernel32Ext.NewProc("CreateMutexW")
+	modComdlg32                  = windows.NewLazySystemDLL("comdlg32.dll")
+	modUxTheme                   = windows.NewLazySystemDLL("uxtheme.dll")
+	procEnableThemeDialogTexture = modUxTheme.NewProc("EnableThemeDialogTexture")
 )
+
+// enableThemeDialogTexture 启用窗口的主题 Tab 页背景纹理，
+// 使子控件（Static 等）的背景与 Tab 页主题一致。
+func enableThemeDialogTexture(hwnd uintptr) {
+	const ETDT_ENABLETAB = 0x00000006 // ETDT_ENABLE | ETDT_USETABTEXTURE
+	procEnableThemeDialogTexture.Call(hwnd, ETDT_ENABLETAB)
+}
+
+// openFileDialog displays an Open File dialog and returns the selected path.
+// Uses PowerShell to invoke the .NET WinForms dialog, which is reliable on 64-bit Windows.
+// Returns empty string if the user cancels.
+func openFileDialog(owner uintptr, title string, filter string) string {
+	titleEscaped := strings.ReplaceAll(title, "'", "''")
+	// WinForms Filter 格式与 Win32 一致，使用 | 分隔，去除末尾多余的 |
+	filter = strings.TrimRight(filter, "|")
+	filterEscaped := strings.ReplaceAll(filter, "'", "''")
+
+	ps := fmt.Sprintf(`Add-Type -AssemblyName System.Windows.Forms; $d = [System.Windows.Forms.OpenFileDialog]::new(); $d.Title = '%s'; $d.Filter = '%s'; if($d.ShowDialog() -eq 'OK') { $d.FileName } else { '' }`, titleEscaped, filterEscaped)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps)
+	cmd.SysProcAttr = defaultHiddenProcessAttrs()
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// selectFolderDialog displays a folder browser dialog and returns the selected path.
+// Returns empty string if the user cancels.
+func selectFolderDialog(owner uintptr, title string) string {
+	titleEscaped := strings.ReplaceAll(title, "'", "''")
+
+	ps := fmt.Sprintf(`Add-Type -AssemblyName System.Windows.Forms; $d = [System.Windows.Forms.FolderBrowserDialog]::new(); $d.Description = '%s'; $d.ShowNewFolderButton = $true; if($d.ShowDialog() -eq 'OK') { $d.SelectedPath } else { '' }`, titleEscaped)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps)
+	cmd.SysProcAttr = defaultHiddenProcessAttrs()
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
 
 // createMutexW 创建命名互斥体，如果已存在则返回错误
 func createMutexW(name string) (uintptr, error) {

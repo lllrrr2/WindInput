@@ -68,6 +68,7 @@ func (m *launcherManager) startService() error {
 	if err := m.ensurePortableLayout(); err != nil {
 		return err
 	}
+	_ = m.clearStoppedFlag()
 	if !m.isRegistered() {
 		if err := m.registerInputMethod(); err != nil {
 			return fmt.Errorf("注册输入法失败: %w", err)
@@ -90,6 +91,7 @@ func (m *launcherManager) stopService() (bool, error) {
 	if err := m.ensurePortableAvailable("停止服务"); err != nil {
 		return false, err
 	}
+	_ = m.setStoppedFlag()
 	wasRunning := m.serviceRunning()
 	wasRegistered := m.isRegistered()
 
@@ -240,6 +242,29 @@ func detectPortableConfig() (portableConfig, error) {
 	return portableConfig{}, fmt.Errorf("未找到 %s，请先构建主服务或将 launcher 放到打包目录中", serviceName)
 }
 
+// findDeploySourceDir 查找当前可用的部署源目录（不受保护目录限制）。
+// 与 detectPortableConfig 不同，此函数仅关心是否存在可复制的文件。
+func findDeploySourceDir() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	exeDir := filepath.Dir(exePath)
+	wd, _ := os.Getwd()
+
+	for _, root := range uniquePaths([]string{exeDir, filepath.Dir(exeDir), wd, filepath.Dir(wd)}) {
+		svcExe := firstExistingPath([]string{
+			filepath.Join(root, serviceName),
+			filepath.Join(root, "build", serviceName),
+			filepath.Join(root, "build_debug", serviceName),
+		})
+		if svcExe != "" {
+			return root
+		}
+	}
+	return ""
+}
+
 func firstExistingPath(paths []string) string {
 	for _, p := range paths {
 		if p == "" {
@@ -302,4 +327,26 @@ func (m *launcherManager) ensurePortableLayout() error {
 		}
 	}
 	return nil
+}
+
+// setStoppedFlag 在 portable marker 文件中写入 stopped=1，
+// 阻止 DLL 侧自动启动服务（守卫机制）。
+func (m *launcherManager) setStoppedFlag() error {
+	return writeMarkerFile(m.cfg.PortableMarker, true)
+}
+
+// clearStoppedFlag 移除 portable marker 文件中的 stopped=1，
+// 允许 DLL 侧正常启动服务。
+func (m *launcherManager) clearStoppedFlag() error {
+	return writeMarkerFile(m.cfg.PortableMarker, false)
+}
+
+// writeMarkerFile 写入 portable marker 文件内容。
+// stopped 为 true 时写入 stopped=1 行，为 false 时仅保留基础标记。
+func writeMarkerFile(path string, stopped bool) error {
+	content := "wind_portable=1\n"
+	if stopped {
+		content += "stopped=1\n"
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
 }

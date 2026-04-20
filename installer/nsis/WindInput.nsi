@@ -30,6 +30,9 @@ Var BackupToDesktop
 Var hCleanRoaming
 Var hCleanLocal
 Var hBackupToDesktop
+Var InstallMode
+Var hStandard
+Var hPortable
 
 !if /FileExists "${BUILD_DIR}\wind_tsf.dll"
 !else
@@ -92,6 +95,7 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) WindInput Project"
 !define MUI_FINISHPAGE_TEXT "${APP_NAME} ${APP_VERSION} 已成功安装到您的计算机。$\r$\n$\r$\n点击「完成」关闭安装向导。"
 
 !insertmacro MUI_PAGE_WELCOME
+Page custom InstallModePageCreate InstallModePageLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_REBOOTLATER_DEFAULT
@@ -119,6 +123,46 @@ Function .onInit
     MessageBox MB_ICONSTOP|MB_OK "清风输入法仅支持 64 位 Windows 系统。"
     SetErrorLevel 2
     Abort
+  ${EndIf}
+FunctionEnd
+
+Function InstallModePageCreate
+  StrCpy $InstallMode "standard"
+
+  !insertmacro MUI_HEADER_TEXT "选择安装类型" "请选择安装方式"
+
+  nsDialogs::Create 1018
+  Pop $0
+
+  ${NSD_CreateLabel} 0 0 100% 24u "请选择您希望的安装方式："
+  Pop $0
+
+  ${NSD_CreateRadioButton} 12u 30u 100% 12u "标准安装（推荐）—— 注册输入法到系统，开机自动启动"
+  Pop $hStandard
+  ${NSD_SetState} $hStandard ${BST_CHECKED}
+
+  ${NSD_CreateLabel} 24u 44u 100% 12u "安装到 Program Files，注册为系统输入法，适合日常使用"
+  Pop $0
+  SetCtlColors $0 808080 transparent
+
+  ${NSD_CreateRadioButton} 12u 66u 100% 12u "便携模式 —— 仅解压文件到指定目录，不修改系统"
+  Pop $hPortable
+
+  ${NSD_CreateLabel} 24u 80u 100% 24u "适合 U 盘携带或临时使用，需通过便携启动器手动启动"
+  Pop $0
+  SetCtlColors $0 808080 transparent
+
+  nsDialogs::Show
+FunctionEnd
+
+Function InstallModePageLeave
+  ${NSD_GetState} $hPortable $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $InstallMode "portable"
+    StrCpy $INSTDIR "$DESKTOP\WindInput_Portable"
+  ${Else}
+    StrCpy $InstallMode "standard"
+    StrCpy $INSTDIR "$PROGRAMFILES64\${APP_DIRNAME}"
   ${EndIf}
 FunctionEnd
 
@@ -501,6 +545,20 @@ install_cleanup_bak_end:
   SetOutPath "$INSTDIR\data\themes\msime"
   File "${BUILD_DIR}\data\themes\msime\theme.yaml"
   SetOutPath "$INSTDIR"
+
+  ; --- Portable mode: skip registration, create marker, launch ---
+  StrCmp $InstallMode "portable" 0 install_standard_mode
+
+  DetailPrint "正在配置便携模式..."
+  FileOpen $0 "$INSTDIR\wind_portable_mode" w
+  FileWrite $0 "wind_portable=1$\n"
+  FileClose $0
+
+  DetailPrint "便携模式部署完成"
+  Exec '"$INSTDIR\wind_portable.exe"'
+  Goto install_done
+
+install_standard_mode:
 
   ; --- Step 7: Register NEW DLLs (always at original path, guaranteed new version) ---
   DetailPrint "正在注册 COM 组件..."

@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -26,6 +28,10 @@ var mutexName = "Local\\WindPortable" + buildvariant.Suffix() + "Launcher"
 
 func main() {
 	cfg, detectErr := detectPortableConfig()
+
+	if detectErr == nil {
+		cleanOldFiles(cfg.RootDir)
+	}
 
 	opts := parseCLI()
 
@@ -149,9 +155,10 @@ type launcherWindow struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	fastPoll     chan struct{} // 触发短时间快速轮询
-	cooldownUtil time.Time    // 启动冷却期截止时间
+	cooldownUtil time.Time     // 启动冷却期截止时间
 	wnd          *ui.Main
-	title      *ui.Static
+	tab          *ui.Tab
+	// 运行 Tab
 	status     *ui.Static
 	detail     *ui.Static
 	rootHint   *ui.Static
@@ -159,6 +166,11 @@ type launcherWindow struct {
 	btnStop    *ui.Button
 	btnSetting *ui.Button
 	btnData    *ui.Button
+	// 部署 Tab
+	deployHint    *ui.Static
+	btnUpdate     *ui.Button
+	btnDeployCopy *ui.Button
+	btnDeployZip  *ui.Button
 }
 
 func runMainWindow(manager *launcherManager, detectErr error) {
@@ -181,97 +193,143 @@ func runMainWindow(manager *launcherManager, detectErr error) {
 		ui.OptsMain().
 			ClassName("WindInputPortableLauncher").
 			Title(windowTitle).
-			Size(ui.Dpi(448, 210)).
-			ClassIconId(1).
-			ClassBrush(theme.bgBrush),
+			Size(ui.Dpi(470, 300)).
+			ClassIconId(1),
 	)
 
-	title := ui.NewStatic(
+	// 全页 Tab 控件（扁平风格）
+	defaultTab := 0
+	if detectErr != nil {
+		defaultTab = 1
+	}
+	tab := ui.NewTab(
 		wnd,
-		ui.OptsStatic().
-			Text("清风输入法便携启动器").
-			Position(ui.Dpi(16, 14)).
-			Size(ui.Dpi(220, 24)),
+		ui.OptsTab().
+			Titles("运行", "部署").
+			Position(ui.Dpi(4, 4)).
+			Size(ui.Dpi(446, 258)).
+			Selected(defaultTab).
+			CtrlStyle(co.TCS_HOTTRACK),
 	)
+
+	// ── 运行 Tab ──
+	runParent := tab.Item(0).Child()
 	status := ui.NewStatic(
-		wnd,
+		runParent,
 		ui.OptsStatic().
 			Text("正在检查服务状态...").
-			Position(ui.Dpi(16, 46)).
-			Size(ui.Dpi(320, 22)),
+			Position(ui.Dpi(10, 10)).
+			Size(ui.Dpi(400, 20)).
+			WndExStyle(co.WS_EX_TRANSPARENT),
 	)
 	detail := ui.NewStatic(
-		wnd,
+		runParent,
 		ui.OptsStatic().
 			Text("准备就绪").
-			Position(ui.Dpi(16, 74)).
-			Size(ui.Dpi(404, 20)),
+			Position(ui.Dpi(10, 34)).
+			Size(ui.Dpi(410, 50)).
+			WndExStyle(co.WS_EX_TRANSPARENT),
 	)
 	rootHintText := ""
 	if manager != nil {
 		rootHintText = "目录: " + compactPath(manager.cfg.RootDir)
 	}
 	rootHint := ui.NewStatic(
-		wnd,
+		runParent,
 		ui.OptsStatic().
 			Text(rootHintText).
-			Position(ui.Dpi(16, 108)).
-			Size(ui.Dpi(404, 18)),
+			Position(ui.Dpi(10, 90)).
+			Size(ui.Dpi(410, 18)).
+			WndExStyle(co.WS_EX_TRANSPARENT),
 	)
-
 	btnStart := ui.NewButton(
-		wnd,
+		runParent,
 		ui.OptsButton().
 			Text("启动服务").
-			Position(ui.Dpi(16, 146)).
-			Width(ui.DpiX(96)).
-			Height(ui.DpiY(30)).
-			CtrlStyle(co.BS_PUSHBUTTON|co.BS_FLAT),
+			Position(ui.Dpi(10, 118)).
+			Width(ui.DpiX(100)).
+			Height(ui.DpiY(32)),
 	)
 	btnStop := ui.NewButton(
-		wnd,
+		runParent,
 		ui.OptsButton().
 			Text("停止服务").
-			Position(ui.Dpi(122, 146)).
-			Width(ui.DpiX(112)).
-			Height(ui.DpiY(30)).
-			CtrlStyle(co.BS_PUSHBUTTON|co.BS_FLAT),
+			Position(ui.Dpi(120, 118)).
+			Width(ui.DpiX(100)).
+			Height(ui.DpiY(32)),
 	)
 	btnSetting := ui.NewButton(
-		wnd,
+		runParent,
 		ui.OptsButton().
 			Text("打开设置").
-			Position(ui.Dpi(244, 146)).
-			Width(ui.DpiX(92)).
-			Height(ui.DpiY(30)).
-			CtrlStyle(co.BS_PUSHBUTTON|co.BS_FLAT),
+			Position(ui.Dpi(10, 160)).
+			Width(ui.DpiX(100)).
+			Height(ui.DpiY(32)),
 	)
 	btnData := ui.NewButton(
-		wnd,
+		runParent,
 		ui.OptsButton().
 			Text("打开 userdata").
-			Position(ui.Dpi(346, 146)).
-			Width(ui.DpiX(86)).
-			Height(ui.DpiY(30)).
-			CtrlStyle(co.BS_PUSHBUTTON|co.BS_FLAT),
+			Position(ui.Dpi(120, 160)).
+			Width(ui.DpiX(120)).
+			Height(ui.DpiY(32)),
+	)
+
+	// ── 部署 Tab ──
+	deployParent := tab.Item(1).Child()
+	deployHint := ui.NewStatic(
+		deployParent,
+		ui.OptsStatic().
+			Text("更新当前安装、复制当前文件到新目录、或从 ZIP 包部署到新目录。").
+			Position(ui.Dpi(10, 10)).
+			Size(ui.Dpi(410, 36)).
+			WndExStyle(co.WS_EX_TRANSPARENT),
+	)
+	btnUpdate := ui.NewButton(
+		deployParent,
+		ui.OptsButton().
+			Text("更新当前版本").
+			Position(ui.Dpi(10, 56)).
+			Width(ui.DpiX(128)).
+			Height(ui.DpiY(32)),
+	)
+	btnDeployCopy := ui.NewButton(
+		deployParent,
+		ui.OptsButton().
+			Text("复制到目录").
+			Position(ui.Dpi(148, 56)).
+			Width(ui.DpiX(128)).
+			Height(ui.DpiY(32)),
+	)
+	btnDeployZip := ui.NewButton(
+		deployParent,
+		ui.OptsButton().
+			Text("从 ZIP 部署").
+			Position(ui.Dpi(286, 56)).
+			Width(ui.DpiX(128)).
+			Height(ui.DpiY(32)),
 	)
 
 	app := &launcherWindow{
-		manager:    manager,
-		detectErr:  detectErr,
-		ctx:        ctx,
-		cancel:     cancel,
-		fastPoll:   make(chan struct{}, 1),
-		theme:      theme,
-		wnd:        wnd,
-		title:      title,
-		status:     status,
-		detail:     detail,
-		rootHint:   rootHint,
-		btnStart:   btnStart,
-		btnStop:    btnStop,
-		btnSetting: btnSetting,
-		btnData:    btnData,
+		manager:       manager,
+		detectErr:     detectErr,
+		ctx:           ctx,
+		cancel:        cancel,
+		fastPoll:      make(chan struct{}, 1),
+		theme:         theme,
+		wnd:           wnd,
+		tab:           tab,
+		status:        status,
+		detail:        detail,
+		rootHint:      rootHint,
+		btnStart:      btnStart,
+		btnStop:       btnStop,
+		btnSetting:    btnSetting,
+		btnData:       btnData,
+		deployHint:    deployHint,
+		btnUpdate:     btnUpdate,
+		btnDeployCopy: btnDeployCopy,
+		btnDeployZip:  btnDeployZip,
 	}
 
 	app.bindEvents()
@@ -280,8 +338,21 @@ func runMainWindow(manager *launcherManager, detectErr error) {
 }
 
 func (w *launcherWindow) bindEvents() {
+	// Tab 子容器：让 Static 控件背景透明，融入主题背景
+	nullBrush, _ := win.GetStockObject(co.STOCK_NULL_BRUSH)
+	staticBgHandler := func(p ui.Wm) uintptr {
+		hdc := win.HDC(p.WParam)
+		_, _ = hdc.SetBkMode(co.BKMODE_TRANSPARENT)
+		return uintptr(nullBrush)
+	}
+	w.tab.Item(0).Child().On().Wm(co.WM_CTLCOLORSTATIC, staticBgHandler)
+	w.tab.Item(1).Child().On().Wm(co.WM_CTLCOLORSTATIC, staticBgHandler)
+
 	w.wnd.On().WmCreate(func(_ ui.WmCreate) int {
 		w.applyWindowTheme()
+		// 启用 Tab 页主题背景，使 Static 等子控件背景融入主题
+		enableThemeDialogTexture(uintptr(w.tab.Item(0).Child().Hwnd()))
+		enableThemeDialogTexture(uintptr(w.tab.Item(1).Child().Hwnd()))
 		if w.manager != nil {
 			if conflict, _ := w.manager.installedConflict(); !conflict {
 				tray, err := newTrayIcon(w)
@@ -339,26 +410,6 @@ func (w *launcherWindow) bindEvents() {
 		win.PostQuitMessage(0)
 	})
 
-	w.wnd.On().Wm(co.WM_CTLCOLORSTATIC, func(p ui.Wm) uintptr {
-		if w.theme == nil {
-			return 0
-		}
-		hdc := win.HDC(p.WParam)
-		hCtl := win.HWND(p.LParam)
-		_, _ = hdc.SetBkMode(co.BKMODE_TRANSPARENT)
-		_, _ = hdc.SetBkColor(w.theme.bgColor)
-
-		switch hCtl {
-		case w.title.Hwnd():
-			_, _ = hdc.SetTextColor(w.theme.titleColor)
-		case w.status.Hwnd():
-			_, _ = hdc.SetTextColor(w.theme.statusColor)
-		default:
-			_, _ = hdc.SetTextColor(w.theme.mutedColor)
-		}
-		return uintptr(w.theme.bgBrush)
-	})
-
 	w.btnStart.On().BnClicked(func() {
 		w.setButtonsEnabled(false)
 		w.status.Hwnd().SetWindowText("正在启动服务...")
@@ -404,6 +455,143 @@ func (w *launcherWindow) bindEvents() {
 		if err := w.manager.openUserdataDir(); err != nil {
 			w.showError(err)
 		}
+	})
+
+	// 部署 Tab: 更新当前版本
+	w.btnUpdate.On().BnClicked(func() {
+		zipPath := openFileDialog(
+			uintptr(w.wnd.Hwnd()),
+			"选择便携版更新包",
+			"ZIP 压缩包 (*.zip)|*.zip|所有文件 (*.*)|*.*",
+		)
+		if zipPath == "" {
+			return
+		}
+		if err := validateZip(zipPath); err != nil {
+			w.showError(fmt.Errorf("无效的更新包: %w", err))
+			return
+		}
+		ret, _ := w.wnd.Hwnd().MessageBox(
+			fmt.Sprintf("确认从以下文件更新便携版？\n\n%s", zipPath),
+			"确认更新",
+			co.MB_OKCANCEL|co.MB_ICONQUESTION,
+		)
+		if ret != co.ID_OK {
+			return
+		}
+		w.setButtonsEnabled(false)
+		w.status.Hwnd().SetWindowText("正在更新...")
+		w.detail.Hwnd().SetWindowText("正在停止服务并准备更新")
+		go func() {
+			updateErr := w.performUpdate(zipPath)
+			w.wnd.UiThread(func() {
+				if updateErr != nil {
+					w.showError(updateErr)
+				}
+				w.refreshStatus()
+			})
+		}()
+	})
+
+	// 部署 Tab: 复制当前文件到新目录
+	w.btnDeployCopy.On().BnClicked(func() {
+		sourceDir := findDeploySourceDir()
+		if sourceDir == "" {
+			w.showError(fmt.Errorf("未找到可复制的源文件"))
+			return
+		}
+		targetDir := selectFolderDialog(
+			uintptr(w.wnd.Hwnd()),
+			"选择部署目标目录",
+		)
+		if targetDir == "" {
+			return
+		}
+		if isProtectedDir(targetDir) {
+			w.showError(fmt.Errorf("不能部署到系统保护目录: %s", targetDir))
+			return
+		}
+		ret, _ := w.wnd.Hwnd().MessageBox(
+			fmt.Sprintf("确认将当前文件复制到以下目录？\n\n源: %s\n目标: %s", sourceDir, targetDir),
+			"确认部署",
+			co.MB_OKCANCEL|co.MB_ICONQUESTION,
+		)
+		if ret != co.ID_OK {
+			return
+		}
+		w.setButtonsEnabled(false)
+		w.status.Hwnd().SetWindowText("正在部署...")
+		w.detail.Hwnd().SetWindowText("正在复制文件到目标目录")
+		go func() {
+			deployErr := deployFromDirectory(sourceDir, targetDir)
+			w.wnd.UiThread(func() {
+				if deployErr != nil {
+					w.showError(fmt.Errorf("部署失败: %w", deployErr))
+				} else {
+					w.detail.Hwnd().SetWindowText("已部署到: " + compactPath(targetDir))
+					_, _ = w.wnd.Hwnd().MessageBox(
+						fmt.Sprintf("便携版已成功部署到:\n\n%s\n\n请到该目录运行 wind_portable.exe 启动。", targetDir),
+						"部署完成",
+						co.MB_ICONINFORMATION,
+					)
+				}
+				w.refreshStatus()
+			})
+		}()
+	})
+
+	// 部署 Tab: 从 ZIP 包部署到新目录
+	w.btnDeployZip.On().BnClicked(func() {
+		zipPath := openFileDialog(
+			uintptr(w.wnd.Hwnd()),
+			"选择便携版压缩包",
+			"ZIP 压缩包 (*.zip)|*.zip|所有文件 (*.*)|*.*",
+		)
+		if zipPath == "" {
+			return
+		}
+		if err := validateZip(zipPath); err != nil {
+			w.showError(fmt.Errorf("无效的压缩包: %w", err))
+			return
+		}
+		targetDir := selectFolderDialog(
+			uintptr(w.wnd.Hwnd()),
+			"选择部署目标目录",
+		)
+		if targetDir == "" {
+			return
+		}
+		if isProtectedDir(targetDir) {
+			w.showError(fmt.Errorf("不能部署到系统保护目录: %s", targetDir))
+			return
+		}
+		ret, _ := w.wnd.Hwnd().MessageBox(
+			fmt.Sprintf("确认将 ZIP 包部署到以下目录？\n\n%s", targetDir),
+			"确认部署",
+			co.MB_OKCANCEL|co.MB_ICONQUESTION,
+		)
+		if ret != co.ID_OK {
+			return
+		}
+		w.setButtonsEnabled(false)
+		w.status.Hwnd().SetWindowText("正在部署...")
+		w.detail.Hwnd().SetWindowText("正在解压文件到目标目录")
+		go func() {
+			_, deployErr := deployFromZip(zipPath, targetDir)
+			w.wnd.UiThread(func() {
+				if deployErr != nil {
+					w.showError(fmt.Errorf("部署失败: %w", deployErr))
+				} else {
+					w.detail.Hwnd().SetWindowText("已部署到: " + compactPath(targetDir))
+					_, _ = w.wnd.Hwnd().MessageBox(
+						fmt.Sprintf("便携版已成功部署到:\n\n%s\n\n请到该目录运行 wind_portable.exe 启动。", targetDir),
+						"部署完成",
+						co.MB_ICONINFORMATION,
+					)
+				}
+				w.refreshStatus()
+			})
+		}()
 	})
 
 }
@@ -469,12 +657,16 @@ func (w *launcherWindow) requestFastPoll() {
 }
 
 func (w *launcherWindow) refreshStatus() {
-	// 检测失败：显示错误，禁用所有功能
+	// 检测失败：禁用运行功能，部署 Tab 保持可用
 	if w.detectErr != nil {
 		w.status.Hwnd().SetWindowText("便携模式不可用")
 		w.detail.Hwnd().SetWindowText(w.detectErr.Error())
 		w.rootHint.Hwnd().SetWindowText("")
 		w.setButtonsEnabled(false)
+		// 部署 Tab 按钮保持可用
+		w.btnUpdate.Hwnd().EnableWindow(false) // 无当前安装，不能更新
+		w.btnDeployCopy.Hwnd().EnableWindow(findDeploySourceDir() != "")
+		w.btnDeployZip.Hwnd().EnableWindow(true)
 		if w.tray != nil {
 			w.tray.UpdateMenuState(false, false, true)
 		}
@@ -499,10 +691,15 @@ func (w *launcherWindow) refreshStatus() {
 		w.status.Hwnd().SetWindowText("检测到已安装正式版")
 		w.detail.Hwnd().SetWindowText("为避免覆盖现有输入法注册信息，便携模式已禁用")
 		w.rootHint.Hwnd().SetWindowText("已安装位置: " + compactPathWithMax(w.manager.installedConflictPath(), 42))
+		// 运行 Tab 全部禁用
 		w.btnStart.Hwnd().EnableWindow(false)
 		w.btnStop.Hwnd().EnableWindow(false)
 		w.btnSetting.Hwnd().EnableWindow(false)
 		w.btnData.Hwnd().EnableWindow(false)
+		// 部署 Tab: 不能更新当前版本，但可以部署到新目录
+		w.btnUpdate.Hwnd().EnableWindow(false)
+		w.btnDeployCopy.Hwnd().EnableWindow(findDeploySourceDir() != "")
+		w.btnDeployZip.Hwnd().EnableWindow(true)
 		if w.tray != nil {
 			w.tray.UpdateMenuState(false, false, true)
 		}
@@ -516,10 +713,15 @@ func (w *launcherWindow) refreshStatus() {
 		w.detail.Hwnd().SetWindowText("点击启动服务后会自动注册并启动")
 	}
 	w.rootHint.Hwnd().SetWindowText("目录: " + compactPathWithMax(w.manager.cfg.RootDir, 52))
+	// 运行 Tab
 	w.btnStart.Hwnd().EnableWindow(!running)
 	w.btnStop.Hwnd().EnableWindow(stoppable)
-	w.btnSetting.Hwnd().EnableWindow(running) // 服务未运行时设置不可用
+	w.btnSetting.Hwnd().EnableWindow(running)
 	w.btnData.Hwnd().EnableWindow(true)
+	// 部署 Tab
+	w.btnUpdate.Hwnd().EnableWindow(true)
+	w.btnDeployCopy.Hwnd().EnableWindow(true)
+	w.btnDeployZip.Hwnd().EnableWindow(true)
 	if w.tray != nil {
 		w.tray.UpdateMenuState(running, stoppable, false)
 	}
@@ -530,6 +732,9 @@ func (w *launcherWindow) setButtonsEnabled(enabled bool) {
 	w.btnStop.Hwnd().EnableWindow(enabled)
 	w.btnSetting.Hwnd().EnableWindow(enabled)
 	w.btnData.Hwnd().EnableWindow(enabled)
+	w.btnUpdate.Hwnd().EnableWindow(enabled)
+	w.btnDeployCopy.Hwnd().EnableWindow(enabled)
+	w.btnDeployZip.Hwnd().EnableWindow(enabled)
 }
 
 func (w *launcherWindow) showError(err error) {
@@ -537,6 +742,72 @@ func (w *launcherWindow) showError(err error) {
 		return
 	}
 	w.wnd.Hwnd().MessageBox(err.Error(), "清风输入法便携启动器", co.MB_ICONERROR)
+}
+
+func (w *launcherWindow) performUpdate(zipPath string) error {
+	// Step 1: Set stopped flag
+	w.wnd.UiThread(func() {
+		w.detail.Hwnd().SetWindowText("正在设置守卫标志...")
+	})
+	_ = w.manager.setStoppedFlag()
+
+	// Step 2: Stop service
+	w.wnd.UiThread(func() {
+		w.detail.Hwnd().SetWindowText("正在停止服务...")
+	})
+	_, _ = w.manager.stopService()
+
+	// Step 3: Deploy from ZIP
+	w.wnd.UiThread(func() {
+		w.detail.Hwnd().SetWindowText("正在替换文件...")
+	})
+	needsRestart, err := deployFromZip(zipPath, w.manager.cfg.RootDir)
+	if err != nil {
+		_ = w.manager.clearStoppedFlag()
+		return fmt.Errorf("文件替换失败: %w", err)
+	}
+
+	// Step 4: Clear stopped flag
+	_ = w.manager.clearStoppedFlag()
+
+	// Step 5: Restart service
+	w.wnd.UiThread(func() {
+		w.detail.Hwnd().SetWindowText("正在重新注册输入法...")
+	})
+	if startErr := w.manager.startService(); startErr != nil {
+		return fmt.Errorf("重启服务失败: %w", startErr)
+	}
+
+	// Step 6: Handle self-update
+	if needsRestart {
+		w.wnd.UiThread(func() {
+			ret, _ := w.wnd.Hwnd().MessageBox(
+				"启动器已更新到新版本，需要重新启动。\n是否立即重启？",
+				"更新完成",
+				co.MB_YESNO|co.MB_ICONINFORMATION,
+			)
+			if ret == co.ID_YES {
+				w.restartSelf()
+			}
+		})
+	} else {
+		w.wnd.UiThread(func() {
+			_, _ = w.wnd.Hwnd().MessageBox("便携版更新完成！", "更新完成", co.MB_ICONINFORMATION)
+		})
+	}
+	return nil
+}
+
+func (w *launcherWindow) restartSelf() {
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(exePath)
+	cmd.Dir = filepath.Dir(exePath)
+	_ = cmd.Start()
+	w.cancel()
+	w.wnd.Hwnd().DestroyWindow()
 }
 
 func (w *launcherWindow) hideToTray() {
