@@ -68,6 +68,7 @@ type Engine struct {
 	maxCodeLen      int               // 码表最大码长（通常为4）
 	dictManager     *dict.DictManager // 词库管理器（用于 Shadow 规则访问）
 	logger          *slog.Logger
+	pinyinParser    *pinyin.PinyinParser // 拼音解析器（用于顶码时判断输入是否为合法拼音序列）
 
 	// 英文候选
 	enableEnglish   bool
@@ -95,6 +96,7 @@ func NewEngine(codetableEng *codetable.Engine, pinyinEng *pinyin.Engine, config 
 		config:          config,
 		maxCodeLen:      maxCodeLen,
 		logger:          logger,
+		pinyinParser:    pinyin.NewPinyinParser(),
 	}
 }
 
@@ -154,18 +156,76 @@ func (e *Engine) HandleEmptyCode(input string) (shouldClear bool, toEnglish bool
 }
 
 // HandleTopCode 处理顶码
-// 混输模式下码表顶码优先：前 maxCodeLen 码在码表中有候选时直接触发，
-// 不受拼音能否解析的影响。这确保五笔全码（如 rcqn=反馈）在继续输入时自动上屏。
+// 混输模式下：先检查前 maxCodeLen 码是否构成合法拼音序列，
+// 若是则抑制顶码（用户可能在输入拼音，如 yans→yan+se=颜色）；
+// 若不是合法拼音（如 rcqn）则委托码表引擎执行顶码上屏。
 func (e *Engine) HandleTopCode(input string) (commitText string, newInput string, shouldCommit bool) {
 	if len(input) <= e.maxCodeLen {
 		return "", input, false
 	}
 
-	// 码表顶码优先：检查前 N 码是否有码表候选
+	// 检查前 N 码是否为合法拼音序列：如果是，抑制顶码
+	if e.isPossiblePinyinSequence(input[:e.maxCodeLen]) {
+		e.logger.Debug("HandleTopCode: prefix is valid pinyin, suppress top-code",
+			"prefix", input[:e.maxCodeLen])
+		return "", input, false
+	}
+
+	// 非拼音序列，委托码表引擎执行顶码
 	if e.codetableEngine != nil {
 		return e.codetableEngine.HandleTopCode(input)
 	}
 	return "", input, false
+}
+
+// isPossiblePinyinSequence 判断输入是否构成合法的拼音序列。
+// 判定条件（满足任一即为 true）：
+//  1. 整个输入是某个合法音节的前缀（如 "zhon" 是 "zhong" 的前缀），且长度 >= 2
+//  2. 从起始位置有连续的完整拼音音节（首音节长度 >= 2，过滤单字母简拼），
+//     且剩余尾部字符是合法的音节前缀
+//
+// 例如：
+//   - "yans" → yan(完整) + s(前缀) → true
+//   - "zhon" → 整体是 zhong 的前缀 → true
+//   - "rcqn" → 无完整音节，也非音节前缀 → false
+//   - "wang" → wang(完整) → true
+//   - "gggg" → 无完整音节（g 不是合法拼音） → false
+func (e *Engine) isPossiblePinyinSequence(prefix string) bool {
+	if e.pinyinParser == nil {
+		return false
+	}
+
+	trie := e.pinyinParser.GetSyllableTrie()
+
+	// 条件1：整个输入本身是某个合法音节的前缀（如 zhon→zhong）
+	// 长度 >= 2 过滤单字母前缀（如 "a"、"g"）
+	if len(prefix) >= 2 && trie.HasPrefix(prefix) {
+		return true
+	}
+
+	// 条件2：连续完整音节 + 合法尾部前缀
+	parsed := e.pinyinParser.Parse(prefix)
+	if len(parsed.Syllables) == 0 {
+		return false
+	}
+
+	completedSyllables, endPos := parsed.ContiguousCompletedFromStart()
+	if len(completedSyllables) == 0 {
+		return false
+	}
+	if len(completedSyllables[0]) < 2 {
+		// 首音节为单字母（如 a/e/o），不算有效的拼音序列
+		return false
+	}
+
+	// 完整音节已覆盖全部输入
+	if endPos >= len(prefix) {
+		return true
+	}
+
+	// 剩余部分必须是合法的音节前缀（如 "s" 可续写为 se/si/su 等）
+	remainder := prefix[endPos:]
+	return trie.HasPrefix(remainder)
 }
 
 // --- 核心转换逻辑 ---

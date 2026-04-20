@@ -279,6 +279,66 @@ func TestMixedHandleTopCode_FullSyllable(t *testing.T) {
 	if shouldCommit {
 		t.Error("nihao 含完整音节，不应触发顶码")
 	}
+
+	// yanse: yan(完整) + s(前缀) → 不应触发顶码（用户可能在输入拼音"颜色"）
+	_, _, shouldCommit = engine.HandleTopCode("yanse")
+	if shouldCommit {
+		t.Error("yanse: yan+se 是合法拼音序列，不应触发顶码")
+	}
+}
+
+// TestIsPossiblePinyinSequence 验证拼音序列判断逻辑（纯逻辑测试，不依赖词库）
+func TestIsPossiblePinyinSequence(t *testing.T) {
+	// 创建最小化的 Engine，只需要 pinyinParser
+	engine := &Engine{
+		maxCodeLen:   4,
+		pinyinParser: pinyin.NewPinyinParser(),
+	}
+
+	tests := []struct {
+		input string
+		want  bool
+		desc  string
+	}{
+		// 不是拼音 → 允许顶码
+		{"rcqn", false, "rcqn: 非拼音序列（五笔'反馈'）"},
+		{"ukjg", false, "ukjg: 非拼音序列"},
+		{"sfgh", false, "sfgh: 纯声母序列"},
+		{"wfht", false, "wfht: 纯声母序列"},
+		{"gggg", false, "gggg: g 不是合法拼音"},
+		{"dkjf", false, "dkjf: 非拼音序列"},
+
+		// 是拼音 → 抑制顶码
+		{"yans", true, "yans: yan(完整) + s(前缀) → 可能是 yan-se"},
+		{"wang", true, "wang: wang(完整) → 可能是拼音"},
+		{"shen", true, "shen: shen(完整) → 可能是拼音"},
+		{"gong", true, "gong: gong(完整) → 可能是拼音"},
+		{"zhen", true, "zhen: zhen(完整) → 可能是拼音"},
+		{"feng", true, "feng: feng(完整) → 可能是拼音"},
+		{"niha", true, "niha: ni(完整) + ha(完整) → 可能是 ni-hao"},
+		{"shan", true, "shan: shan(完整) → 可能是拼音"},
+		{"zhon", true, "zhon: 整体是 zhong 的前缀 → 合法拼音"},
+		{"shuo", true, "shuo: shuo(完整) → 合法拼音"},
+		{"zhua", true, "zhua: zhua(完整) → 合法拼音"},
+		{"chon", true, "chon: 整体是 chong 的前缀 → 合法拼音"},
+		{"shua", true, "shua: shua(完整) → 合法拼音"},
+
+		// 单字母元音开头但长度>=2的完整音节
+		{"aish", true, "aish: ai(完整) + sh(前缀) → 可能是 ai-shi"},
+		{"ergo", true, "ergo: er(完整) + ... → 部分拼音"},
+
+		// 首音节为单字母（a/e/o）→ 过滤简拼
+		{"abcd", false, "abcd: a(单字母完整) → 被简拼过滤"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := engine.isPossiblePinyinSequence(tt.input)
+			if got != tt.want {
+				t.Errorf("isPossiblePinyinSequence(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
 }
 
 // TestMixedOverflow_PinyinWithCodetable 验证超过码长时码表和拼音都参与查询
