@@ -131,16 +131,13 @@ func (c *Coordinator) enterTempEnglishMode(key string) *bridge.KeyEventResult {
 	c.updateTempEnglishCandidates()
 	c.showTempEnglishUI()
 
-	return &bridge.KeyEventResult{
-		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     c.tempEnglishBuffer,
-		CaretPos: c.tempEnglishCursorPos,
-	}
+	return c.tempEnglishCompositionResult()
 }
 
 // enterTempEnglishModeWithTrigger 通过触发键进入临时英文模式
 func (c *Coordinator) enterTempEnglishModeWithTrigger(triggerKey string) *bridge.KeyEventResult {
 	c.tempEnglishMode = true
+	c.tempEnglishTriggerKey = triggerKey
 	c.tempEnglishBuffer = ""
 	c.tempEnglishCursorPos = 0
 
@@ -151,16 +148,13 @@ func (c *Coordinator) enterTempEnglishModeWithTrigger(triggerKey string) *bridge
 	c.logger.Debug("Entered temp English mode via trigger key", "triggerKey", triggerKey)
 	c.showTempEnglishUI()
 
-	return &bridge.KeyEventResult{
-		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     "",
-		CaretPos: 0,
-	}
+	return c.tempEnglishCompositionResult()
 }
 
 // exitTempEnglishMode 退出临时英文模式
 func (c *Coordinator) exitTempEnglishMode(commit bool, text string) *bridge.KeyEventResult {
 	c.tempEnglishMode = false
+	c.tempEnglishTriggerKey = ""
 	c.tempEnglishBuffer = ""
 	c.tempEnglishCursorPos = 0
 	c.tempEnglishCandidates = nil
@@ -211,11 +205,7 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 			}
 			c.updateTempEnglishCandidates()
 			c.showTempEnglishUI()
-			return &bridge.KeyEventResult{
-				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.tempEnglishBuffer,
-				CaretPos: c.tempEnglishCursorPos,
-			}
+			return c.tempEnglishCompositionResult()
 		}
 		if len(c.tempEnglishBuffer) == 0 {
 			return c.exitTempEnglishMode(false, "")
@@ -232,11 +222,7 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 			}
 			c.updateTempEnglishCandidates()
 			c.showTempEnglishUI()
-			return &bridge.KeyEventResult{
-				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.tempEnglishBuffer,
-				CaretPos: c.tempEnglishCursorPos,
-			}
+			return c.tempEnglishCompositionResult()
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
@@ -255,18 +241,18 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 		return c.exitTempEnglishMode(true, c.tempEnglishBuffer)
 
 	case vk == ipc.VK_RETURN:
-		return c.exitTempEnglishMode(true, c.tempEnglishBuffer)
+		if len(c.tempEnglishBuffer) > 0 {
+			return c.exitTempEnglishMode(true, c.tempEnglishBuffer)
+		}
+		// 缓冲区为空时（触发键进入后直接回车），上屏触发键字符
+		return c.exitTempEnglishMode(true, c.tempEnglishTriggerPrefix())
 
 	// === 左右光标移动 ===
 	case vk == ipc.VK_LEFT:
 		if c.tempEnglishCursorPos > 0 {
 			c.tempEnglishCursorPos--
 			c.showTempEnglishUI()
-			return &bridge.KeyEventResult{
-				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.tempEnglishBuffer,
-				CaretPos: c.tempEnglishCursorPos,
-			}
+			return c.tempEnglishCompositionResult()
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
@@ -274,31 +260,19 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 		if c.tempEnglishCursorPos < len(c.tempEnglishBuffer) {
 			c.tempEnglishCursorPos++
 			c.showTempEnglishUI()
-			return &bridge.KeyEventResult{
-				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     c.tempEnglishBuffer,
-				CaretPos: c.tempEnglishCursorPos,
-			}
+			return c.tempEnglishCompositionResult()
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
 	case vk == ipc.VK_HOME:
 		c.tempEnglishCursorPos = 0
 		c.showTempEnglishUI()
-		return &bridge.KeyEventResult{
-			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.tempEnglishBuffer,
-			CaretPos: 0,
-		}
+		return c.tempEnglishCompositionResultWithCaret(0)
 
 	case vk == ipc.VK_END:
 		c.tempEnglishCursorPos = len(c.tempEnglishBuffer)
 		c.showTempEnglishUI()
-		return &bridge.KeyEventResult{
-			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.tempEnglishBuffer,
-			CaretPos: c.tempEnglishCursorPos,
-		}
+		return c.tempEnglishCompositionResult()
 
 	// === 翻页（使用与正常模式一致的配置键） ===
 	case c.isPageUpKey(key, int(vk), uint32(data.Modifiers)):
@@ -347,8 +321,8 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	// === 二候选选择键 ===
-	case data.Modifiers&ModShift == 0 && c.isSelectKey2(key, data.KeyCode):
+	// === 二候选选择键（仅有候选时匹配） ===
+	case data.Modifiers&ModShift == 0 && c.isSelectKey2(key, data.KeyCode) && len(c.candidates) > 0:
 		if len(c.candidates) >= 2 {
 			pageStart := (c.currentPage - 1) * c.candidatesPerPage
 			idx := pageStart + 1
@@ -358,8 +332,8 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	// === 三候选选择键 ===
-	case data.Modifiers&ModShift == 0 && c.isSelectKey3(key, data.KeyCode):
+	// === 三候选选择键（仅有候选时匹配） ===
+	case data.Modifiers&ModShift == 0 && c.isSelectKey3(key, data.KeyCode) && len(c.candidates) > 0:
 		if len(c.candidates) >= 3 {
 			pageStart := (c.currentPage - 1) * c.candidatesPerPage
 			idx := pageStart + 2
@@ -368,6 +342,44 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 			}
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+
+	// === 触发键二次输入：按当前标点/全半角状态上屏符号 ===
+	case c.tempEnglishTriggerKey != "" && c.isTempEnglishTriggerKeyMatch(key, data.KeyCode):
+		if len(c.tempEnglishBuffer) == 0 {
+			// 缓冲区为空时，直接按标点状态输出触发键字符
+			punctText := c.tempEnglishTriggerPrefix()
+			if len(punctText) == 1 && c.isEffectiveChinesePunct() {
+				if converted, ok := c.punctConverter.ToChinesePunctStr(rune(punctText[0])); ok {
+					punctText = converted
+				}
+			}
+			if c.fullWidth {
+				punctText = transform.ToFullWidth(punctText)
+			}
+			return c.exitTempEnglishMode(true, punctText)
+		}
+		// 有缓冲内容时，上屏当前高亮候选+标点
+		text := c.tempEnglishBuffer
+		if len(c.candidates) > 0 {
+			pageStart := (c.currentPage - 1) * c.candidatesPerPage
+			absIdx := pageStart + c.selectedIndex
+			if absIdx < len(c.candidates) {
+				text = c.candidates[absIdx].Text
+			}
+		}
+		if c.fullWidth {
+			text = transform.ToFullWidth(text)
+		}
+		punctText := key
+		if len(key) == 1 && c.isEffectiveChinesePunct() {
+			if converted, ok := c.punctConverter.ToChinesePunctStr(rune(key[0])); ok {
+				punctText = converted
+			}
+		}
+		if c.fullWidth {
+			punctText = transform.ToFullWidth(punctText)
+		}
+		return c.exitTempEnglishMode(true, text+punctText)
 
 	// === 字母键 ===
 	case len(key) == 1 && ((key[0] >= 'a' && key[0] <= 'z') || (key[0] >= 'A' && key[0] <= 'Z')):
@@ -389,11 +401,7 @@ func (c *Coordinator) handleTempEnglishKey(key string, data *bridge.KeyEventData
 
 		c.updateTempEnglishCandidates()
 		c.showTempEnglishUI()
-		return &bridge.KeyEventResult{
-			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.tempEnglishBuffer,
-			CaretPos: c.tempEnglishCursorPos,
-		}
+		return c.tempEnglishCompositionResult()
 
 	// === 数字键 1-9：选择当前页候选 ===
 	case len(key) == 1 && key[0] >= '1' && key[0] <= '9':
@@ -597,11 +605,16 @@ func (c *Coordinator) showTempEnglishUI() {
 		displayCandidates[i].Index = (i + 1) % 10
 	}
 
+	// 构建 preedit：触发键进入时显示前缀 + 缓冲区内容
+	prefix := c.tempEnglishTriggerPrefix()
+	preedit := prefix + c.tempEnglishBuffer
+	caretPosUI := len(prefix) + c.tempEnglishCursorPos
+
 	c.uiManager.SetModeLabel("临时英文")
 	c.uiManager.ShowCandidates(
 		displayCandidates,
-		c.tempEnglishBuffer,
-		c.tempEnglishCursorPos,
+		preedit,
+		caretPosUI,
 		caretX,
 		caretY,
 		caretHeight,
@@ -611,6 +624,73 @@ func (c *Coordinator) showTempEnglishUI() {
 		c.candidatesPerPage,
 		c.selectedIndex,
 	)
+}
+
+// tempEnglishTriggerPrefix 返回临时英文触发键对应的字符
+func (c *Coordinator) tempEnglishTriggerPrefix() string {
+	switch c.tempEnglishTriggerKey {
+	case "backtick":
+		return "`"
+	case "semicolon":
+		return ";"
+	case "quote":
+		return "'"
+	case "comma":
+		return ","
+	case "period":
+		return "."
+	case "slash":
+		return "/"
+	case "backslash":
+		return "\\"
+	case "open_bracket":
+		return "["
+	case "close_bracket":
+		return "]"
+	default:
+		return ""
+	}
+}
+
+// tempEnglishCompositionResult 构建临时英文模式的编辑区更新结果（包含前缀）
+func (c *Coordinator) tempEnglishCompositionResult() *bridge.KeyEventResult {
+	prefix := c.tempEnglishTriggerPrefix()
+	preedit := prefix + c.tempEnglishBuffer
+	caretPos := len(prefix) + c.tempEnglishCursorPos
+	return c.modeCompositionResult(preedit, caretPos)
+}
+
+// tempEnglishCompositionResultWithCaret 构建临时英文模式编辑区更新，使用指定光标位置
+func (c *Coordinator) tempEnglishCompositionResultWithCaret(cursorPos int) *bridge.KeyEventResult {
+	prefix := c.tempEnglishTriggerPrefix()
+	preedit := prefix + c.tempEnglishBuffer
+	caretPos := len(prefix) + cursorPos
+	return c.modeCompositionResult(preedit, caretPos)
+}
+
+// isTempEnglishTriggerKeyMatch 仅检查按键是否匹配当前临时英文触发键（不检查状态条件）
+func (c *Coordinator) isTempEnglishTriggerKeyMatch(key string, keyCode int) bool {
+	switch c.tempEnglishTriggerKey {
+	case "backtick":
+		return key == "`" || uint32(keyCode) == ipc.VK_OEM_3
+	case "semicolon":
+		return key == ";" || uint32(keyCode) == ipc.VK_OEM_1
+	case "quote":
+		return key == "'" || uint32(keyCode) == ipc.VK_OEM_7
+	case "comma":
+		return key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA
+	case "period":
+		return key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD
+	case "slash":
+		return key == "/" || uint32(keyCode) == ipc.VK_OEM_2
+	case "backslash":
+		return key == "\\" || uint32(keyCode) == ipc.VK_OEM_5
+	case "open_bracket":
+		return key == "[" || uint32(keyCode) == ipc.VK_OEM_4
+	case "close_bracket":
+		return key == "]" || uint32(keyCode) == ipc.VK_OEM_6
+	}
+	return false
 }
 
 // ─── 触发键 ───
@@ -632,19 +712,39 @@ func (c *Coordinator) getTempEnglishTriggerKey(key string, keyCode int) string {
 	for _, tk := range triggerKeys {
 		switch tk {
 		case "backtick":
-			if key == "`" {
+			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
 				return tk
 			}
 		case "semicolon":
-			if key == ";" {
+			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
+				return tk
+			}
+		case "quote":
+			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+				return tk
+			}
+		case "comma":
+			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+				return tk
+			}
+		case "period":
+			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
 				return tk
 			}
 		case "slash":
-			if key == "/" {
+			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
 				return tk
 			}
 		case "backslash":
-			if key == "\\" {
+			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+				return tk
+			}
+		case "open_bracket":
+			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+				return tk
+			}
+		case "close_bracket":
+			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
 				return tk
 			}
 		}

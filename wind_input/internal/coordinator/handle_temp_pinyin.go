@@ -38,6 +38,34 @@ func (c *Coordinator) getTempPinyinTriggerKey(key string, keyCode int) string {
 			if (key == ";" || uint32(keyCode) == ipc.VK_OEM_1) && len(c.candidates) == 0 {
 				return "semicolon"
 			}
+		case "quote":
+			if (key == "'" || uint32(keyCode) == ipc.VK_OEM_7) && len(c.candidates) == 0 {
+				return "quote"
+			}
+		case "comma":
+			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+				return "comma"
+			}
+		case "period":
+			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+				return "period"
+			}
+		case "slash":
+			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+				return "slash"
+			}
+		case "backslash":
+			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+				return "backslash"
+			}
+		case "open_bracket":
+			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+				return "open_bracket"
+			}
+		case "close_bracket":
+			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+				return "close_bracket"
+			}
 		case "z":
 			// z 键触发：仅在无候选时触发，z 同时作为拼音首字母
 			// 当 z 键重复上屏也启用时，z 先进入正常输入流程显示重复候选，
@@ -75,6 +103,34 @@ func (c *Coordinator) isTempPinyinTriggerKeyMatch(key string, keyCode int) bool 
 			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
 				return true
 			}
+		case "quote":
+			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+				return true
+			}
+		case "comma":
+			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+				return true
+			}
+		case "period":
+			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+				return true
+			}
+		case "slash":
+			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+				return true
+			}
+		case "backslash":
+			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+				return true
+			}
+		case "open_bracket":
+			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+				return true
+			}
+		case "close_bracket":
+			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+				return true
+			}
 		case "z":
 			if key == "z" {
 				return true
@@ -100,6 +156,7 @@ func (c *Coordinator) enterTempPinyinMode(triggerKey string) *bridge.KeyEventRes
 	c.tempPinyinMode = true
 	c.tempPinyinTriggerKey = triggerKey
 	c.tempPinyinBuffer = ""
+	c.tempPinyinCursorPos = 0
 	c.tempPinyinCommitted = ""
 
 	c.logger.Debug("Entered temp pinyin mode", "triggerKey", triggerKey)
@@ -108,16 +165,35 @@ func (c *Coordinator) enterTempPinyinMode(triggerKey string) *bridge.KeyEventRes
 	c.showPinyinModeUI(ops)
 
 	prefix := c.tempPinyinPrefix()
-	return &bridge.KeyEventResult{
-		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     prefix,
-		CaretPos: len(prefix),
-	}
+	return c.modeCompositionResult(prefix, len(prefix))
 }
 
-// tempPinyinPrefix 返回临时拼音模式的前缀显示字符
+// tempPinyinPrefix 返回临时拼音模式的前缀显示字符（使用实际触发键字符）
 func (c *Coordinator) tempPinyinPrefix() string {
-	return "`"
+	switch c.tempPinyinTriggerKey {
+	case "backtick":
+		return "`"
+	case "semicolon":
+		return ";"
+	case "quote":
+		return "'"
+	case "comma":
+		return ","
+	case "period":
+		return "."
+	case "slash":
+		return "/"
+	case "backslash":
+		return "\\"
+	case "open_bracket":
+		return "["
+	case "close_bracket":
+		return "]"
+	case "z":
+		return "z"
+	default:
+		return "`"
+	}
 }
 
 // handleTempPinyinKey 处理临时拼音模式下的按键（委托给共享处理器）
@@ -196,6 +272,7 @@ func (c *Coordinator) enterTempPinyinFromZHybrid(initialKey string) *bridge.KeyE
 	c.tempPinyinMode = true
 	c.tempPinyinTriggerKey = "z"
 	c.tempPinyinBuffer = initialKey
+	c.tempPinyinCursorPos = len(initialKey)
 	c.tempPinyinCommitted = ""
 
 	c.logger.Debug("Entered temp pinyin from z hybrid mode", "initialKey", initialKey)
@@ -207,17 +284,14 @@ func (c *Coordinator) enterTempPinyinFromZHybrid(initialKey string) *bridge.KeyE
 
 	prefix := c.tempPinyinPrefix()
 	preedit := prefix + initialKey
-	return &bridge.KeyEventResult{
-		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     preedit,
-		CaretPos: len(preedit),
-	}
+	return c.modeCompositionResult(preedit, len(preedit))
 }
 
 // tempPinyinOps 创建临时拼音模式的操作回调
 func (c *Coordinator) tempPinyinOps() *pinyinModeOps {
 	return &pinyinModeOps{
 		buffer:    &c.tempPinyinBuffer,
+		cursorPos: &c.tempPinyinCursorPos,
 		committed: &c.tempPinyinCommitted,
 		prefix:    c.tempPinyinPrefix,
 		exitMode: func(commit bool, text string) *bridge.KeyEventResult {

@@ -16,6 +16,7 @@ import (
 // pinyinModeOps 封装拼音模式中各实现的差异化行为
 type pinyinModeOps struct {
 	buffer               *string                                   // 指向缓冲区字段的指针
+	cursorPos            *int                                      // 指向光标位置的指针（在 buffer 中的字节偏移）
 	committed            *string                                   // 指向累积已提交文本的指针（部分上屏时累积）
 	prefix               func() string                             // 获取前缀显示字符
 	exitMode             func(bool, string) *bridge.KeyEventResult // 完全退出模式
@@ -32,7 +33,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 	switch {
 	// === 字母 a-z ===
 	case len(key) == 1 && key[0] >= 'a' && key[0] <= 'z':
-		*ops.buffer += key
+		c.pinyinModeInsertChar(ops, key)
 		c.currentPage = 1
 		c.selectedIndex = 0
 		c.updatePinyinModeCandidates(ops)
@@ -41,7 +42,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 
 	// === 大写字母转小写 ===
 	case len(key) == 1 && key[0] >= 'A' && key[0] <= 'Z':
-		*ops.buffer += strings.ToLower(key)
+		c.pinyinModeInsertChar(ops, strings.ToLower(key))
 		c.currentPage = 1
 		c.selectedIndex = 0
 		c.updatePinyinModeCandidates(ops)
@@ -78,17 +79,27 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 		}
 		return ops.exitMode(false, "")
 
-	// === 回车：上屏原文字母 ===
+	// === 回车：上屏编码（缓冲区为空时上屏触发键字符） ===
 	case vk == ipc.VK_RETURN:
 		if len(*ops.buffer) > 0 {
 			return ops.exitMode(true, *ops.buffer)
 		}
-		return ops.exitMode(false, "")
+		return ops.exitMode(true, ops.prefix())
 
 	// === 退格 ===
 	case vk == ipc.VK_BACK:
 		if len(*ops.buffer) > 0 {
-			*ops.buffer = (*ops.buffer)[:len(*ops.buffer)-1]
+			if ops.cursorPos != nil && *ops.cursorPos > 0 {
+				// 在光标位置删除
+				*ops.buffer = (*ops.buffer)[:*ops.cursorPos-1] + (*ops.buffer)[*ops.cursorPos:]
+				*ops.cursorPos--
+			} else if ops.cursorPos == nil {
+				// 无光标时从末尾删除（兼容）
+				*ops.buffer = (*ops.buffer)[:len(*ops.buffer)-1]
+			} else {
+				// 光标在开头，不能再删
+				return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+			}
 			if len(*ops.buffer) == 0 {
 				return ops.exitOnBackspaceEmpty()
 			}
@@ -117,6 +128,23 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 			c.currentPage++
 			c.selectedIndex = 0
 			c.showPinyinModeUI(ops)
+		}
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+
+	// === 左右方向键：移动光标 ===
+	case vk == ipc.VK_LEFT:
+		if ops.cursorPos != nil && *ops.cursorPos > 0 {
+			*ops.cursorPos--
+			c.showPinyinModeUI(ops)
+			return c.pinyinModeCompositionResult(ops)
+		}
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+
+	case vk == ipc.VK_RIGHT:
+		if ops.cursorPos != nil && *ops.cursorPos < len(*ops.buffer) {
+			*ops.cursorPos++
+			c.showPinyinModeUI(ops)
+			return c.pinyinModeCompositionResult(ops)
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
@@ -159,8 +187,8 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	// === 二候选选择键 ===
-	case data.Modifiers&ModShift == 0 && c.isSelectKey2(key, data.KeyCode):
+	// === 二候选选择键（仅有候选时匹配，无候选时让触发键等后续 case 处理） ===
+	case data.Modifiers&ModShift == 0 && c.isSelectKey2(key, data.KeyCode) && len(c.candidates) > 0:
 		if len(c.candidates) >= 2 {
 			pageStart := (c.currentPage - 1) * c.candidatesPerPage
 			idx := pageStart + 1
@@ -168,24 +196,27 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 				return c.selectPinyinModeCandidate(ops, idx)
 			}
 		}
-		if len(c.candidates) > 0 {
-			return c.selectPinyinModeWithPunct(ops, 0, key)
-		}
-		return ops.exitMode(false, "")
+		return c.selectPinyinModeWithPunct(ops, 0, key)
 
 	// === 拼音分隔符 ===
 	case data.Modifiers&ModShift == 0 && ops.separator(key, data.KeyCode):
-		if len(*ops.buffer) > 0 &&
-			(*ops.buffer)[len(*ops.buffer)-1] != '\'' {
-			*ops.buffer += "'"
-			c.updatePinyinModeCandidates(ops)
-			c.showPinyinModeUI(ops)
-			return c.pinyinModeCompositionResult(ops)
+		if len(*ops.buffer) > 0 {
+			// 检查光标位置前一个字符是否已是分隔符
+			insertPos := len(*ops.buffer)
+			if ops.cursorPos != nil {
+				insertPos = *ops.cursorPos
+			}
+			if insertPos > 0 && (*ops.buffer)[insertPos-1] != '\'' {
+				c.pinyinModeInsertChar(ops, "'")
+				c.updatePinyinModeCandidates(ops)
+				c.showPinyinModeUI(ops)
+				return c.pinyinModeCompositionResult(ops)
+			}
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	// === 三候选选择键 ===
-	case data.Modifiers&ModShift == 0 && c.isSelectKey3(key, data.KeyCode):
+	// === 三候选选择键（仅有候选时匹配，无候选时让触发键等后续 case 处理） ===
+	case data.Modifiers&ModShift == 0 && c.isSelectKey3(key, data.KeyCode) && len(c.candidates) > 0:
 		if len(c.candidates) >= 3 {
 			pageStart := (c.currentPage - 1) * c.candidatesPerPage
 			idx := pageStart + 2
@@ -193,10 +224,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 				return c.selectPinyinModeCandidate(ops, idx)
 			}
 		}
-		if len(c.candidates) > 0 {
-			return c.selectPinyinModeWithPunct(ops, 0, key)
-		}
-		return ops.exitMode(false, "")
+		return c.selectPinyinModeWithPunct(ops, 0, key)
 
 	// === 触发键 ===
 	case ops.triggerKey != nil && ops.triggerKey(key, data.KeyCode):
@@ -311,6 +339,10 @@ func (c *Coordinator) selectPinyinModeCandidate(ops *pinyinModeOps, index int) *
 			*ops.committed += text
 		}
 		*ops.buffer = (*ops.buffer)[cand.ConsumedLength:]
+		// 部分上屏后重置光标到末尾
+		if ops.cursorPos != nil {
+			*ops.cursorPos = len(*ops.buffer)
+		}
 		c.currentPage = 1
 		c.updatePinyinModeCandidates(ops)
 		c.showPinyinModeUI(ops)
@@ -373,6 +405,34 @@ func (c *Coordinator) selectPinyinModeWithPunct(ops *pinyinModeOps, pageOffset i
 	return ops.exitMode(true, text+punctText)
 }
 
+// mapBufferPosToDisplayPos 将 buffer 中的光标位置映射到 preeditDisplay 中的位置
+// preeditDisplay 可能包含额外的分隔符（如 ' 或空格），需要跳过这些字符
+func mapBufferPosToDisplayPos(buffer, display string, bufPos int) int {
+	bi := 0 // buffer 索引
+	di := 0 // display 索引
+	for bi < bufPos && di < len(display) {
+		if bi < len(buffer) && display[di] == buffer[bi] {
+			bi++
+			di++
+		} else {
+			// display 中的额外字符（分隔符），仅推进 display 索引
+			di++
+		}
+	}
+	return di
+}
+
+// pinyinModeInsertChar 在光标位置插入字符
+func (c *Coordinator) pinyinModeInsertChar(ops *pinyinModeOps, ch string) {
+	if ops.cursorPos != nil {
+		pos := *ops.cursorPos
+		*ops.buffer = (*ops.buffer)[:pos] + ch + (*ops.buffer)[pos:]
+		*ops.cursorPos = pos + len(ch)
+	} else {
+		*ops.buffer += ch
+	}
+}
+
 // pinyinModeCompositionResult 构建拼音模式的编辑区更新结果
 func (c *Coordinator) pinyinModeCompositionResult(ops *pinyinModeOps) *bridge.KeyEventResult {
 	prefix := ops.prefix()
@@ -380,10 +440,32 @@ func (c *Coordinator) pinyinModeCompositionResult(ops *pinyinModeOps) *bridge.Ke
 	if c.preeditDisplay == "" {
 		preedit = prefix + *ops.buffer
 	}
+	// 计算光标位置（考虑 preeditDisplay 中的分隔符偏移）
+	caretPos := len(preedit)
+	if ops.cursorPos != nil {
+		if c.preeditDisplay != "" {
+			caretPos = len(prefix) + mapBufferPosToDisplayPos(*ops.buffer, c.preeditDisplay, *ops.cursorPos)
+		} else {
+			caretPos = len(prefix) + *ops.cursorPos
+		}
+	}
+	return c.modeCompositionResult(preedit, caretPos)
+}
+
+// modeCompositionResult 构建特殊模式的编辑区更新结果，遵循 InlinePreedit 设置
+// 当 InlinePreedit 关闭时，不在应用光标处嵌入编码（发送空 composition），仅在候选窗中显示
+func (c *Coordinator) modeCompositionResult(text string, caretPos int) *bridge.KeyEventResult {
+	if c.config != nil && !c.config.UI.InlinePreedit {
+		return &bridge.KeyEventResult{
+			Type:     bridge.ResponseTypeUpdateComposition,
+			Text:     "",
+			CaretPos: 0,
+		}
+	}
 	return &bridge.KeyEventResult{
 		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     preedit,
-		CaretPos: len(preedit),
+		Text:     text,
+		CaretPos: caretPos,
 	}
 }
 
@@ -440,11 +522,21 @@ func (c *Coordinator) showPinyinModeUI(ops *pinyinModeOps) {
 		preedit = prefix
 	}
 
+	// 计算候选窗中的光标位置（考虑 preeditDisplay 中的分隔符偏移）
+	preeditCaret := len(preedit)
+	if ops.cursorPos != nil {
+		if c.preeditDisplay != "" {
+			preeditCaret = len(prefix) + mapBufferPosToDisplayPos(*ops.buffer, c.preeditDisplay, *ops.cursorPos)
+		} else {
+			preeditCaret = len(prefix) + *ops.cursorPos
+		}
+	}
+
 	c.uiManager.SetModeLabel("临时拼音")
 	c.uiManager.ShowCandidates(
 		displayCandidates,
 		preedit,
-		len(preedit),
+		preeditCaret,
 		caretX,
 		caretY,
 		caretHeight,
