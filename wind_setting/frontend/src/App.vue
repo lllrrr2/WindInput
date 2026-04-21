@@ -63,6 +63,8 @@ const addWordParams = ref<AddWordParams | null>(null);
 const showAddWordDialog = ref(false);
 const isStandaloneAddWord = ref(false); // 独立加词窗口模式（无设置主界面）
 const hotkeyConflicts = ref<string[]>([]);
+const serviceDisconnected = ref(false); // 服务未运行弹框
+const reconnecting = ref(false); // 重连中
 
 // 数据
 const config = ref<Config | null>(null);
@@ -120,7 +122,19 @@ async function loadData() {
 }
 
 async function loadDataFromWails() {
-  connected.value = true;
+  // 先检测服务是否运行
+  try {
+    const running = await wailsApi.checkServiceRunning();
+    connected.value = running;
+    if (!running) {
+      serviceDisconnected.value = true;
+      return;
+    }
+  } catch {
+    connected.value = false;
+    serviceDisconnected.value = true;
+    return;
+  }
 
   try {
     // 加载系统默认配置（代码默认值 + data/config.yaml）
@@ -348,6 +362,12 @@ async function handleReload() {
 async function refreshStatus() {
   try {
     if (isWailsEnv.value) {
+      // 更新连接状态
+      try {
+        connected.value = await wailsApi.checkServiceRunning();
+      } catch {
+        connected.value = false;
+      }
       const serviceStatus = await wailsApi.getServiceStatus();
       const appVersion = await wailsApi.getVersion().catch(() => "dev");
       if (serviceStatus) {
@@ -383,6 +403,29 @@ async function refreshStatus() {
   } catch (e) {
     console.error("刷新状态失败", e);
   }
+}
+
+// 服务断连：重连
+async function handleReconnect() {
+  reconnecting.value = true;
+  try {
+    const running = await wailsApi.checkServiceRunning();
+    if (running) {
+      connected.value = true;
+      serviceDisconnected.value = false;
+      reconnecting.value = false;
+      await loadData();
+    } else {
+      reconnecting.value = false;
+    }
+  } catch {
+    reconnecting.value = false;
+  }
+}
+
+// 服务断连：退出
+function handleQuitApp() {
+  Quit();
 }
 
 // 重置为当前页面默认（使用系统默认配置：代码默认值 + data/config.yaml）
@@ -741,6 +784,23 @@ onMounted(async () => {
         <AlertDialogFooter>
           <AlertDialogCancel @click="handleCancel">取消</AlertDialogCancel>
           <AlertDialogAction @click="handleConfirm">确定</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <!-- 服务未运行对话框 -->
+    <AlertDialog :open="serviceDisconnected">
+      <AlertDialogContent @pointerDownOutside.prevent @escapeKeyDown.prevent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>服务未运行</AlertDialogTitle>
+          <AlertDialogDescription>
+            未检测到清风输入法服务，设置面板无法正常工作。请先启动服务后点击"重新连接"。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel @click="handleQuitApp">退出</AlertDialogCancel>
+          <AlertDialogAction @click="handleReconnect" :disabled="reconnecting">
+            {{ reconnecting ? "连接中..." : "重新连接" }}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

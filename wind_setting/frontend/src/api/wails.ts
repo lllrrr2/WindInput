@@ -743,6 +743,10 @@ export async function openExternalURL(url: string): Promise<void> {
   return App.OpenExternalURL(url);
 }
 
+export async function checkServiceRunning(): Promise<boolean> {
+  return App.CheckServiceRunning();
+}
+
 export async function getServiceStatus(): Promise<ServiceStatus | null> {
   return App.GetServiceStatus();
 }
