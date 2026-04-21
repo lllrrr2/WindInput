@@ -337,7 +337,7 @@ if ($isPortable) {
     if ($isDebugVariant) {
         $pTargetDir = $PortableDebugDir
         $pBuildDir = Join-Path $ScriptDir "build_debug"
-        $pPortableExe = "wind_portable_debug.exe"
+        $pPortableExe = "wind_portable.exe"
         $pServiceExe = "wind_input_debug.exe"
         $pSettingExe = "wind_setting_debug.exe"
     } else {

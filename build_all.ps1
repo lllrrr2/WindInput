@@ -311,45 +311,29 @@ function Build-SettingUI {
 }
 
 function Build-PortableLauncher {
-    $portableDstName = if ($DebugVariant) { "wind_portable_debug.exe" } else { "wind_portable.exe" }
+    # 便携启动器统一构建为 wind_portable.exe（运行时自动检测 debug/release 变体）
+    $portableDstName = "wind_portable.exe"
     Write-Step "构建便携启动器($portableDstName)..."
 
     Push-Location (Join-Path $ScriptDir "wind_portable")
     try {
-        if (Get-Command go-winres -ErrorAction SilentlyContinue) {
-            # Debug 版本修改 winres.json 中的描述信息
-            $winresJsonPath = "winres\winres.json"
-            if ($DebugVariant -and (Test-Path $winresJsonPath)) {
-                $winresJson = Get-Content $winresJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $winresJson.RT_MANIFEST.'#1'.'0409'.description = "清风输入法开发版便携启动器"
-                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.CompanyName = "清风输入法开发版"
-                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.FileDescription = "清风输入法开发版便携启动器"
-                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.ProductName = "清风输入法开发版便携启动器"
-                $winresJson.RT_VERSION.'#1'.'0000'.info.'0804'.LegalCopyright = "Copyright © 2026 清风输入法开发版"
-                $jsonText = $winresJson | ConvertTo-Json -Depth 10
-                [System.IO.File]::WriteAllText((Resolve-Path $winresJsonPath).Path, $jsonText, (New-Object System.Text.UTF8Encoding $false))
-            }
-            & go-winres make --in winres\winres.json --product-version "$AppVersion" --file-version "$AppVersionNum"
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "[警告] go-winres 生成便携启动器资源失败，继续构建（无版本信息）" -ForegroundColor Yellow
-            }
-            # 还原 winres.json
-            if ($DebugVariant -and (Test-Path $winresJsonPath)) {
-                & git checkout -- $winresJsonPath 2>$null
-            }
-        } else {
-            Write-Host "[警告] go-winres 未安装，跳过便携启动器资源生成" -ForegroundColor Yellow
+        # 更新 AssemblyInfo 版本号
+        $assemblyInfoPath = Join-Path (Get-Location) "Properties\AssemblyInfo.cs"
+        if (Test-Path $assemblyInfoPath) {
+            $content = Get-Content $assemblyInfoPath -Raw -Encoding UTF8
+            $content = $content -replace 'AssemblyVersion\("[^"]*"\)', "AssemblyVersion(`"$AppVersionNum`")"
+            $content = $content -replace 'AssemblyFileVersion\("[^"]*"\)', "AssemblyFileVersion(`"$AppVersionNum`")"
+            [System.IO.File]::WriteAllText($assemblyInfoPath, $content, (New-Object System.Text.UTF8Encoding $false))
         }
 
-        $portableLdflags = "-s -w -H windowsgui -X main.version=$AppVersion"
-        if ($DebugVariant) {
-            $portableLdflags += " -X github.com/huanfeng/wind_input/pkg/buildvariant.variant=debug"
-        }
-        & go build -ldflags $portableLdflags -o (Join-Path $BuildDir $portableDstName) .
+        & dotnet build -c Release -o $BuildDir /p:AssemblyName=wind_portable
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[错误] 便携启动器构建失败" -ForegroundColor Red
             exit 1
         }
+
+        # 还原 AssemblyInfo
+        & git checkout -- $assemblyInfoPath 2>$null
     } finally {
         Pop-Location
     }
@@ -606,7 +590,7 @@ $dllLabel = if ($DebugVariant) { "wind_tsf_debug.dll" } else { "wind_tsf.dll" }
 $dllX86Label = if ($DebugVariant) { "wind_tsf_debug_x86.dll" } else { "wind_tsf_x86.dll" }
 $exeLabel = if ($DebugVariant) { "wind_input_debug.exe" } else { "wind_input.exe" }
 $settingLabel = if ($DebugVariant) { "wind_setting_debug.exe" } else { "wind_setting.exe" }
-$portableLabel = if ($DebugVariant) { "wind_portable_debug.exe" } else { "wind_portable.exe" }
+$portableLabel = "wind_portable.exe"
 
 $checkFiles = @()
 if ($BuildDll) { $checkFiles += $dllLabel, $dllX86Label }
