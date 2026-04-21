@@ -78,7 +78,12 @@ namespace WindPortable
                 {
                     this.BeginInvoke((Action)(() =>
                     {
-                        if (_manager != null && !conflict)
+                        if (_manager == null)
+                        {
+                            ApplyDetectError();
+                            return;
+                        }
+                        if (!conflict)
                             _tray = new TrayManager(this, _manager);
                         ApplyStatus(running, registered, conflict, conflictPath, hasDeploySource);
                     }));
