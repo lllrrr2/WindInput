@@ -149,6 +149,14 @@ func TestDisplayCursorPosWithConfirmedSegments(t *testing.T) {
 			want:               2 + 10 + 2, // "我们" = 2 runes + 10 ASCII + 2 separators = 14
 		},
 		{
+			name:               "cursor at syllable boundary, before separator",
+			inputBuffer:        "debiaoxian",
+			inputCursorPos:     2, // cursor after "de", at syllable boundary
+			preeditDisplay:     "de biao xian",
+			syllableBoundaries: []int{2, 6},
+			want:               2, // cursor before the space (not after)
+		},
+		{
 			name: "with segment, cursor in middle",
 			segments: []ConfirmedSegment{
 				{Text: "你", ConsumedCode: "ni"},

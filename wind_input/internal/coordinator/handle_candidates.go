@@ -93,13 +93,8 @@ func (c *Coordinator) displayCursorPos() int {
 	if c.preeditDisplay == "" {
 		return prefixRuneLen + c.inputCursorPos
 	}
-	offset := 0
-	for _, b := range c.syllableBoundaries {
-		if b <= c.inputCursorPos {
-			offset++
-		}
-	}
-	return prefixRuneLen + c.inputCursorPos + offset
+	// 使用共享的位置映射：光标在分隔符之前（而非之后）
+	return prefixRuneLen + mapBufferPosToDisplayPos(c.inputBuffer, c.preeditDisplay, c.inputCursorPos)
 }
 
 func (c *Coordinator) updateCandidates() {
