@@ -116,10 +116,17 @@ func (c *CompositeDict) searchInternal(code string, limit int, isPrefix bool) []
 	seenIdx := make(map[string]int) // Text -> index in results
 	var results []candidate.Candidate
 
+	// 前缀查询对底层传递安全限制，避免短前缀（如单字母"s"）触发全量 Trie 遍历。
+	// 精确匹配不受影响（候选数天然有限）。
+	const prefixSafeLimit = 300
 	for _, layer := range c.layers {
 		var layerResults []candidate.Candidate
 		if isPrefix {
-			layerResults = layer.SearchPrefix(code, 0)
+			layerLimit := prefixSafeLimit
+			if limit > 0 && limit > prefixSafeLimit {
+				layerLimit = limit
+			}
+			layerResults = layer.SearchPrefix(code, layerLimit)
 		} else {
 			layerResults = layer.Search(code, 0)
 		}
