@@ -117,11 +117,13 @@ type caretState struct {
 // tempModeState 临时输入模式（临时英文/临时拼音）状态
 type tempModeState struct {
 	tempEnglishMode       bool                  // 是否处于临时英文模式
+	tempEnglishTriggerKey string                // 当前使用的触发键类型（触发键方式进入时）
 	tempEnglishBuffer     string                // 临时英文缓冲区
 	tempEnglishCursorPos  int                   // 临时英文光标位置
 	tempEnglishCandidates []candidate.Candidate // 临时英文模式的英文候选列表
 	tempPinyinMode        bool                  // 是否处于临时拼音模式
 	tempPinyinBuffer      string                // 临时拼音输入缓冲区
+	tempPinyinCursorPos   int                   // 临时拼音光标位置
 	tempPinyinCommitted   string                // 临时拼音部分上屏累积文本
 	tempPinyinTriggerKey  string                // 临时拼音触发键类型（"backtick"/"semicolon"/"z"）
 }
@@ -137,9 +139,11 @@ type addWordState struct {
 // quickInputState 快捷输入模式状态
 type quickInputState struct {
 	quickInputMode              bool   // 是否处于快捷输入模式
-	quickInputBuffer            string // 分号后的输入缓冲区（不含触发键本身）
+	quickInputTriggerKey        string // 当前使用的触发键类型（如 "semicolon"）
+	quickInputBuffer            string // 触发键后的输入缓冲区（不含触发键本身）
 	quickInputPinyinMode        bool   // 是否处于快捷输入的临时拼音子模式
 	quickInputPinyinBuffer      string // 快捷输入临时拼音缓冲区
+	quickInputPinyinCursorPos   int    // 快捷输入拼音光标位置
 	quickInputPinyinCommitted   string // 快捷输入拼音部分上屏累积文本
 	quickInputPinyinDictSwapped bool   // 是否已交换词库层（仅码表引擎下为 true）
 	savedLayout                 string // 进入快捷输入前的布局（用于退出时恢复）

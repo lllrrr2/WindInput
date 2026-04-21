@@ -408,37 +408,20 @@
       <div class="card-title">快捷输入</div>
       <div class="setting-item">
         <div class="setting-info">
-          <label>启用快捷输入</label>
-          <p class="setting-hint">
-            空码时按触发键进入快捷输入模式，支持数字转大小写、金额、计算器、日期等
-          </p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.input.quick_input.enabled"
-            @update:checked="formData.input.quick_input.enabled = $event"
-          />
-        </div>
-      </div>
-      <div
-        class="setting-item"
-        :class="{ 'item-disabled': !formData.input.quick_input.enabled }"
-      >
-        <div class="setting-info">
           <label>触发键</label>
-          <p class="setting-hint">用于启动快捷输入的按键</p>
+          <p class="setting-hint">
+            空码时按触发键进入快捷输入模式，支持数字转大小写、金额、计算器、日期等。
+          </p>
         </div>
         <div class="setting-control">
           <TriggerKeySelect
             :options="triggerKeyOptions"
-            :model-value="[formData.input.quick_input.trigger_key]"
+            :model-value="formData.input.quick_input.trigger_keys"
             @update:model-value="
-              formData.input.quick_input.trigger_key = $event[0] || 'semicolon'
+              formData.input.quick_input.trigger_keys = $event
             "
-            :single="true"
-            :disabled="!formData.input.quick_input.enabled"
             :conflicts="quickInputConflicts"
-            placeholder="选择触发键"
+            placeholder="选择触发键（未选择=关闭）"
           />
         </div>
         <p v-if="quickInputConflictMsg" class="setting-item-warning">
@@ -447,7 +430,7 @@
       </div>
       <div
         class="setting-item"
-        :class="{ 'item-disabled': !formData.input.quick_input.enabled }"
+        :class="{ 'item-disabled': formData.input.quick_input.trigger_keys.length === 0 }"
       >
         <div class="setting-info">
           <label>强制竖排显示</label>
@@ -459,13 +442,13 @@
           <Switch
             :checked="formData.input.quick_input.force_vertical"
             @update:checked="formData.input.quick_input.force_vertical = $event"
-            :disabled="!formData.input.quick_input.enabled"
+            :disabled="formData.input.quick_input.trigger_keys.length === 0"
           />
         </div>
       </div>
       <div
         class="setting-item"
-        :class="{ 'item-disabled': !formData.input.quick_input.enabled }"
+        :class="{ 'item-disabled': formData.input.quick_input.trigger_keys.length === 0 }"
       >
         <div class="setting-info">
           <label>小数保留位数</label>
@@ -476,7 +459,7 @@
             type="number"
             class="number-input"
             v-model.number="formData.input.quick_input.decimal_places"
-            :disabled="!formData.input.quick_input.enabled"
+            :disabled="formData.input.quick_input.trigger_keys.length === 0"
             min="0"
             max="6"
           />
@@ -1000,12 +983,16 @@ const tempPinyinKeyOptions = [
 // 快捷输入冲突 Map
 const quickInputConflicts = computed(() => {
   const map = new Map<string, string>();
-  const key = props.formData.input.quick_input.trigger_key;
+  const quickKeys = props.formData.input.quick_input?.trigger_keys || [];
   const pinyinKeys = props.formData.input.temp_pinyin?.trigger_keys || [];
   const englishKeys =
     props.formData.input.shift_temp_english?.trigger_keys || [];
-  if (pinyinKeys.includes(key)) map.set(key, "与临时拼音冲突");
-  if (englishKeys.includes(key)) map.set(key, "与临时英文冲突");
+  for (const qk of quickKeys) {
+    const conflicts: string[] = [];
+    if (pinyinKeys.includes(qk)) conflicts.push("临时拼音");
+    if (englishKeys.includes(qk)) conflicts.push("临时英文");
+    if (conflicts.length > 0) map.set(qk, `与${conflicts.join("、")}冲突`);
+  }
   return map;
 });
 const quickInputConflictMsg = computed(() => {
@@ -1019,11 +1006,11 @@ const tempPinyinConflictMap = computed(() => {
   const pinyinKeys = props.formData.input.temp_pinyin?.trigger_keys || [];
   const englishKeys =
     props.formData.input.shift_temp_english?.trigger_keys || [];
-  const quickKey = props.formData.input.quick_input?.trigger_key;
+  const quickKeys = props.formData.input.quick_input?.trigger_keys || [];
   for (const pk of pinyinKeys) {
     const conflicts: string[] = [];
     if (englishKeys.includes(pk)) conflicts.push("临时英文");
-    if (pk === quickKey) conflicts.push("快捷输入");
+    if (quickKeys.includes(pk)) conflicts.push("快捷输入");
     if (conflicts.length > 0) map.set(pk, `与${conflicts.join("、")}冲突`);
   }
   return map;
@@ -1039,11 +1026,11 @@ const tempEnglishConflictMap = computed(() => {
   const englishKeys =
     props.formData.input.shift_temp_english?.trigger_keys || [];
   const pinyinKeys = props.formData.input.temp_pinyin?.trigger_keys || [];
-  const quickKey = props.formData.input.quick_input?.trigger_key;
+  const quickKeys = props.formData.input.quick_input?.trigger_keys || [];
   for (const ek of englishKeys) {
     const conflicts: string[] = [];
     if (pinyinKeys.includes(ek)) conflicts.push("临时拼音");
-    if (ek === quickKey) conflicts.push("快捷输入");
+    if (quickKeys.includes(ek)) conflicts.push("快捷输入");
     if (conflicts.length > 0) map.set(ek, `与${conflicts.join("、")}冲突`);
   }
   return map;

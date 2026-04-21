@@ -370,8 +370,8 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	}
 
 	// 检查是否应触发快捷输入模式（仅在未按 Shift 时，且临时拼音未拦截分号时）
-	if !hasShift && c.shouldTriggerQuickInput(key, data.KeyCode) {
-		return c.enterQuickInputMode()
+	if triggerKey := c.getQuickInputTriggerKey(key, data.KeyCode); !hasShift && triggerKey != "" {
+		return c.enterQuickInputMode(triggerKey)
 	}
 
 	// 中文模式下，Shift+字母处理（CapsLock OFF 时）

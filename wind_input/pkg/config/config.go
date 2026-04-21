@@ -160,10 +160,12 @@ type OverflowBehaviorConfig struct {
 
 // QuickInputConfig 快捷输入配置
 type QuickInputConfig struct {
-	Enabled       bool   `yaml:"enabled" json:"enabled"`               // 总开关（默认 true）
-	TriggerKey    string `yaml:"trigger_key" json:"trigger_key"`       // 触发键（默认 "semicolon"）
-	ForceVertical bool   `yaml:"force_vertical" json:"force_vertical"` // 强制竖排显示候选（默认 true）
-	DecimalPlaces int    `yaml:"decimal_places" json:"decimal_places"` // 计算结果小数保留位数（默认 6，0 表示取整）
+	TriggerKeys   []string `yaml:"trigger_keys" json:"trigger_keys"`     // 触发键列表（空列表=关闭），如 ["semicolon"]
+	ForceVertical bool     `yaml:"force_vertical" json:"force_vertical"` // 强制竖排显示候选（默认 true）
+	DecimalPlaces int      `yaml:"decimal_places" json:"decimal_places"` // 计算结果小数保留位数（默认 6，0 表示取整）
+	// 兼容旧配置字段（加载后迁移到 TriggerKeys）
+	Enabled    *bool  `yaml:"enabled,omitempty" json:"enabled,omitempty"`         // deprecated
+	TriggerKey string `yaml:"trigger_key,omitempty" json:"trigger_key,omitempty"` // deprecated
 }
 
 // PunctCustomConfig 自定义标点映射配置
@@ -317,8 +319,7 @@ func DefaultConfig() *Config {
 				EnglishPairs: []string{"()", "[]", "{}", "<>"},
 			},
 			QuickInput: QuickInputConfig{
-				Enabled:       true,
-				TriggerKey:    "semicolon",
+				TriggerKeys:   []string{"semicolon"},
 				ForceVertical: true,
 				DecimalPlaces: 6,
 			},
@@ -411,8 +412,33 @@ func applyConfigFallbacks(cfg *Config) {
 		cfg.UI.ThemeStyle = "system"
 	}
 
+	// 迁移旧的快捷输入配置（enabled+trigger_key → trigger_keys）
+	migrateQuickInputConfig(cfg)
+
 	// 迁移旧的状态提示字段到新的 StatusIndicator 结构
 	migrateStatusIndicatorConfig(cfg)
+}
+
+// migrateQuickInputConfig 将旧的 enabled+trigger_key 迁移到 trigger_keys
+func migrateQuickInputConfig(cfg *Config) {
+	qi := &cfg.Input.QuickInput
+	if qi.TriggerKey != "" && len(qi.TriggerKeys) == 0 {
+		// 旧格式：有 trigger_key 但没有 trigger_keys
+		if qi.Enabled == nil || *qi.Enabled {
+			// 启用状态（默认或显式启用）：迁移触发键到列表
+			qi.TriggerKeys = []string{qi.TriggerKey}
+		}
+		// 禁用状态：trigger_keys 保持为空（=关闭）
+		qi.TriggerKey = ""
+		qi.Enabled = nil
+	}
+	if qi.Enabled != nil {
+		// 清理旧字段
+		if !*qi.Enabled {
+			qi.TriggerKeys = nil
+		}
+		qi.Enabled = nil
+	}
 }
 
 // migrateStatusIndicatorConfig 将旧的状态提示字段迁移到新的 StatusIndicatorConfig 结构

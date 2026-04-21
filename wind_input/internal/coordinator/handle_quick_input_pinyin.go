@@ -27,6 +27,7 @@ func (c *Coordinator) enterQuickInputPinyinMode(firstKey string) *bridge.KeyEven
 
 	c.quickInputPinyinMode = true
 	c.quickInputPinyinBuffer = firstKey
+	c.quickInputPinyinCursorPos = len(firstKey)
 	c.quickInputPinyinCommitted = ""
 	c.currentPage = 1
 	c.selectedIndex = 0
@@ -67,11 +68,7 @@ func (c *Coordinator) exitQuickInputPinyinToBase() *bridge.KeyEventResult {
 	c.showQuickInputUI()
 
 	preedit := c.quickInputPrefix()
-	return &bridge.KeyEventResult{
-		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     preedit,
-		CaretPos: len(preedit),
-	}
+	return c.modeCompositionResult(preedit, len(preedit))
 }
 
 // exitQuickInputPinyinMode 退出拼音子模式并退出快捷输入
@@ -99,6 +96,7 @@ func (c *Coordinator) exitQuickInputPinyinMode(commit bool, text string) *bridge
 func (c *Coordinator) quickInputPinyinOps() *pinyinModeOps {
 	return &pinyinModeOps{
 		buffer:    &c.quickInputPinyinBuffer,
+		cursorPos: &c.quickInputPinyinCursorPos,
 		committed: &c.quickInputPinyinCommitted,
 		prefix:    c.quickInputPrefix,
 		exitMode: func(commit bool, text string) *bridge.KeyEventResult {

@@ -13,51 +13,104 @@ func (c *Coordinator) isQuickInputTriggerKey(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
-	triggerKey := c.config.Input.QuickInput.TriggerKey
-	if triggerKey == "" {
-		triggerKey = "semicolon"
-	}
-	switch triggerKey {
-	case "semicolon":
-		return key == ";" || uint32(keyCode) == ipc.VK_OEM_1
-	case "backtick":
-		return key == "`" || uint32(keyCode) == ipc.VK_OEM_3
-	case "quote":
-		return key == "'" || uint32(keyCode) == ipc.VK_OEM_7
-	case "comma":
-		return key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA
-	case "period":
-		return key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD
-	case "slash":
-		return key == "/" || uint32(keyCode) == ipc.VK_OEM_2
-	case "backslash":
-		return key == "\\" || uint32(keyCode) == ipc.VK_OEM_5
-	case "open_bracket":
-		return key == "[" || uint32(keyCode) == ipc.VK_OEM_4
-	case "close_bracket":
-		return key == "]" || uint32(keyCode) == ipc.VK_OEM_6
+	for _, tk := range c.config.Input.QuickInput.TriggerKeys {
+		switch tk {
+		case "semicolon":
+			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
+				return true
+			}
+		case "backtick":
+			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
+				return true
+			}
+		case "quote":
+			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+				return true
+			}
+		case "comma":
+			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+				return true
+			}
+		case "period":
+			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+				return true
+			}
+		case "slash":
+			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+				return true
+			}
+		case "backslash":
+			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+				return true
+			}
+		case "open_bracket":
+			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+				return true
+			}
+		case "close_bracket":
+			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+				return true
+			}
+		}
 	}
 	return false
 }
 
-// shouldTriggerQuickInput 检查是否应触发快捷输入模式
-func (c *Coordinator) shouldTriggerQuickInput(key string, keyCode int) bool {
-	if c.config == nil || !c.config.Input.QuickInput.Enabled {
-		return false
+// getQuickInputTriggerKey 检查按键是否应触发快捷输入模式，返回匹配的触发键类型，空串表示不触发
+func (c *Coordinator) getQuickInputTriggerKey(key string, keyCode int) string {
+	if c.config == nil || len(c.config.Input.QuickInput.TriggerKeys) == 0 {
+		return ""
 	}
 	// 仅输入缓冲区为空且无候选时触发
 	if len(c.inputBuffer) > 0 || len(c.candidates) > 0 {
-		return false
+		return ""
 	}
-	return c.isQuickInputTriggerKey(key, keyCode)
+	for _, tk := range c.config.Input.QuickInput.TriggerKeys {
+		switch tk {
+		case "semicolon":
+			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
+				return tk
+			}
+		case "backtick":
+			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
+				return tk
+			}
+		case "quote":
+			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+				return tk
+			}
+		case "comma":
+			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+				return tk
+			}
+		case "period":
+			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+				return tk
+			}
+		case "slash":
+			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+				return tk
+			}
+		case "backslash":
+			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+				return tk
+			}
+		case "open_bracket":
+			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+				return tk
+			}
+		case "close_bracket":
+			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+				return tk
+			}
+		}
+	}
+	return ""
 }
 
 // quickInputPrefix 返回当前触发键对应的字符
 func (c *Coordinator) quickInputPrefix() string {
-	if c.config == nil {
-		return ";"
-	}
-	switch c.config.Input.QuickInput.TriggerKey {
+	switch c.quickInputTriggerKey {
 	case "backtick":
 		return "`"
 	case "quote":
@@ -79,9 +132,10 @@ func (c *Coordinator) quickInputPrefix() string {
 	}
 }
 
-// enterQuickInputMode 进入快捷输入模式
-func (c *Coordinator) enterQuickInputMode() *bridge.KeyEventResult {
+// enterQuickInputMode 进入快捷输入模式，triggerKey 标识触发键类型
+func (c *Coordinator) enterQuickInputMode(triggerKey string) *bridge.KeyEventResult {
 	c.quickInputMode = true
+	c.quickInputTriggerKey = triggerKey
 	c.quickInputBuffer = ""
 
 	// 强制竖排：保存当前布局并切换
@@ -101,11 +155,7 @@ func (c *Coordinator) enterQuickInputMode() *bridge.KeyEventResult {
 	c.showQuickInputUI()
 
 	preedit := c.quickInputPrefix()
-	return &bridge.KeyEventResult{
-		Type:     bridge.ResponseTypeUpdateComposition,
-		Text:     preedit,
-		CaretPos: len(preedit),
-	}
+	return c.modeCompositionResult(preedit, len(preedit))
 }
 
 // handleQuickInputKey 处理快捷输入模式下的按键
@@ -149,22 +199,14 @@ func (c *Coordinator) handleQuickInputKey(key string, data *bridge.KeyEventData)
 				c.updateQuickInputCandidates()
 				c.showQuickInputUI()
 				prefix := c.quickInputPrefix()
-				return &bridge.KeyEventResult{
-					Type:     bridge.ResponseTypeUpdateComposition,
-					Text:     prefix,
-					CaretPos: len(prefix),
-				}
+				return c.modeCompositionResult(prefix, len(prefix))
 			}
 			c.currentPage = 1
 			c.selectedIndex = 0
 			c.updateQuickInputCandidates()
 			c.showQuickInputUI()
 			preedit := c.quickInputPrefix() + c.quickInputBuffer
-			return &bridge.KeyEventResult{
-				Type:     bridge.ResponseTypeUpdateComposition,
-				Text:     preedit,
-				CaretPos: len(preedit),
-			}
+			return c.modeCompositionResult(preedit, len(preedit))
 		}
 		return c.exitQuickInputMode(false, "")
 
@@ -273,11 +315,7 @@ func (c *Coordinator) handleQuickInputKey(key string, data *bridge.KeyEventData)
 		c.updateQuickInputCandidates()
 		c.showQuickInputUI()
 		preedit := c.quickInputPrefix() + c.quickInputBuffer
-		return &bridge.KeyEventResult{
-			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     preedit,
-			CaretPos: len(preedit),
-		}
+		return c.modeCompositionResult(preedit, len(preedit))
 
 	default:
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
@@ -445,6 +483,7 @@ func (c *Coordinator) exitQuickInputMode(commit bool, text string) *bridge.KeyEv
 	}
 
 	c.quickInputMode = false
+	c.quickInputTriggerKey = ""
 	c.quickInputBuffer = ""
 	c.candidates = nil
 	c.currentPage = 1

@@ -178,8 +178,7 @@ export interface OverflowBehaviorConfig {
 
 // 快捷输入配置
 export interface QuickInputConfig {
-  enabled: boolean;
-  trigger_key: string;
+  trigger_keys: string[];
   force_vertical: boolean;
   decimal_places: number;
 }
@@ -458,8 +457,7 @@ export function getDefaultConfig(): Config {
         mappings: {},
       },
       quick_input: {
-        enabled: true,
-        trigger_key: "semicolon",
+        trigger_keys: ["semicolon"],
         force_vertical: true,
         decimal_places: 6,
       },
