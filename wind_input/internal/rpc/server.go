@@ -159,8 +159,10 @@ func (s *Server) Start() error {
 	RegisterMethod(s.router, "Phrase.BatchAdd", phraseSvc.BatchAdd)
 
 	// 创建命名管道监听器
+	// SDDL: 允许 SYSTEM(SY)、管理员(BA)和所有已认证用户(AU)完全访问
+	// 解决提升权限进程创建的管道默认 DACL 阻止非提升进程连接的问题
 	pipeConfig := &winio.PipeConfig{
-		SecurityDescriptor: "",
+		SecurityDescriptor: "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)",
 		InputBufferSize:    65536,
 		OutputBufferSize:   65536,
 	}

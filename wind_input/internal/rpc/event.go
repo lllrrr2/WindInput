@@ -83,7 +83,7 @@ func NewEventPipeServer(broadcaster *EventBroadcaster, logger *slog.Logger) *Eve
 // Start begins listening on the event pipe.
 func (e *EventPipeServer) Start() error {
 	pipeConfig := &winio.PipeConfig{
-		SecurityDescriptor: "",
+		SecurityDescriptor: "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)",
 		InputBufferSize:    4096,
 		OutputBufferSize:   65536,
 	}
