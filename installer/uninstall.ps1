@@ -15,6 +15,7 @@ if ($DebugVariant) {
     $SettingProcessName = "wind_setting_debug"
     $PortableProcessName = "wind_portable_debug"
     $RunKeyName = "WindInputDebug"
+    $ShortcutFolder = "清风输入法 Debug"
     $ShortcutName = "清风输入法 Debug 设置"
     $DisplayName = "清风输入法 (Debug)"
     $ProfileStr = "0804:{99C2DEB0-5C57-45A2-9C63-FB54B34FD90A}{99C2DEB1-5C57-45A2-9C63-FB54B34FD90A}"
@@ -29,6 +30,7 @@ if ($DebugVariant) {
     $SettingProcessName = "wind_setting"
     $PortableProcessName = "wind_portable"
     $RunKeyName = "WindInput"
+    $ShortcutFolder = "清风输入法"
     $ShortcutName = "清风输入法 设置"
     $DisplayName = "清风输入法"
     $ProfileStr = "0804:{99C2EE30-5C57-45A2-9C63-FB54B34FD90A}{99C2EE31-5C57-45A2-9C63-FB54B34FD90A}"
@@ -119,10 +121,14 @@ try {
 
 # [7/8] 移除目录
 Write-Host "[7/8] 移除目录..."
-# 删除开始菜单快捷方式
-$shortcutPath = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$ShortcutName.lnk"
-if (Test-Path $shortcutPath) {
-    Remove-Item -Path $shortcutPath -Force -ErrorAction SilentlyContinue
+# 删除开始菜单快捷方式（子目录版 + 兼容清理旧版散落的）
+$startMenuDir = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$ShortcutFolder"
+if (Test-Path $startMenuDir) {
+    Remove-Item -Path $startMenuDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+$oldShortcut = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$ShortcutName.lnk"
+if (Test-Path $oldShortcut) {
+    Remove-Item -Path $oldShortcut -Force -ErrorAction SilentlyContinue
 }
 
 # 删除子目录

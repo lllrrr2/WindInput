@@ -505,14 +505,40 @@ Write-Host "  - 服务已在后台启动"
 # [13/13] 创建快捷方式
 Write-Host "[13/13] 创建快捷方式..."
 $settingInstalled = Join-Path $InstallDir $SettingName
+$uninstallExe = Join-Path $InstallDir "uninstall.exe"
+$startMenuDir = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$ShortcutFolder"
+
+# 清理旧版散落在 Programs 根目录的快捷方式
+$oldShortcut = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$ShortcutName.lnk"
+if (Test-Path $oldShortcut) {
+    Remove-Item -Path $oldShortcut -Force -ErrorAction SilentlyContinue
+    Write-Host "  - 已清理旧版快捷方式"
+}
+
+# 创建子目录并写入快捷方式
 if (Test-Path $settingInstalled) {
+    if (-not (Test-Path $startMenuDir)) {
+        New-Item -ItemType Directory -Path $startMenuDir -Force | Out-Null
+    }
     $ws = New-Object -ComObject WScript.Shell
-    $shortcut = $ws.CreateShortcut("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$ShortcutName.lnk")
+
+    # 设置快捷方式
+    $shortcut = $ws.CreateShortcut("$startMenuDir\$ShortcutName.lnk")
     $shortcut.TargetPath = $settingInstalled
     $shortcut.WorkingDirectory = $InstallDir
     $shortcut.Description = $ShortcutName
     $shortcut.Save()
     Write-Host "  - 开始菜单快捷方式已创建"
+
+    # 卸载快捷方式
+    if (Test-Path $uninstallExe) {
+        $unShortcut = $ws.CreateShortcut("$startMenuDir\卸载 $DisplayName.lnk")
+        $unShortcut.TargetPath = $uninstallExe
+        $unShortcut.WorkingDirectory = $InstallDir
+        $unShortcut.Description = "卸载 $DisplayName"
+        $unShortcut.Save()
+        Write-Host "  - 卸载快捷方式已创建"
+    }
 }
 
 # 清理旧备份文件
