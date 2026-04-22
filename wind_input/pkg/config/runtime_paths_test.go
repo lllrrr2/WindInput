@@ -6,7 +6,37 @@ import (
 	"testing"
 )
 
-func TestFindPortableRoot(t *testing.T) {
+func TestFindPortableRootSameDir(t *testing.T) {
+	// 标记文件与 exeDir 同级——应检测到
+	tmp := t.TempDir()
+	exeDir := filepath.Join(tmp, "bundle")
+	if err := os.MkdirAll(exeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(exeDir, PortableMarkerName), []byte("portable=1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := findPortableRoot(exeDir)
+	if !ok {
+		t.Fatalf("expected portable root, got not found")
+	}
+	if got != exeDir {
+		t.Fatalf("expected %s, got %s", exeDir, got)
+	}
+}
+
+func TestFindPortableRootNotFound(t *testing.T) {
+	// 目录中没有标记文件——应返回 not found
+	tmp := t.TempDir()
+	got, ok := findPortableRoot(tmp)
+	if ok {
+		t.Fatalf("expected not found, got %s", got)
+	}
+}
+
+func TestFindPortableRootParentIgnored(t *testing.T) {
+	// 标记文件在父目录而非 exeDir 同级——不应检测到
 	tmp := t.TempDir()
 	root := filepath.Join(tmp, "bundle")
 	exeDir := filepath.Join(root, "build")
@@ -17,59 +47,8 @@ func TestFindPortableRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, ok := findPortableRoot(exeDir)
-	if !ok {
-		t.Fatalf("expected portable root, got not found")
-	}
-	if got != root {
-		t.Fatalf("expected %s, got %s", root, got)
-	}
-}
-
-func TestFindPortableRootNotFound(t *testing.T) {
-	tmp := t.TempDir()
-	got, ok := findPortableRoot(tmp)
+	_, ok := findPortableRoot(exeDir)
 	if ok {
-		t.Fatalf("expected not found, got %s", got)
-	}
-}
-
-func TestFindPortableRootDepthLimit(t *testing.T) {
-	// 标记文件在 exeDir 上方 3 层，超过 maxPortableDepth=2 限制
-	tmp := t.TempDir()
-	root := filepath.Join(tmp, "level1")
-	exeDir := filepath.Join(root, "level2", "level3", "level4")
-	if err := os.MkdirAll(exeDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, PortableMarkerName), []byte("portable=1\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	got, ok := findPortableRoot(exeDir)
-	if ok {
-		t.Fatalf("expected not found due to depth limit, got %s", got)
-	}
-	_ = got
-}
-
-func TestFindPortableRootExactDepth(t *testing.T) {
-	// 标记文件恰好在 exeDir 上方 2 层，刚好在 maxPortableDepth 限制内
-	tmp := t.TempDir()
-	root := filepath.Join(tmp, "level1")
-	exeDir := filepath.Join(root, "level2", "level3")
-	if err := os.MkdirAll(exeDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, PortableMarkerName), []byte("portable=1\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	got, ok := findPortableRoot(exeDir)
-	if !ok {
-		t.Fatalf("expected portable root at depth 2, got not found")
-	}
-	if got != root {
-		t.Fatalf("expected %s, got %s", root, got)
+		t.Fatalf("expected not found — marker in parent dir should be ignored")
 	}
 }

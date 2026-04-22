@@ -62,17 +62,16 @@ namespace WindPortable
                 bool conflict = false;
                 bool running = false;
                 bool registered = false;
+                string conflictReason = null;
                 string conflictPath = null;
                 bool hasDeploySource = false;
 
                 if (_manager != null)
                 {
-                    conflict = _manager.InstalledConflict(out _);
+                    running = _manager.ServiceRunning();
+                    conflict = _manager.InstalledConflict(running, out conflictReason);
                     if (!conflict)
-                    {
-                        running = _manager.ServiceRunning();
                         registered = _manager.IsRegistered();
-                    }
                     conflictPath = conflict ? _manager.InstalledConflictPath() : null;
                 }
                 hasDeploySource = PortableConfig.FindDeploySourceDir() != null;
@@ -88,7 +87,7 @@ namespace WindPortable
                         }
                         if (!conflict)
                             _tray = new TrayManager(this, _manager);
-                        ApplyStatus(running, registered, conflict, conflictPath, hasDeploySource);
+                        ApplyStatus(running, registered, conflict, conflictReason, conflictPath, hasDeploySource);
                     }));
                 }
                 catch (ObjectDisposedException) { }
@@ -349,16 +348,16 @@ namespace WindPortable
             Task.Run(() =>
             {
                 bool running = _manager.ServiceRunning();
-                bool registered = _manager.IsRegistered();
                 string conflictReason;
-                bool conflict = _manager.InstalledConflict(out conflictReason);
+                bool conflict = _manager.InstalledConflict(running, out conflictReason);
+                bool registered = !conflict && _manager.IsRegistered();
                 string conflictPath = conflict ? _manager.InstalledConflictPath() : null;
                 bool hasDeploySource = PortableConfig.FindDeploySourceDir() != null;
 
                 try
                 {
                     this.BeginInvoke((Action)(() =>
-                        ApplyStatus(running, registered, conflict, conflictPath, hasDeploySource)));
+                        ApplyStatus(running, registered, conflict, conflictReason, conflictPath, hasDeploySource)));
                 }
                 catch (ObjectDisposedException) { }
                 catch (InvalidOperationException) { }
@@ -377,15 +376,17 @@ namespace WindPortable
             _tray?.UpdateMenuState(false, false, true);
         }
 
-        void ApplyStatus(bool running, bool registered, bool conflict, string conflictPath, bool hasDeploySource)
+        void ApplyStatus(bool running, bool registered, bool conflict, string conflictReason, string conflictPath, bool hasDeploySource)
         {
             bool stoppable = running || registered;
 
             if (conflict)
             {
-                lblStatus.Text = "检测到已安装正式版";
-                lblDetail.Text = "为避免覆盖现有输入法注册信息，便携模式已禁用";
-                lblRootHint.Text = "已安装位置: " + CompactPathMax(conflictPath ?? "", 42);
+                lblStatus.Text = "便携模式不可用";
+                lblDetail.Text = conflictReason ?? "便携模式已禁用";
+                lblRootHint.Text = !string.IsNullOrEmpty(conflictPath)
+                    ? "冲突位置: " + CompactPathMax(conflictPath, 42)
+                    : "";
                 btnStart.Enabled = false;
                 btnStop.Enabled = false;
                 btnSetting.Enabled = false;
@@ -529,16 +530,16 @@ namespace WindPortable
 
                 // 后台采集状态
                 bool running = _manager.ServiceRunning();
-                bool registered = _manager.IsRegistered();
                 string conflictReason;
-                bool conflict = _manager.InstalledConflict(out conflictReason);
+                bool conflict = _manager.InstalledConflict(running, out conflictReason);
+                bool registered = !conflict && _manager.IsRegistered();
                 string conflictPath = conflict ? _manager.InstalledConflictPath() : null;
                 bool hasDeploySource = PortableConfig.FindDeploySourceDir() != null;
 
                 try
                 {
                     this.BeginInvoke((Action)(() =>
-                        ApplyStatus(running, registered, conflict, conflictPath, hasDeploySource)));
+                        ApplyStatus(running, registered, conflict, conflictReason, conflictPath, hasDeploySource)));
                 }
                 catch (ObjectDisposedException) { return; }
                 catch (InvalidOperationException) { return; }

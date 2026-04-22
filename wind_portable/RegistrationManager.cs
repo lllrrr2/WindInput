@@ -66,19 +66,18 @@ namespace WindPortable
                        StringComparison.OrdinalIgnoreCase);
         }
 
-        public static bool InstalledConflict(PortableConfig cfg, out string reason)
+        public static bool InstalledConflict(PortableConfig cfg, bool serviceRunning, out string reason)
         {
             reason = null;
 
-            string installDir = NsisInstallLocation();
-            if (!string.IsNullOrEmpty(installDir) &&
-                string.Equals(Path.GetFullPath(cfg.RootDir), Path.GetFullPath(installDir),
-                    StringComparison.OrdinalIgnoreCase))
+            // 检查 1：当前目录是否为安装版目录（注册表 + uninstall.exe 双重检测）
+            if (IsInstalledDirectory(cfg.RootDir))
             {
                 reason = "当前位于已安装目录，便携模式不可用。如需使用便携模式，请将文件复制到其他目录运行。";
                 return true;
             }
 
+            // 检查 2：是否有其他位置的 DLL 注册
             string regPath = RegisteredDllPath();
             if (string.IsNullOrEmpty(regPath)) return false;
             if (string.IsNullOrEmpty(cfg.TsfDll)) return false;
@@ -86,17 +85,31 @@ namespace WindPortable
                     StringComparison.OrdinalIgnoreCase))
                 return false;
 
+            // 注册的 DLL 文件已不存在，属于残留注册，可安全接管
+            if (!File.Exists(regPath))
+                return false;
+
+            // 不同位置的 DLL 已注册，判断来源
+            if (HasPortableMarker(regPath))
+            {
+                // 来自另一个便携版实例
+                if (!serviceRunning)
+                    return false; // 残留注册，服务未运行，可安全接管
+
+                string otherDir = Path.GetDirectoryName(Path.GetFullPath(regPath));
+                reason = $"检测到另一个便携版实例正在运行（{otherDir}），请先停止该实例后再启动。";
+                return true;
+            }
+
+            // 来自安装版的注册
             reason = $"系统已注册其他位置的清风输入法：{regPath}。为避免覆盖现有注册信息，便携模式已禁用。";
             return true;
         }
 
         public static string InstalledConflictPath(PortableConfig cfg)
         {
-            string installDir = NsisInstallLocation();
-            if (!string.IsNullOrEmpty(installDir) &&
-                string.Equals(Path.GetFullPath(cfg.RootDir), Path.GetFullPath(installDir),
-                    StringComparison.OrdinalIgnoreCase))
-                return installDir;
+            if (IsInstalledDirectory(cfg.RootDir))
+                return NsisInstallLocation() ?? cfg.RootDir;
             return RegisteredDllPath();
         }
 
@@ -157,6 +170,38 @@ namespace WindPortable
             {
                 throw new Exception("请求管理员权限失败或被取消");
             }
+        }
+
+        /// <summary>
+        /// 检测目录是否为安装版目录：NSIS 注册表匹配或存在卸载程序。
+        /// </summary>
+        static bool IsInstalledDirectory(string rootDir)
+        {
+            string installDir = NsisInstallLocation();
+            if (!string.IsNullOrEmpty(installDir) &&
+                string.Equals(Path.GetFullPath(rootDir), Path.GetFullPath(installDir),
+                    StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (File.Exists(Path.Combine(rootDir, "uninstall.exe")))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// 检查 DLL 所在目录是否存在便携模式标记文件（必须同级，不向上遍历）。
+        /// </summary>
+        static bool HasPortableMarker(string dllPath)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(Path.GetFullPath(dllPath));
+                if (!string.IsNullOrEmpty(dir))
+                    return File.Exists(Path.Combine(dir, BuildVariant.PortableMarkerName));
+            }
+            catch { }
+            return false;
         }
 
         static string RegisteredDllPath()

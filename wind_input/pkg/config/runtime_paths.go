@@ -13,23 +13,15 @@ const (
 	PortableMarkerName = "wind_portable_mode"
 	// PortableDataDir 便携模式下用户数据目录名
 	PortableDataDir = "userdata"
-	// maxPortableDepth 向上遍历最大层数（从 exeDir 开始，最多再向上 2 层）
-	maxPortableDepth = 2
 )
 
-// findPortableRoot walks upward from exeDir looking for the portable marker.
-// It checks at most maxPortableDepth parent directories above exeDir.
+// findPortableRoot checks whether the portable marker exists in exeDir.
+// The marker must be in the same directory as the executable, not in parent directories,
+// to avoid false positives when multiple portable instances are nested.
 func findPortableRoot(exeDir string) (string, bool) {
 	dir := filepath.Clean(exeDir)
-	for i := 0; i <= maxPortableDepth; i++ {
-		if _, err := os.Stat(filepath.Join(dir, PortableMarkerName)); err == nil {
-			return dir, true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false
-		}
-		dir = parent
+	if _, err := os.Stat(filepath.Join(dir, PortableMarkerName)); err == nil {
+		return dir, true
 	}
 	return "", false
 }

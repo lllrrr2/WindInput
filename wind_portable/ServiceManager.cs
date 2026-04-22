@@ -28,7 +28,16 @@ namespace WindPortable
         public void StartService()
         {
             EnsureAvailable("启动服务");
-            if (ServiceRunning()) return;
+
+            if (ServiceRunning())
+            {
+                // RPC 可用，检查是否是我们自己的服务进程
+                if (ProcessHelper.ExistsByPath(Config.ServiceExe))
+                    return; // 自身服务已在运行
+
+                // 旧进程占据管道，通过 RPC 关闭后再启动
+                ShutdownStaleService();
+            }
 
             EnsurePortableLayout();
             ClearStoppedFlag();
@@ -117,7 +126,12 @@ namespace WindPortable
 
         public bool InstalledConflict(out string reason)
         {
-            return RegistrationManager.InstalledConflict(Config, out reason);
+            return RegistrationManager.InstalledConflict(Config, ServiceRunning(), out reason);
+        }
+
+        public bool InstalledConflict(bool serviceRunning, out string reason)
+        {
+            return RegistrationManager.InstalledConflict(Config, serviceRunning, out reason);
         }
 
         public string InstalledConflictPath()
@@ -155,6 +169,36 @@ namespace WindPortable
         }
 
         // ── 内部方法 ──
+
+        /// <summary>
+        /// 通过 RPC 关闭占据管道的旧服务进程（来自其他目录的残留实例）。
+        /// </summary>
+        void ShutdownStaleService()
+        {
+            try
+            {
+                _rpc.Shutdown();
+                for (int i = 0; i < 6; i++)
+                {
+                    Thread.Sleep(500);
+                    if (!ServiceRunning()) return;
+                }
+            }
+            catch { }
+
+            // RPC 关闭失败，尝试按进程名强制终止同名服务进程
+            try
+            {
+                string svcName = Path.GetFileNameWithoutExtension(Config.ServiceExe);
+                foreach (var proc in System.Diagnostics.Process.GetProcessesByName(svcName))
+                {
+                    try { proc.Kill(); proc.WaitForExit(2000); }
+                    catch { }
+                    finally { proc.Dispose(); }
+                }
+            }
+            catch { }
+        }
 
         void EnsureAvailable(string action)
         {
