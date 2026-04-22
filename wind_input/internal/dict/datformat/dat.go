@@ -107,7 +107,7 @@ func (b *DATBuilder) Build() (*DAT, error) {
 
 	// findBase 为给定的子字符集（codes）找到一个合法的 base 值
 	// 要求 base+c 位置的 check 均为 -1（空闲）
-	// 维护 searchStart 避免每次从头扫描（O(n²) → 接近 O(n)）
+	// searchStart 跟踪第一个已知��闲位置，不跳过可复用的空隙
 	searchStart := int32(1)
 	findBase := func(codes []int32) int32 {
 		if len(codes) == 0 {
@@ -115,7 +115,6 @@ func (b *DATBuilder) Build() (*DAT, error) {
 		}
 		minCode := codes[0]
 		for b := searchStart; ; b++ {
-			// base + minCode 必须 >= 1（避免与根节点位置 0 冲突）
 			if b+minCode < 1 {
 				continue
 			}
@@ -129,10 +128,15 @@ func (b *DATBuilder) Build() (*DAT, error) {
 				}
 			}
 			if !conflict {
-				// 更新搜索起点：当前 b 之前的位置大概率已被占满
-				searchStart = b + 1
 				return b
 			}
+		}
+	}
+
+	// advanceSearchStart 在子节���分配后推进搜索起点，跳过已占用位置
+	advanceSearchStart := func() {
+		for int(searchStart) < len(check) && check[searchStart] != -1 {
+			searchStart++
 		}
 	}
 
@@ -188,6 +192,7 @@ func (b *DATBuilder) Build() (*DAT, error) {
 				queue = append(queue, queueItem{child, t})
 			}
 		}
+		advanceSearchStart()
 	}
 
 	// 裁剪尾部空闲
