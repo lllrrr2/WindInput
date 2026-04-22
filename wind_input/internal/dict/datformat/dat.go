@@ -1,6 +1,11 @@
 package datformat
 
-import "sort"
+import (
+	"encoding/binary"
+	"sort"
+)
+
+var byteOrder = binary.LittleEndian
 
 // DAT Double-Array Trie 结构体
 // base[s] + c = t 为状态 s 经字符 c 的转移目标
