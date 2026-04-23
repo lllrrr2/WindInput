@@ -74,14 +74,14 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: external-docs/pnpm-lock.yaml
+          cache-dependency-path: external-docs/docs/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: external-docs
+        working-directory: external-docs/docs
         run: pnpm install --frozen-lockfile
 
       - name: Build documentation
-        working-directory: external-docs
+        working-directory: external-docs/docs
         env:
           WINDINPUT_DOCS_BASE: /WindInput/
         run: pnpm build
