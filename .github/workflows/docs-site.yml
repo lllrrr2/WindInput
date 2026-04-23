@@ -1,0 +1,107 @@
+name: Build and Deploy Docs Site
+
+on:
+  repository_dispatch:
+    types:
+      - docs-updated
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "WindInputDocs commit SHA to build"
+        required: false
+      source_ref:
+        description: "WindInputDocs ref to build when SHA is empty"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine docs source
+        id: source
+        run: |
+          SOURCE_SHA="${{ github.event.client_payload.source_sha }}"
+          SOURCE_REF="${{ github.event.client_payload.source_ref }}"
+
+          if [ -z "$SOURCE_SHA" ]; then
+            SOURCE_SHA="${{ inputs.source_sha }}"
+          fi
+
+          if [ -z "$SOURCE_REF" ]; then
+            SOURCE_REF="${{ inputs.source_ref }}"
+          fi
+
+          if [ -z "$SOURCE_REF" ]; then
+            SOURCE_REF="main"
+          fi
+
+          if [ -n "$SOURCE_SHA" ]; then
+            echo "checkout_ref=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+            echo "source_label=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "checkout_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+            echo "source_label=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout WindInputDocs
+        uses: actions/checkout@v4
+        with:
+          repository: huanfeng/WindInputDocs
+          ref: ${{ steps.source.outputs.checkout_ref }}
+          path: external-docs
+          fetch-depth: 1
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: external-docs/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: external-docs
+        run: pnpm install --frozen-lockfile
+
+      - name: Build documentation
+        working-directory: external-docs
+        env:
+          WINDINPUT_DOCS_BASE: /WindInput/
+        run: pnpm build
+
+      - name: Summarize source revision
+        run: |
+          echo "Docs source: huanfeng/WindInputDocs@${{ steps.source.outputs.source_label }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: external-docs/docs/.vitepress/dist
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
