@@ -317,7 +317,7 @@ func (ct *CodeTable) parseEntryLine(line string) bool {
 		Text:         text,
 		Code:         code,
 		Weight:       weight,
-		NaturalOrder: len(ct.entries[code]), // 同一编码下的自然顺序（0-based）
+		NaturalOrder: ct.entryOrder, // 全局顺序（文件中的出现位置，跨编码递增）
 		IsCommon:     IsStringCommon(text),
 	}
 

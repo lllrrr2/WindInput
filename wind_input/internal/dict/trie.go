@@ -46,9 +46,6 @@ func (t *Trie) Insert(code string, cand candidate.Candidate) {
 		node = child
 	}
 	node.isEnd = true
-	if cand.NaturalOrder == 0 && len(node.candidates) > 0 {
-		cand.NaturalOrder = len(node.candidates)
-	}
 	node.candidates = append(node.candidates, cand)
 	t.entryCount++
 }

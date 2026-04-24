@@ -172,8 +172,9 @@ func LoadAndMergePatchFiles(paths []string, logger *slog.Logger) *DictPatch {
 
 // ApplyDictPatch 将补丁应用到已加载的词条集合上
 // abbrevEntries 可选（非 nil 时同步更新简拼索引，用于拼音词库）
+// globalOrder 为全局顺序计数器，新增词条的 order 接续已加载的词条
 // 返回 (新增数, 修改数, 删除数)
-func ApplyDictPatch(codeEntries map[string][]dictEntry, abbrevEntries map[string][]dictEntry, patch *DictPatch, logger *slog.Logger) (added, modified, deleted int) {
+func ApplyDictPatch(codeEntries map[string][]dictEntry, abbrevEntries map[string][]dictEntry, patch *DictPatch, globalOrder *int, logger *slog.Logger) (added, modified, deleted int) {
 	if patch.IsEmpty() {
 		return
 	}
@@ -222,14 +223,15 @@ func ApplyDictPatch(codeEntries map[string][]dictEntry, abbrevEntries map[string
 			codeEntries[code] = append(codeEntries[code], dictEntry{
 				text:         e.Text,
 				weight:       e.Weight,
-				naturalOrder: len(codeEntries[code]),
+				naturalOrder: *globalOrder,
 			})
+			*globalOrder++
 			added++
 		}
 
 		// 更新简拼索引（需要 pinyin 字段提供音节信息）
 		if abbrevEntries != nil && e.Pinyin != "" {
-			upsertAbbrev(abbrevEntries, e.Text, e.Weight, e.Pinyin)
+			upsertAbbrev(abbrevEntries, e.Text, e.Weight, e.Pinyin, globalOrder)
 		}
 	}
 
@@ -254,7 +256,7 @@ func removeFromAbbrev(abbrevEntries map[string][]dictEntry, text string) {
 }
 
 // upsertAbbrev 在简拼索引中新增或更新词条
-func upsertAbbrev(abbrevEntries map[string][]dictEntry, text string, weight int, pinyin string) {
+func upsertAbbrev(abbrevEntries map[string][]dictEntry, text string, weight int, pinyin string, globalOrder *int) {
 	syllables := strings.Fields(pinyin)
 	if len(syllables) < 2 {
 		return
@@ -285,8 +287,9 @@ func upsertAbbrev(abbrevEntries map[string][]dictEntry, text string, weight int,
 	abbrevEntries[abbrev] = append(abbrevEntries[abbrev], dictEntry{
 		text:         text,
 		weight:       weight,
-		naturalOrder: len(abbrevEntries[abbrev]),
+		naturalOrder: *globalOrder,
 	})
+	*globalOrder++
 }
 
 func fileExists(path string) bool {

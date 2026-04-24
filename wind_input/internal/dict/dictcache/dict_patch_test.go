@@ -119,7 +119,7 @@ func TestApplyDictPatch_ModifyWeight(t *testing.T) {
 	}
 
 	logger := slog.Default()
-	added, modified, deleted := ApplyDictPatch(entries, nil, patch, logger)
+	added, modified, deleted := ApplyDictPatch(entries, nil, patch, new(int), logger)
 
 	if added != 0 || modified != 1 || deleted != 0 {
 		t.Errorf("expected (0,1,0), got (%d,%d,%d)", added, modified, deleted)
@@ -143,7 +143,7 @@ func TestApplyDictPatch_AddEntry(t *testing.T) {
 	}
 
 	logger := slog.Default()
-	added, modified, deleted := ApplyDictPatch(entries, nil, patch, logger)
+	added, modified, deleted := ApplyDictPatch(entries, nil, patch, new(int), logger)
 
 	if added != 1 || modified != 0 || deleted != 0 {
 		t.Errorf("expected (1,0,0), got (%d,%d,%d)", added, modified, deleted)
@@ -168,7 +168,7 @@ func TestApplyDictPatch_DeleteEntry(t *testing.T) {
 	}
 
 	logger := slog.Default()
-	added, modified, deleted := ApplyDictPatch(entries, nil, patch, logger)
+	added, modified, deleted := ApplyDictPatch(entries, nil, patch, new(int), logger)
 
 	if added != 0 || modified != 0 || deleted != 1 {
 		t.Errorf("expected (0,0,1), got (%d,%d,%d)", added, modified, deleted)
@@ -195,7 +195,7 @@ func TestApplyDictPatch_DeleteLastEntry(t *testing.T) {
 	}
 
 	logger := slog.Default()
-	_, _, deleted := ApplyDictPatch(entries, nil, patch, logger)
+	_, _, deleted := ApplyDictPatch(entries, nil, patch, new(int), logger)
 
 	if deleted != 1 {
 		t.Errorf("expected 1 deleted, got %d", deleted)
@@ -227,7 +227,7 @@ func TestApplyDictPatch_Combined(t *testing.T) {
 	}
 
 	logger := slog.Default()
-	added, modified, deleted := ApplyDictPatch(entries, nil, patch, logger)
+	added, modified, deleted := ApplyDictPatch(entries, nil, patch, new(int), logger)
 
 	if added != 1 || modified != 1 || deleted != 1 {
 		t.Errorf("expected (1,1,1), got (%d,%d,%d)", added, modified, deleted)
@@ -273,7 +273,7 @@ func TestApplyDictPatch_WithAbbrev(t *testing.T) {
 	}
 
 	logger := slog.Default()
-	added, _, deleted := ApplyDictPatch(codeEntries, abbrevEntries, patch, logger)
+	added, _, deleted := ApplyDictPatch(codeEntries, abbrevEntries, patch, new(int), logger)
 
 	if added != 1 || deleted != 1 {
 		t.Errorf("expected added=1 deleted=1, got added=%d deleted=%d", added, deleted)

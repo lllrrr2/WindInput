@@ -16,7 +16,7 @@ type Candidate struct {
 	Pinyin         string          // 拼音（兼容旧代码）
 	Code           string          // 通用编码（五笔/拼音等）
 	Weight         int             // 权重（用于排序）
-	NaturalOrder   int             // 自然顺序（词库中同一编码下的原始位置，0-based）
+	NaturalOrder   int             // 全局顺序（词库文件中的出现位置，跨编码递增，用于前缀匹配时保持文件原始排序）
 	Comment        string          // 注释/提示信息（如反查时显示的编码）
 	IsCommon       bool            // 是否为通用规范汉字
 	IsCommand      bool            // 是否为命令候选（uuid/date/time 等）
@@ -57,13 +57,13 @@ const (
 )
 
 // Better 比较两个候选的优先级（返回 a 是否应排在 b 前）
-// 规则：权重降序；同权重+同编码按自然顺序升序（保持词库原始顺序）；
-// 再按编码升序；再按消耗长度降序；最后按文本升序（确保全序，消除排序不确定性）。
+// 规则：权重降序；同权重按全局顺序升序（保持词库原始文件顺序，跨编码也生效）；
+// 再按编码升序（兜底）；再按消耗长度降序；最后按文本升序（确保全序，消除排序不确定性）。
 func Better(a, b Candidate) bool {
 	if a.Weight != b.Weight {
 		return a.Weight > b.Weight
 	}
-	if a.Code == b.Code && a.NaturalOrder != b.NaturalOrder {
+	if a.NaturalOrder != b.NaturalOrder {
 		return a.NaturalOrder < b.NaturalOrder
 	}
 	if a.Code != b.Code {

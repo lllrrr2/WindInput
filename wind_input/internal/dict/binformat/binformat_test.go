@@ -201,6 +201,77 @@ func TestUnigramWriteRead(t *testing.T) {
 	}
 }
 
+func TestDictWriteRead_Order(t *testing.T) {
+	// 验证 V3 格式的 Order 字段读写
+	w := NewDictWriter()
+
+	// 模拟码表文件顺序：uukg(三) 先于 uuka(一) 先于 uukc(二)
+	w.AddCode("uuka", []DictEntry{
+		{Text: "一", Weight: 1, Order: 1},
+	})
+	w.AddCode("uukc", []DictEntry{
+		{Text: "二", Weight: 1, Order: 2},
+	})
+	w.AddCode("uukg", []DictEntry{
+		{Text: "三", Weight: 1, Order: 0},
+	})
+
+	tmpDir := t.TempDir()
+	wdbPath := filepath.Join(tmpDir, "order_test.wdb")
+	f, err := os.Create(wdbPath)
+	if err != nil {
+		t.Fatalf("创建文件失败: %v", err)
+	}
+	if err := w.Write(f); err != nil {
+		f.Close()
+		t.Fatalf("写入失败: %v", err)
+	}
+	f.Close()
+
+	r, err := OpenDict(wdbPath)
+	if err != nil {
+		t.Fatalf("打开词库失败: %v", err)
+	}
+	defer r.Close()
+
+	// 验证各 key 的 Order 被正确保存和读取
+	results := r.Lookup("uukg")
+	if len(results) != 1 {
+		t.Fatalf("Lookup uukg: 期望 1 条, 实际 %d", len(results))
+	}
+	if results[0].NaturalOrder != 0 {
+		t.Errorf("uukg/三 的 Order: 期望 0, 实际 %d", results[0].NaturalOrder)
+	}
+
+	results = r.Lookup("uuka")
+	if len(results) != 1 {
+		t.Fatalf("Lookup uuka: 期望 1 条, 实际 %d", len(results))
+	}
+	if results[0].NaturalOrder != 1 {
+		t.Errorf("uuka/一 的 Order: 期望 1, 实际 %d", results[0].NaturalOrder)
+	}
+
+	results = r.Lookup("uukc")
+	if len(results) != 1 {
+		t.Fatalf("Lookup uukc: 期望 1 条, 实际 %d", len(results))
+	}
+	if results[0].NaturalOrder != 2 {
+		t.Errorf("uukc/二 的 Order: 期望 2, 实际 %d", results[0].NaturalOrder)
+	}
+
+	// 验证前缀查询排序：同权重时按 Order 排序，应为 三(0)、一(1)、二(2)
+	results = r.LookupPrefix("uuk", 10)
+	if len(results) != 3 {
+		t.Fatalf("LookupPrefix uuk: 期望 3 条, 实际 %d", len(results))
+	}
+	expectedOrder := []string{"三", "一", "二"}
+	for i, expected := range expectedOrder {
+		if results[i].Text != expected {
+			t.Errorf("LookupPrefix uuk[%d]: 期望 %q, 实际 %q", i, expected, results[i].Text)
+		}
+	}
+}
+
 func TestUnigramFromFreqs(t *testing.T) {
 	w := NewUnigramWriter()
 	freqs := map[string]float64{

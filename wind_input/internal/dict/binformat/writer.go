@@ -11,6 +11,7 @@ import (
 type DictEntry struct {
 	Text   string
 	Weight int32
+	Order  int32 // 全局顺序（词库文件中的出现位置）
 }
 
 // DictCodeEntry 一个编码对应的所有候选
@@ -96,6 +97,7 @@ func (w *DictWriter) Write(out io.Writer) error {
 				TextOff: pool.Offset(e.Text),
 				TextLen: uint16(len(e.Text)),
 				Weight:  e.Weight,
+				Order:   e.Order,
 			})
 		}
 		keyMetas = append(keyMetas, keyMeta{
@@ -122,6 +124,7 @@ func (w *DictWriter) Write(out io.Writer) error {
 				TextOff: pool.Offset(e.Text),
 				TextLen: uint16(len(e.Text)),
 				Weight:  e.Weight,
+				Order:   e.Order,
 			})
 		}
 		abbrevMetas = append(abbrevMetas, abbrevMeta{
@@ -250,12 +253,13 @@ func writeDictKeyIndex(w io.Writer, idx DictKeyIndex) error {
 	return err
 }
 
-// writeDictEntryRecord 写入 EntryRecord（10 bytes）
+// writeDictEntryRecord 写入 EntryRecord（14 bytes）
 func writeDictEntryRecord(w io.Writer, er DictEntryRecord) error {
 	var buf [DictEntryRecordSize]byte
 	byteOrder.PutUint32(buf[0:4], er.TextOff)
 	byteOrder.PutUint16(buf[4:6], er.TextLen)
 	byteOrder.PutUint32(buf[6:10], uint32(er.Weight))
+	byteOrder.PutUint32(buf[10:14], uint32(er.Order))
 	_, err := w.Write(buf[:])
 	return err
 }

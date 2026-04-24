@@ -19,6 +19,9 @@ type DictReader struct {
 	entryDataBase uint32
 	strPoolBase   uint32
 
+	// 版本相关
+	entryRecordSize uint32 // V2: 10, V3: 14
+
 	// 简拼
 	hasAbbrev    bool
 	abbrevCount  uint32
@@ -77,6 +80,13 @@ func OpenDict(path string) (*DictReader, error) {
 	r.keyIndexBase = r.header.IndexOff
 	r.entryDataBase = r.header.DataOff
 	r.strPoolBase = r.header.StrOff
+
+	// V3 新增 Order 字段，记录大小从 10 变为 14
+	if r.header.Version >= 3 {
+		r.entryRecordSize = DictEntryRecordSize
+	} else {
+		r.entryRecordSize = DictEntryRecordSizeV2
+	}
 
 	// 解析简拼索引头
 	if r.header.AbbrevOff > 0 && int(r.header.AbbrevOff)+AbbrevHeaderSize <= len(data) {
@@ -316,21 +326,28 @@ func (r *DictReader) readEntries(i int) []candidate.Candidate {
 	entryOff, entryLen := r.readKeyIndex(i)
 	results := make([]candidate.Candidate, 0, entryLen)
 	base := r.entryDataBase + entryOff
+	recSize := r.entryRecordSize
 	for j := uint16(0); j < entryLen; j++ {
-		recOff := base + uint32(j)*DictEntryRecordSize
-		if recOff+DictEntryRecordSize > uint32(len(r.data)) {
+		recOff := base + uint32(j)*recSize
+		if recOff+recSize > uint32(len(r.data)) {
 			break
 		}
 		textOff := byteOrder.Uint32(r.data[recOff : recOff+4])
 		textLen := byteOrder.Uint16(r.data[recOff+4 : recOff+6])
 		weight := int32(byteOrder.Uint32(r.data[recOff+6 : recOff+10]))
 
+		// V3: 读取全局顺序；V2: 回退到 per-key 索引
+		order := int(j)
+		if recSize >= DictEntryRecordSize {
+			order = int(int32(byteOrder.Uint32(r.data[recOff+10 : recOff+14])))
+		}
+
 		text := r.readString(textOff, textLen)
 		results = append(results, candidate.Candidate{
 			Text:         text,
 			Code:         code,
 			Weight:       int(weight),
-			NaturalOrder: int(j), // 二进制文件中的存储顺序即自然顺序
+			NaturalOrder: order,
 		})
 	}
 	return results
@@ -362,20 +379,27 @@ func (r *DictReader) readAbbrevEntries(i int) []candidate.Candidate {
 	entryOff := byteOrder.Uint32(r.data[off+6 : off+10])
 	entryLen := byteOrder.Uint16(r.data[off+10 : off+12])
 	base := r.entryDataBase + entryOff
+	recSize := r.entryRecordSize
 	results := make([]candidate.Candidate, 0, entryLen)
 	for j := uint16(0); j < entryLen; j++ {
-		recOff := base + uint32(j)*DictEntryRecordSize
-		if recOff+DictEntryRecordSize > uint32(len(r.data)) {
+		recOff := base + uint32(j)*recSize
+		if recOff+recSize > uint32(len(r.data)) {
 			break
 		}
 		textOff := byteOrder.Uint32(r.data[recOff : recOff+4])
 		textLen := byteOrder.Uint16(r.data[recOff+4 : recOff+6])
 		weight := int32(byteOrder.Uint32(r.data[recOff+6 : recOff+10]))
 
+		order := int(j)
+		if recSize >= DictEntryRecordSize {
+			order = int(int32(byteOrder.Uint32(r.data[recOff+10 : recOff+14])))
+		}
+
 		text := r.readString(textOff, textLen)
 		results = append(results, candidate.Candidate{
-			Text:   text,
-			Weight: int(weight),
+			Text:         text,
+			Weight:       int(weight),
+			NaturalOrder: order,
 		})
 	}
 	return results

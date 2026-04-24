@@ -56,6 +56,7 @@ func ConvertCodeTableToWdb(srcPath, wdbPath string, logger *slog.Logger) error {
 			binEntries[i] = binformat.DictEntry{
 				Text:   c.Text,
 				Weight: int32(c.Weight),
+				Order:  int32(c.NaturalOrder),
 			}
 		}
 		writer.AddCode(code, binEntries)
@@ -139,6 +140,7 @@ func ConvertPinyinToWdb(mainDictPath, wdbPath string, logger *slog.Logger, norma
 	codeEntries := make(map[string][]dictEntry)
 	abbrevEntries := make(map[string][]dictEntry)
 	totalCount := 0
+	globalOrder := 0
 
 	// 从 import_tables 发现关联词库
 	allFiles := discoverRimePinyinFiles(mainDictPath)
@@ -148,7 +150,7 @@ func ConvertPinyinToWdb(mainDictPath, wdbPath string, logger *slog.Logger, norma
 			continue
 		}
 
-		count, err := loadRimeFile(path, codeEntries, abbrevEntries, logger)
+		count, err := loadRimeFile(path, codeEntries, abbrevEntries, &globalOrder, logger)
 		if err != nil {
 			logger.Warn("加载词库失败", "name", name, "error", err)
 			continue
@@ -170,7 +172,7 @@ func ConvertPinyinToWdb(mainDictPath, wdbPath string, logger *slog.Logger, norma
 	if len(patchFiles) > 0 {
 		patch := LoadAndMergePatchFiles(patchFiles, logger)
 		if !patch.IsEmpty() {
-			added, modified, deleted := ApplyDictPatch(codeEntries, abbrevEntries, patch, logger)
+			added, modified, deleted := ApplyDictPatch(codeEntries, abbrevEntries, patch, &globalOrder, logger)
 			logger.Info("拼音词库补丁已应用", "added", added, "modified", modified, "deleted", deleted)
 			totalCount += added - deleted
 		}
@@ -200,6 +202,7 @@ func ConvertPinyinToWdb(mainDictPath, wdbPath string, logger *slog.Logger, norma
 			binEntries[i] = binformat.DictEntry{
 				Text:   e.text,
 				Weight: int32(w),
+				Order:  int32(e.naturalOrder),
 			}
 		}
 		writer.AddCode(code, binEntries)
@@ -221,6 +224,7 @@ func ConvertPinyinToWdb(mainDictPath, wdbPath string, logger *slog.Logger, norma
 			binEntries[i] = binformat.DictEntry{
 				Text:   e.text,
 				Weight: int32(w),
+				Order:  int32(e.naturalOrder),
 			}
 		}
 		writer.AddAbbrev(abbrev, binEntries)
@@ -340,9 +344,10 @@ func ConvertRimeCodetableToWdb(mainDictPath, wdbPath string, logger *slog.Logger
 	dictDir := filepath.Dir(mainDictPath)
 	codeEntries := make(map[string][]dictEntry)
 	totalCount := 0
+	globalOrder := 0
 
 	// 1. 加载主词库
-	count, err := loadRimeCodetableFile(mainDictPath, codeEntries, logger)
+	count, err := loadRimeCodetableFile(mainDictPath, codeEntries, &globalOrder, logger)
 	if err != nil {
 		return fmt.Errorf("加载主词库失败: %w", err)
 	}
@@ -356,7 +361,7 @@ func ConvertRimeCodetableToWdb(mainDictPath, wdbPath string, logger *slog.Logger
 		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
 			continue
 		}
-		c, loadErr := loadRimeCodetableFile(path, codeEntries, logger)
+		c, loadErr := loadRimeCodetableFile(path, codeEntries, &globalOrder, logger)
 		if loadErr != nil {
 			logger.Warn("加载词库失败", "name", name, "error", loadErr)
 			continue
@@ -374,7 +379,7 @@ func ConvertRimeCodetableToWdb(mainDictPath, wdbPath string, logger *slog.Logger
 	if len(patchFiles) > 0 {
 		patch := LoadAndMergePatchFiles(patchFiles, logger)
 		if !patch.IsEmpty() {
-			added, modified, deleted := ApplyDictPatch(codeEntries, nil, patch, logger)
+			added, modified, deleted := ApplyDictPatch(codeEntries, nil, patch, &globalOrder, logger)
 			logger.Info("词库补丁已应用", "added", added, "modified", modified, "deleted", deleted)
 			totalCount += added - deleted
 		}
@@ -404,6 +409,7 @@ func ConvertRimeCodetableToWdb(mainDictPath, wdbPath string, logger *slog.Logger
 			binEntries[i] = binformat.DictEntry{
 				Text:   e.text,
 				Weight: int32(w),
+				Order:  int32(e.naturalOrder),
 			}
 		}
 		writer.AddCode(code, binEntries)
@@ -527,7 +533,7 @@ func parseRimeImportTables(path string) []string {
 // 权重策略基于词库自身的 sort 字段：
 //   - sort: by_weight → 使用显式权重（权威词库，如主词库）
 //   - sort: original  → 忽略显式权重，统一 weight=1（补充词库，不与主词库竞争）
-func loadRimeCodetableFile(path string, codeEntries map[string][]dictEntry, logger *slog.Logger) (int, error) {
+func loadRimeCodetableFile(path string, codeEntries map[string][]dictEntry, globalOrder *int, logger *slog.Logger) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return 0, err
@@ -592,8 +598,9 @@ func loadRimeCodetableFile(path string, codeEntries map[string][]dictEntry, logg
 		codeEntries[code] = append(codeEntries[code], dictEntry{
 			text:         text,
 			weight:       weight,
-			naturalOrder: len(codeEntries[code]),
+			naturalOrder: *globalOrder,
 		})
+		*globalOrder++
 		count++
 	}
 
@@ -644,6 +651,7 @@ func ConvertPinyinToWdat(mainDictPath, wdatPath string, logger *slog.Logger, nor
 	codeEntries := make(map[string][]dictEntry)
 	abbrevEntries := make(map[string][]dictEntry)
 	totalCount := 0
+	wdatGlobalOrder := 0
 
 	allFiles := discoverRimePinyinFiles(mainDictPath)
 	for _, name := range allFiles {
@@ -651,7 +659,7 @@ func ConvertPinyinToWdat(mainDictPath, wdatPath string, logger *slog.Logger, nor
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			continue
 		}
-		count, err := loadRimeFile(path, codeEntries, abbrevEntries, logger)
+		count, err := loadRimeFile(path, codeEntries, abbrevEntries, &wdatGlobalOrder, logger)
 		if err != nil {
 			logger.Warn("加载词库失败", "name", name, "error", err)
 			continue
@@ -673,7 +681,7 @@ func ConvertPinyinToWdat(mainDictPath, wdatPath string, logger *slog.Logger, nor
 	if len(wdatPatchFiles) > 0 {
 		patch := LoadAndMergePatchFiles(wdatPatchFiles, logger)
 		if !patch.IsEmpty() {
-			added, modified, deleted := ApplyDictPatch(codeEntries, abbrevEntries, patch, logger)
+			added, modified, deleted := ApplyDictPatch(codeEntries, abbrevEntries, patch, &wdatGlobalOrder, logger)
 			logger.Info("拼音词库(DAT)补丁已应用", "added", added, "modified", modified, "deleted", deleted)
 			totalCount += added - deleted
 		}
@@ -746,7 +754,7 @@ type dictEntry struct {
 	naturalOrder int // 同编码下的原始顺序（0-based，按文件出现顺序）
 }
 
-func loadRimeFile(path string, codeEntries map[string][]dictEntry, abbrevEntries map[string][]dictEntry, logger *slog.Logger) (int, error) {
+func loadRimeFile(path string, codeEntries map[string][]dictEntry, abbrevEntries map[string][]dictEntry, globalOrder *int, logger *slog.Logger) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return 0, err
@@ -787,10 +795,12 @@ func loadRimeFile(path string, codeEntries map[string][]dictEntry, abbrevEntries
 		}
 
 		code := strings.ReplaceAll(pinyin, " ", "")
+		order := *globalOrder
+		*globalOrder++
 		codeEntries[code] = append(codeEntries[code], dictEntry{
 			text:         text,
 			weight:       weight,
-			naturalOrder: len(codeEntries[code]),
+			naturalOrder: order,
 		})
 
 		// 构建简拼索引（2 字及以上）
@@ -808,7 +818,7 @@ func loadRimeFile(path string, codeEntries map[string][]dictEntry, abbrevEntries
 				abbrevEntries[abbrev] = append(abbrevEntries[abbrev], dictEntry{
 					text:         text,
 					weight:       weight,
-					naturalOrder: len(abbrevEntries[abbrev]),
+					naturalOrder: order,
 				})
 			}
 		}
