@@ -39,6 +39,7 @@ type Config struct {
 	ProtectTopN        int    // 首选保护：前 N 位锁定码表原始顺序
 	SkipShadow         bool   // 跳过 Shadow 规则应用（混输模式下由外层统一应用）
 	SkipSingleCharFreq bool   // 单字不自动调频
+	WeightAsOrder      bool   // 权重仅表示同码内排序，前缀匹配时抹平权重差异
 }
 
 // DefaultConfig 返回默认配置
@@ -189,7 +190,11 @@ func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candid
 		if e.config.ShowCodeHint && len(prefixCandidates[i].Code) > inputLen {
 			prefixCandidates[i].Comment = prefixCandidates[i].Code[inputLen:]
 		}
-		prefixCandidates[i].Weight -= PrefixWeightPenalty
+		if e.config.WeightAsOrder {
+			prefixCandidates[i].Weight = -PrefixWeightPenalty
+		} else {
+			prefixCandidates[i].Weight -= PrefixWeightPenalty
+		}
 	}
 
 	// Phase 3.5: 逐码空码补全
@@ -225,7 +230,11 @@ func (e *Engine) ConvertRaw(input string, maxCandidates int) ([]candidate.Candid
 			if len(completionCandidates[i].Code) > inputLen {
 				completionCandidates[i].Comment = completionCandidates[i].Code[inputLen:]
 			}
-			completionCandidates[i].Weight -= PrefixWeightPenalty
+			if e.config.WeightAsOrder {
+				completionCandidates[i].Weight = -PrefixWeightPenalty
+			} else {
+				completionCandidates[i].Weight -= PrefixWeightPenalty
+			}
 		}
 		prefixCandidates = append(prefixCandidates, completionCandidates...)
 	}
@@ -304,12 +313,18 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 	// 参考 RIME table_translator: 前缀候选 (completion) 整体排在精确匹配之后。
 	// 在此基础上按剩余码长分层：剩余1键 > 剩余2键 > 剩余3键，
 	// 同层内保持原始 weight 排序。
+	// WeightAsOrder 模式：权重仅表示同码内排序序号，前缀候选统一设为固定降权值，
+	// 同 tier 内按 NaturalOrder（文件顺序）排序。
 	for i := range prefixCandidates {
 		if e.config.ShowCodeHint && len(prefixCandidates[i].Code) > inputLen {
 			prefixCandidates[i].Comment = prefixCandidates[i].Code[inputLen:]
 		}
 		remaining := len(prefixCandidates[i].Code) - inputLen
-		prefixCandidates[i].Weight -= remaining * PrefixWeightPenaltyPerKey
+		if e.config.WeightAsOrder {
+			prefixCandidates[i].Weight = -remaining * PrefixWeightPenaltyPerKey
+		} else {
+			prefixCandidates[i].Weight -= remaining * PrefixWeightPenaltyPerKey
+		}
 	}
 
 	// ========== Phase 3.5: 逐码空码补全 ==========
@@ -337,7 +352,11 @@ func (e *Engine) ConvertEx(input string, maxCandidates int) *ConvertResult {
 				completionCandidates[i].Comment = completionCandidates[i].Code[inputLen:]
 			}
 			remaining := len(completionCandidates[i].Code) - inputLen
-			completionCandidates[i].Weight -= remaining * PrefixWeightPenaltyPerKey
+			if e.config.WeightAsOrder {
+				completionCandidates[i].Weight = -remaining * PrefixWeightPenaltyPerKey
+			} else {
+				completionCandidates[i].Weight -= remaining * PrefixWeightPenaltyPerKey
+			}
 		}
 		prefixCandidates = append(prefixCandidates, completionCandidates...)
 	}

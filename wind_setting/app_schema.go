@@ -106,7 +106,8 @@ type SchemaConfigDict struct {
 	Type       string      `yaml:"type" json:"type"`
 	Default    bool        `yaml:"default" json:"default"`
 	Role       string      `yaml:"role,omitempty" json:"role,omitempty"`
-	WeightSpec interface{} `yaml:"weight_spec,omitempty" json:"weight_spec,omitempty"`
+	WeightAsOrder bool        `yaml:"weight_as_order,omitempty" json:"weight_as_order,omitempty"`
+	WeightSpec    interface{} `yaml:"weight_spec,omitempty" json:"weight_spec,omitempty"`
 }
 
 // SchemaConfigAutoLearn 自动造词配置

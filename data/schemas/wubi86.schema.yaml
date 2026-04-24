@@ -29,6 +29,7 @@ dictionaries:
     path: "wubi86/wubi86_jidian.dict.yaml"
     type: rime_codetable
     default: true
+    weight_as_order: true
     weight_spec:
       median: 10
       max: 890

@@ -103,6 +103,9 @@ func createCodeTableEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManag
 		if dictSpec.WeightSpec != nil {
 			norm = dictSpec.WeightSpec.NewWeightNormalizer()
 		}
+		if dictSpec.WeightAsOrder {
+			config.WeightAsOrder = true
+		}
 		if err := loadCodetable(engine, srcPath, dictSpec.Type, s.Schema.ID, logger, norm); err != nil {
 			return nil, fmt.Errorf("加载码表失败: %w", err)
 		}
@@ -762,6 +765,9 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 		var codetableNorm *dict.WeightNormalizer
 		if codetableDictSpec.WeightSpec != nil {
 			codetableNorm = codetableDictSpec.WeightSpec.NewWeightNormalizer()
+		}
+		if codetableDictSpec.WeightAsOrder {
+			codetableConfig.WeightAsOrder = true
 		}
 		if err := loadCodetable(codetableEngine, srcPath, codetableDictSpec.Type, codetableCacheID, logger, codetableNorm); err != nil {
 			return nil, fmt.Errorf("混输：加载码表失败: %w", err)

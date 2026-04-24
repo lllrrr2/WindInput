@@ -121,12 +121,13 @@ const (
 
 // DictSpec 词库规格
 type DictSpec struct {
-	ID         string      `yaml:"id"`
-	Path       string      `yaml:"path"`
-	Type       string      `yaml:"type"`
-	Default    bool        `yaml:"default"`
-	Role       DictRole    `yaml:"role,omitempty"`
-	WeightSpec *WeightSpec `yaml:"weight_spec,omitempty"` // 权重归一化参数
+	ID            string      `yaml:"id"`
+	Path          string      `yaml:"path"`
+	Type          string      `yaml:"type"`
+	Default       bool        `yaml:"default"`
+	Role          DictRole    `yaml:"role,omitempty"`
+	WeightSpec    *WeightSpec `yaml:"weight_spec,omitempty"`     // 权重归一化参数
+	WeightAsOrder bool        `yaml:"weight_as_order,omitempty"` // 权重仅表示同码内排序序号，不参与跨码比较
 }
 
 // WeightNormMode 权重归一化算法
