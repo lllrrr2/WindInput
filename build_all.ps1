@@ -7,7 +7,9 @@
 
     [switch]$SettingOnly,
 
-    [switch]$DebugVariant
+    [switch]$DebugVariant,
+
+    [switch]$Brief
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,6 +76,18 @@ if ($BuildAll) {
 function Write-Step([string]$Message) {
     $script:StepIdx++
     Write-Host "[$($script:StepIdx)/$($script:TotalSteps)] $Message"
+}
+
+function Write-Detail([string]$Message) {
+    if (-not $Brief) {
+        Write-Host $Message
+    }
+}
+
+function Write-DetailLine {
+    if (-not $Brief) {
+        Write-Host ""
+    }
 }
 
 if (-not $BuildAll) {
@@ -346,10 +360,10 @@ function Download-RemoteFile {
     param([string]$BaseUrl, [string]$FileName, [string]$TargetDir, [string]$Description)
     $targetPath = Join-Path $TargetDir $FileName
     if (Test-Path $targetPath) {
-        Write-Host "  - $FileName 已存在,跳过下载"
+        Write-Detail "  - $FileName 已存在,跳过下载"
         return
     }
-    Write-Host "  - 下载 $FileName ($Description)..."
+    Write-Detail "  - 下载 $FileName ($Description)..."
     try {
         Invoke-WebRequest -Uri "$BaseUrl/$FileName" -OutFile $targetPath -UseBasicParsing
     } catch {
@@ -362,7 +376,7 @@ function Download-Dictionaries {
     Write-Step "下载词库..."
 
     # 拼音词库 (rime-ice)
-    Write-Host "  拼音词库 (rime-ice):"
+    Write-Detail "  拼音词库 (rime-ice):"
     $RimePinyinDir = Join-Path $ScriptDir ".cache\rime"
     $RimePinyinCnDicts = Join-Path $RimePinyinDir "cn_dicts"
     if (-not (Test-Path $RimePinyinDir)) { New-Item -ItemType Directory -Path $RimePinyinDir -Force | Out-Null }
@@ -375,14 +389,14 @@ function Download-Dictionaries {
     Download-RemoteFile "$RimeIceBaseUrl/cn_dicts" "tencent.dict.yaml" $RimePinyinCnDicts "腾讯词频, 约17MB"
 
     # 英文词库 (rime-ice)
-    Write-Host "  英文词库 (rime-ice):"
+    Write-Detail "  英文词库 (rime-ice):"
     $RimeEnglishDir = Join-Path $ScriptDir ".cache\rime\en_dicts"
     if (-not (Test-Path $RimeEnglishDir)) { New-Item -ItemType Directory -Path $RimeEnglishDir -Force | Out-Null }
     Download-RemoteFile "$RimeIceBaseUrl/en_dicts" "en.dict.yaml" $RimeEnglishDir "英文主词库, 约350KB"
     Download-RemoteFile "$RimeIceBaseUrl/en_dicts" "en_ext.dict.yaml" $RimeEnglishDir "英文扩展词库, 约50KB"
 
     # 五笔词库 (rime-wubi86-jidian)
-    Write-Host "  五笔词库 (rime-wubi86-jidian):"
+    Write-Detail "  五笔词库 (rime-wubi86-jidian):"
     $RimeWubiDir = Join-Path $ScriptDir ".cache\rime-wubi"
     if (-not (Test-Path $RimeWubiDir)) { New-Item -ItemType Directory -Path $RimeWubiDir -Force | Out-Null }
     $RimeWubiUrl = "https://raw.githubusercontent.com/KyleBing/rime-wubi86-jidian/master"
@@ -391,7 +405,7 @@ function Download-Dictionaries {
     Download-RemoteFile $RimeWubiUrl "wubi86_jidian_extra.dict.yaml" $RimeWubiDir "扩展词库"
     Download-RemoteFile $RimeWubiUrl "wubi86_jidian_extra_district.dict.yaml" $RimeWubiDir "行政区域词库"
     Download-RemoteFile $RimeWubiUrl "wubi86_jidian_user.dict.yaml" $RimeWubiDir "用户词库模板"
-    Write-Host ""
+    Write-DetailLine
 }
 
 function Prepare-DataFiles {
@@ -416,7 +430,7 @@ function Prepare-DataFiles {
     $rimeIceMain = Join-Path $RimePinyinDir "rime_ice.dict.yaml"
     if (Test-Path $rimeIceMain) {
         Copy-Item -Path $rimeIceMain -Destination (Join-Path $pinyinDir "rime_ice.dict.yaml") -Force
-        Write-Host "  - 已复制拼音词库入口 rime_ice.dict.yaml"
+        Write-Detail "  - 已复制拼音词库入口 rime_ice.dict.yaml"
     } else {
         Write-Host "[警告] 未找到 rime_ice.dict.yaml" -ForegroundColor Yellow
     }
@@ -426,7 +440,7 @@ function Prepare-DataFiles {
         $src = Join-Path $RimePinyinCnDicts $df
         if (Test-Path $src) {
             Copy-Item -Path $src -Destination (Join-Path $pinyinCnDictsDir $df) -Force
-            Write-Host "  - 已复制 cn_dicts/$df"
+            Write-Detail "  - 已复制 cn_dicts/$df"
         } else {
             Write-Host "[警告] 未找到 cn_dicts/$df" -ForegroundColor Yellow
         }
@@ -437,26 +451,26 @@ function Prepare-DataFiles {
     $unigramPath = Join-Path $unigramSrcDir "unigram.txt"
     if (-not (Test-Path $unigramSrcDir)) { New-Item -ItemType Directory -Path $unigramSrcDir -Force | Out-Null }
     if (-not (Test-Path $unigramPath)) {
-        Write-Host "  - 生成 Unigram 语言模型..."
+        Write-Detail "  - 生成 Unigram 语言模型..."
         Push-Location (Join-Path $ScriptDir "wind_input")
         try {
             & go run ./cmd/gen_unigram -rime $RimePinyinCnDicts -output $unigramPath
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[警告] Unigram 生成失败,智能组句功能不可用" -ForegroundColor Yellow
             } else {
-                Write-Host "  - Unigram 语言模型生成成功"
+                Write-Detail "  - Unigram 语言模型生成成功"
             }
         } finally {
             Pop-Location
         }
     } else {
-        Write-Host "  - Unigram 语言模型已存在"
+        Write-Detail "  - Unigram 语言模型已存在"
     }
 
     # 复制 Unigram
     if (Test-Path $unigramPath) {
         Copy-Item -Path $unigramPath -Destination (Join-Path $pinyinDir "unigram.txt") -Force
-        Write-Host "  - 已复制 Unigram 语言模型"
+        Write-Detail "  - 已复制 Unigram 语言模型"
     } else {
         Write-Host "[提示] Unigram 语言模型不存在,智能组句功能不可用" -ForegroundColor Cyan
     }
@@ -478,7 +492,7 @@ function Prepare-DataFiles {
         }
     }
     if ($wubiCopied -gt 0) {
-        Write-Host "  - 已复制五笔词库 ($wubiCopied 个文件)"
+        Write-Detail "  - 已复制五笔词库 ($wubiCopied 个文件)"
     } else {
         Write-Host "[警告] 未找到五笔词库文件" -ForegroundColor Yellow
     }
@@ -497,7 +511,7 @@ function Prepare-DataFiles {
         }
     }
     if ($englishCopied -gt 0) {
-        Write-Host "  - 已复制英文词库 ($englishCopied 个文件)"
+        Write-Detail "  - 已复制英文词库 ($englishCopied 个文件)"
     } else {
         Write-Host "[警告] 未找到英文词库文件" -ForegroundColor Yellow
     }
@@ -515,10 +529,10 @@ function Prepare-DataFiles {
         Copy-Item -Path $_.FullName -Destination $destPath -Force
         $dataCopied++
     }
-    Write-Host "  - 已复制预制数据文件 ($dataCopied 个文件)"
+    Write-Detail "  - 已复制预制数据文件 ($dataCopied 个文件)"
 
     # 复制主题文件
-    Write-Host "  - 复制主题文件..."
+    Write-Detail "  - 复制主题文件..."
     $themesSrc = Join-Path $ScriptDir "wind_input\themes"
     $themesDst = Join-Path $DataDir "themes"
     if (Test-Path $themesSrc) {
@@ -528,14 +542,14 @@ function Prepare-DataFiles {
                 $destDir = Join-Path $themesDst $_.Name
                 if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
                 Copy-Item -Path $themeYaml -Destination $destDir -Force
-                Write-Host "    - $($_.Name)"
+                Write-Detail "    - $($_.Name)"
             }
         }
-        Write-Host "  - 主题文件复制完成"
+        Write-Detail "  - 主题文件复制完成"
     } else {
         Write-Host "[警告] 未找到主题目录" -ForegroundColor Yellow
     }
-    Write-Host ""
+    Write-DetailLine
 }
 
 # ============================================================
@@ -580,6 +594,19 @@ foreach ($f in $checkFiles) {
 # ============================================================
 
 Write-Host ""
+if ($Brief) {
+    $outputList = if ($checkFiles.Count -gt 0) {
+        ($checkFiles | ForEach-Object { "$buildDirLabel\$_" }) -join ", "
+    } else {
+        "无需要检查的输出文件"
+    }
+    Write-Host "构建完成: $outputList"
+    if ($BuildAll) {
+        Write-Host "数据文件已准备: $buildDirLabel\data"
+    }
+    exit 0
+}
+
 Write-Host "======================================"
 Write-Host "构建完成！"
 Write-Host "======================================"

@@ -20,14 +20,31 @@ function Ensure-Admin {
 
 # ============ 正式版操作 ============
 
-function Do-BuildRelease {
-    & "$ScriptDir\build_all.ps1" -WailsMode release
+function Invoke-BuildAll {
+    param(
+        [string[]]$Module = @("all"),
+        [ValidateSet("debug", "release", "skip")]
+        [string]$WailsMode = "release",
+        [switch]$DebugVariant
+    )
+
+    $buildParams = @{
+        Module = $Module
+        WailsMode = $WailsMode
+        Brief = $true
+    }
+    if ($DebugVariant) { $buildParams.DebugVariant = $true }
+
+    & "$ScriptDir\build_all.ps1" @buildParams
     if ($LASTEXITCODE -ne 0) { exit 1 }
 }
 
+function Do-BuildRelease {
+    Invoke-BuildAll -WailsMode release
+}
+
 function Do-BuildDebug {
-    & "$ScriptDir\build_all.ps1" -WailsMode debug
-    if ($LASTEXITCODE -ne 0) { exit 1 }
+    Invoke-BuildAll -WailsMode debug
 }
 
 function Do-Install {
@@ -51,9 +68,12 @@ function Do-BuildInstallerSkip {
 }
 
 function Do-BuildModule {
-    param([string[]]$Modules)
-    & "$ScriptDir\build_all.ps1" -Module $Modules -WailsMode release
-    if ($LASTEXITCODE -ne 0) { exit 1 }
+    param(
+        [string[]]$Modules,
+        [ValidateSet("debug", "release")]
+        [string]$WailsMode = "release"
+    )
+    Invoke-BuildAll -Module $Modules -WailsMode $WailsMode
 }
 
 function Do-DeployModule {
@@ -65,13 +85,11 @@ function Do-DeployModule {
 # ============ 调试版操作 ============
 
 function Do-BuildReleaseDebugVariant {
-    & "$ScriptDir\build_all.ps1" -WailsMode release -DebugVariant
-    if ($LASTEXITCODE -ne 0) { exit 1 }
+    Invoke-BuildAll -WailsMode release -DebugVariant
 }
 
 function Do-BuildDebugDebugVariant {
-    & "$ScriptDir\build_all.ps1" -WailsMode debug -DebugVariant
-    if ($LASTEXITCODE -ne 0) { exit 1 }
+    Invoke-BuildAll -WailsMode debug -DebugVariant
 }
 
 function Do-InstallDebugVariant {
@@ -85,9 +103,12 @@ function Do-UninstallDebugVariant {
 }
 
 function Do-BuildModuleDebugVariant {
-    param([string[]]$Modules)
-    & "$ScriptDir\build_all.ps1" -Module $Modules -WailsMode release -DebugVariant
-    if ($LASTEXITCODE -ne 0) { exit 1 }
+    param(
+        [string[]]$Modules,
+        [ValidateSet("debug", "release")]
+        [string]$WailsMode = "release"
+    )
+    Invoke-BuildAll -Module $Modules -WailsMode $WailsMode -DebugVariant
 }
 
 function Do-DeployModuleDebugVariant {
@@ -290,8 +311,8 @@ if (-not $Choice) {
     Write-Host "======================================"
     Write-Host ""
     Write-Host "  --- 基本操作 ---"
-    Write-Host "  1    卸载 + 构建(Release) + 安装"
-    Write-Host "  1d   卸载 + 构建(Debug)   + 安装"
+    Write-Host "  1    构建(Release) + 卸载 + 安装"
+    Write-Host "  1d   构建(Debug)   + 卸载 + 安装"
     Write-Host "  1s   卸载 + 安装（跳过构建）"
     Write-Host "  2    仅构建(Release)"
     Write-Host "  2d   仅构建(Debug)"
@@ -301,11 +322,11 @@ if (-not $Choice) {
     Write-Host "  8s   生成安装包（跳过编译）"
     Write-Host ""
     Write-Host "  --- 模块快速部署 (1=DLL 2=服务 3=设置 4=便携) ---"
-    Write-Host "  m[N]   构建 + 部署  (如: m1, m12, m1234)"
+    Write-Host "  m[N]   构建 + 部署  (如: m1, m12, m3d, m123d; 3d=设置 debug)"
     Write-Host ""
     Write-Host "  --- 便携模式 ---"
     Write-Host "  p      构建 + 全量部署  -> $PortableDir"
-    Write-Host "  pm[N]  构建 + 模块部署  (如: pm2, pm12)"
+    Write-Host "  pm[N]  构建 + 模块部署  (如: pm2, pm12, pm3d)"
     Write-Host ""
     Write-Host "  前缀 d = 调试版 (如: d1, d2d, dm12, dp, dpm12)"
     Write-Host "  调试版便携目录: $PortableDebugDir"
@@ -367,42 +388,44 @@ if ($isPortable -and $cmd -eq '') {
     Do-PortableDeploy -TargetDir $pTargetDir -BuildDir $pBuildDir `
         -PortableExe $pPortableExe -ServiceExe $pServiceExe -SettingExe $pSettingExe
 
-} elseif ($isPortable -and $cmd -match '^m([1234]+)$') {
-    # pm[N] / dpm[N]: 便携模块部署
+} elseif ($isPortable -and $cmd -match '^m([1234]+)(d)?$') {
+    # pm[N] / pm[N]d / dpm[N] / dpm[N]d: 便携模块部署
     $modules = Parse-Modules $Matches[1]
-    if ($isDebugVariant) { Do-BuildModuleDebugVariant -Modules $modules } else { Do-BuildModule -Modules $modules }
+    $wailsMode = if ($Matches[2] -eq 'd') { "debug" } else { "release" }
+    if ($isDebugVariant) { Do-BuildModuleDebugVariant -Modules $modules -WailsMode $wailsMode } else { Do-BuildModule -Modules $modules -WailsMode $wailsMode }
     Do-PortableDeployModule -TargetDir $pTargetDir -BuildDir $pBuildDir `
         -PortableExe $pPortableExe -ServiceExe $pServiceExe -SettingExe $pSettingExe -Modules $modules
 
 } elseif ($isPortable) {
-    Write-Host "[ERROR] 便携模式仅支持: p, pm[1234] (如: p, pm12, dpm123)" -ForegroundColor Red
+    Write-Host "[ERROR] 便携模式仅支持: p, pm[1234][d] (如: p, pm12, pm3d, dpm123)" -ForegroundColor Red
     exit 1
 
-} elseif ($cmd -match '^m([1234]+)$') {
-    # m[N] / dm[N]: 系统模块部署
+} elseif ($cmd -match '^m([1234]+)(d)?$') {
+    # m[N] / m[N]d / dm[N] / dm[N]d: 系统模块部署
     Ensure-Admin
     $modules = Parse-Modules $Matches[1]
+    $wailsMode = if ($Matches[2] -eq 'd') { "debug" } else { "release" }
     if ($isDebugVariant) {
-        Do-BuildModuleDebugVariant -Modules $modules
+        Do-BuildModuleDebugVariant -Modules $modules -WailsMode $wailsMode
         Do-DeployModuleDebugVariant -Modules $modules
     } else {
-        Do-BuildModule -Modules $modules
+        Do-BuildModule -Modules $modules -WailsMode $wailsMode
         Do-DeployModule -Modules $modules
     }
 
 } elseif ($cmd -match '^1([ds])?$') {
-    # 1 / 1d / 1s: 卸载 + [构建] + 安装
+    # 1 / 1d: 构建 + 卸载 + 安装；1s: 卸载 + 安装
     Ensure-Admin
     $suffix = $Matches[1]
     if ($isDebugVariant) {
-        Do-UninstallDebugVariant
         if ($suffix -eq 'd') { Do-BuildDebugDebugVariant }
         elseif ($suffix -ne 's') { Do-BuildReleaseDebugVariant }
+        Do-UninstallDebugVariant
         Do-InstallDebugVariant
     } else {
-        Do-Uninstall
         if ($suffix -eq 'd') { Do-BuildDebug }
         elseif ($suffix -ne 's') { Do-BuildRelease }
+        Do-Uninstall
         Do-Install
     }
 
@@ -432,7 +455,7 @@ if ($isPortable -and $cmd -eq '') {
     Write-Host "[ERROR] 无效选项: $Choice" -ForegroundColor Red
     Write-Host ""
     Write-Host "格式: [d]<操作>"
-    Write-Host "  操作: 1[d|s], 2[d], 3, 4, 8[s], m[1234], p, pm[1234]"
+    Write-Host "  操作: 1[d|s], 2[d], 3, 4, 8[s], m[1234][d], p, pm[1234][d]"
     Write-Host "  前缀 d = 调试版"
     exit 1
 }
