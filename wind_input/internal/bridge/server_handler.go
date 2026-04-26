@@ -230,7 +230,8 @@ func (s *Server) handleCaretUpdate(payload []byte, clientID int) []byte {
 	}
 
 	s.logger.Debug("Caret update", "clientID", clientID,
-		"x", caretPayload.X, "y", caretPayload.Y, "height", caretPayload.Height)
+		"x", caretPayload.X, "y", caretPayload.Y, "height", caretPayload.Height,
+		"compStartX", caretPayload.CompositionStartX, "compStartY", caretPayload.CompositionStartY)
 
 	s.handler.HandleCaretUpdate(CaretData{
 		X:                 int(caretPayload.X),

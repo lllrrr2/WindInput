@@ -81,6 +81,11 @@ public:
     // Used for mouse click partial confirm in pinyin mode
     void PostUpdateComposition(const std::wstring& text, int caretPos);
 
+    // Schedule a few delayed caret retries on the TSF thread.
+    // Used when an app returns a degenerate first-composition rect and does not
+    // fire OnLayoutChange promptly (WPS).
+    void PostDelayedCaretPositionUpdate();
+
     // Force refresh the language bar icon (used when focus is gained)
     void ForceRefresh();
 

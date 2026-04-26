@@ -387,8 +387,24 @@ private:
             BOOL clipped = FALSE;
             if (SUCCEEDED(pContextView->GetTextExt(ec, sel[0].range, &caretRect, &clipped)))
             {
-                _pTextService->_cachedCaretRect = caretRect;
-                _pTextService->_hasCachedCaretPos = TRUE;
+                // Skip degenerate rects (height=0) — apps like WPS may return
+                // an invalid rect on the first composition before layout reflow.
+                // Let SendCaretPositionUpdate fall through to GetCaretPosition
+                // which has its own fallback chain (GetGUIThreadInfo, etc.).
+                LONG h = caretRect.bottom - caretRect.top;
+                if (h > 0)
+                {
+                    _pTextService->_cachedCaretRect = caretRect;
+                    _pTextService->_hasCachedCaretPos = TRUE;
+                }
+                else
+                {
+                    // App hasn't reflowed yet — the next OnLayoutChange will also
+                    // carry pre-reflow coordinates.  Skip it so caret.diag on the
+                    // Go side doesn't accept stale data as "reliable".
+                    _pTextService->_skipNextLayoutUpdate = TRUE;
+                    _pTextService->_needsDelayedCaretRetry = TRUE;
+                }
             }
             sel[0].range->Release();
         }
@@ -407,8 +423,12 @@ private:
                     BOOL clipped = FALSE;
                     if (SUCCEEDED(pContextView->GetTextExt(ec, pStartRange, &compStartRect, &clipped)))
                     {
-                        _pTextService->_cachedCompStartRect = compStartRect;
-                        _pTextService->_hasCachedCompStartPos = TRUE;
+                        LONG compH = compStartRect.bottom - compStartRect.top;
+                        if (compH > 0)
+                        {
+                            _pTextService->_cachedCompStartRect = compStartRect;
+                            _pTextService->_hasCachedCompStartPos = TRUE;
+                        }
                     }
                     pStartRange->Release();
                 }
@@ -665,6 +685,8 @@ CTextService::CTextService()
     , _pComposition(nullptr)
     , _hasCachedCaretPos(FALSE)
     , _hasCachedCompStartPos(FALSE)
+    , _skipNextLayoutUpdate(FALSE)
+    , _needsDelayedCaretRetry(FALSE)
     , _needsFocusRecovery(FALSE)
     , _lastFocusCaretX(0)
     , _lastFocusCaretY(0)
@@ -2344,18 +2366,20 @@ static void ConvertToPhysicalCoordinates(LONG& x, LONG& y, LONG& height,
 
 void CTextService::SendCaretPositionUpdate()
 {
-    LONG x = 0, y = 0, height = 20;
+    LONG x = 0, y = 0, height = 0;
     LONG compStartX = 0, compStartY = 0;
     BOOL hasPosition = FALSE;
 
     // Priority 1: Use cached position from edit session (reliable for WebView apps
-    // where separate CaretEditSession with TF_INVALID_COOKIE is rejected)
+    // where separate CaretEditSession with TF_INVALID_COOKIE is rejected).
+    // The cache is set inside CUpdateCompositionEditSession::DoEditSession, which
+    // guarantees that caret and composition-start come from the SAME edit session
+    // and thus the same coordinate space.
     if (_hasCachedCaretPos)
     {
         x = _cachedCaretRect.left;
         y = _cachedCaretRect.bottom;
         height = _cachedCaretRect.bottom - _cachedCaretRect.top;
-        if (height <= 0) height = 20;
         hasPosition = TRUE;
 
         if (_hasCachedCompStartPos)
@@ -2367,8 +2391,6 @@ void CTextService::SendCaretPositionUpdate()
         // Clear cache (one-shot: next call falls back to normal methods)
         _hasCachedCaretPos = FALSE;
         _hasCachedCompStartPos = FALSE;
-
-        WIND_LOG_DEBUG(L"SendCaretPositionUpdate: Using cached position from edit session\n");
     }
 
     // Priority 2: Normal method (separate edit session + fallbacks)
@@ -2386,6 +2408,7 @@ void CTextService::SendCaretPositionUpdate()
             }
             else
             {
+                _ScheduleDelayedCaretPositionRetry();
                 return; // No position available at all
             }
         }
@@ -2419,6 +2442,29 @@ void CTextService::SendCaretPositionUpdate()
     {
         _pIPCClient->SendCaretUpdate((int)x, (int)y, (int)height, (int)compStartX, (int)compStartY);
     }
+
+    _ScheduleDelayedCaretPositionRetry();
+}
+
+void CTextService::_ScheduleDelayedCaretPositionRetry()
+{
+    if (!_needsDelayedCaretRetry)
+        return;
+
+    _needsDelayedCaretRetry = FALSE;
+
+    if (_pComposition == nullptr)
+    {
+        return;
+    }
+
+    if (_pLangBarItemButton == nullptr)
+    {
+        WIND_LOG_WARN(L"Delayed caret retry skipped: no LangBar message window\n");
+        return;
+    }
+
+    _pLangBarItemButton->PostDelayedCaretPositionUpdate();
 }
 
 BOOL CTextService::GetCompositionStartPosition(LONG* px, LONG* py)
@@ -2741,6 +2787,11 @@ STDAPI CTextService::OnLayoutChange(ITfContext* pContext, TfLayoutCode lCode, IT
 {
     if (lCode == TF_LC_CHANGE && _pComposition != nullptr)
     {
+        if (_skipNextLayoutUpdate)
+        {
+            _skipNextLayoutUpdate = FALSE;
+            return S_OK;
+        }
         WIND_LOG_DEBUG(L"OnLayoutChange: TF_LC_CHANGE with active composition, updating caret position\n");
         SendCaretPositionUpdate();
     }

@@ -172,6 +172,7 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 		c.diagPreKeyCaretY = c.caretY
 		c.diagPreKeyCaretValid = c.caretValid
 		c.diagCaretUpdateCount = 0
+		c.diagRejectedCompStart = false
 
 		// 自适应检测：查询该进程的历史光标行为
 		profile := c.caretProfiles[c.activeProcessID]
@@ -189,17 +190,38 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 				"x", c.caretX, "y", c.caretY, "h", c.caretHeight,
 				"pid", c.activeProcessID, "learned", profile != nil)
 
-			// 超时回退：如果 80ms 内 OnLayoutChange 没有触发（应用不支持），强制显示
+			// 超时回退：普通应用 80ms 内没有布局更新就显示；如果检测到 WPS
+			// 这类错位 compStart，先给 TSF 延迟重查留出时间，再最终兜底。
 			go func() {
 				time.Sleep(80 * time.Millisecond)
 				c.mu.Lock()
 				defer c.mu.Unlock()
 				if c.pendingFirstShow && len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
+					if c.diagRejectedCompStart {
+						go func() {
+							time.Sleep(180 * time.Millisecond)
+							c.mu.Lock()
+							defer c.mu.Unlock()
+							if c.pendingFirstShow && len(c.inputBuffer) > 0 && len(c.candidates) > 0 {
+								c.pendingFirstShow = false
+								c.updateCaretProfile(false)
+								c.logger.Debug("caret.diag first=timeout_fallback",
+									"x", c.diagPreKeyCaretX, "y", c.diagPreKeyCaretY,
+									"pid", c.activeProcessID,
+									"reliable", false,
+									"rejectedCompStart", true)
+								c.showUI()
+							}
+						}()
+						return
+					}
 					c.pendingFirstShow = false
 					c.updateCaretProfile(true)
 					c.logger.Debug("caret.diag first=timeout",
 						"x", c.diagPreKeyCaretX, "y", c.diagPreKeyCaretY,
-						"pid", c.activeProcessID)
+						"pid", c.activeProcessID,
+						"reliable", true,
+						"rejectedCompStart", false)
 					c.showUI()
 				}
 			}()

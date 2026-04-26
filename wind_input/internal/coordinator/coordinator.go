@@ -102,10 +102,11 @@ type caretState struct {
 	lastValidY int
 
 	// 首字符光标位置诊断：记录 Position A（预按键光标）和后续更新的差异
-	diagPreKeyCaretX     int  // Position A: 按键前的光标 X
-	diagPreKeyCaretY     int  // Position A: 按键前的光标 Y
-	diagPreKeyCaretValid bool // Position A 是否有效
-	diagCaretUpdateCount int  // pendingFirstShow 期间收到的 caret update 次数
+	diagPreKeyCaretX      int  // Position A: 按键前的光标 X
+	diagPreKeyCaretY      int  // Position A: 按键前的光标 Y
+	diagPreKeyCaretValid  bool // Position A 是否有效
+	diagCaretUpdateCount  int  // pendingFirstShow 期间收到的 caret update 次数
+	diagRejectedCompStart bool // 首字符等待期间是否收到过明显不可信的 compositionStart
 
 	// 自适应光标检测：按进程记录 Position A 的可靠性
 	activeProcessID   uint32                   // 当前活跃进程 ID
@@ -664,6 +665,7 @@ func (c *Coordinator) clearState() {
 	c.pendingFirstShow = false
 	c.diagPreKeyCaretValid = false
 	c.diagCaretUpdateCount = 0
+	c.diagRejectedCompStart = false
 	c.compositionStartValid = false
 	// 清理加词模式状态
 	c.addWordActive = false
@@ -720,9 +722,9 @@ func (c *Coordinator) updateCaretProfile(reliable bool) {
 	profile := c.caretProfiles[pid]
 	if profile == nil {
 		c.caretProfiles[pid] = &caretProfile{posAReliable: reliable}
-		c.logger.Info("caret.diag profile created", "pid", pid, "reliable", reliable)
+		c.logger.Debug("caret.diag profile created", "pid", pid, "reliable", reliable)
 	} else if !reliable && profile.posAReliable {
 		profile.posAReliable = false
-		c.logger.Info("caret.diag profile downgraded", "pid", pid)
+		c.logger.Debug("caret.diag profile downgraded", "pid", pid)
 	}
 }

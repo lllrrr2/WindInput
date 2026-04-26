@@ -137,6 +137,8 @@ public:
     void UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bChinesePunct, BOOL bToolbarVisible, BOOL bCapsLock, const wchar_t* iconLabel = nullptr);
 
 private:
+    void _ScheduleDelayedCaretPositionRetry();
+
     LONG _refCount;
     ITfThreadMgr* _pThreadMgr;
     TfClientId _tfClientId;
@@ -168,6 +170,8 @@ private:
     RECT _cachedCompStartRect;
     BOOL _hasCachedCaretPos;
     BOOL _hasCachedCompStartPos;
+    BOOL _skipNextLayoutUpdate;  // Skip one OnLayoutChange after degenerate cache
+    BOOL _needsDelayedCaretRetry; // Degenerate first-composition rect needs post-edit-session retry
     BOOL _needsFocusRecovery;
     LONG _lastFocusCaretX;
     LONG _lastFocusCaretY;

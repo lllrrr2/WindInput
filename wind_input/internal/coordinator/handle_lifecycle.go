@@ -17,6 +17,12 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// C++ 端传递原始 height：h=0 表示退化矩形（应用尚未 reflow，坐标不可靠），
+	// 跳过此次更新，等待 OnLayoutChange 提供真实坐标。
+	if data.Height == 0 {
+		return nil
+	}
+
 	// 应用兼容性规则：caret_use_top 将 Y 从 rect.bottom 转换为 rect.top。
 	// 微信等 WebView 应用的 GetTextExt 返回的 height 不稳定（h=1 或 h=20），
 	// 导致 rect.bottom 在不同时刻差异达 20px，但 rect.top 始终稳定（差异 ≤1px）。
@@ -29,16 +35,44 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 		}
 	}
 
+	prevCaretX := c.caretX
+	prevCaretY := c.caretY
+
 	c.caretX = data.X
 	c.caretY = data.Y
 	c.caretHeight = data.Height
 	c.caretValid = true // Mark that we have received valid caret position
 
-	// Store composition start position from C++ TSF (via ITfComposition::GetRange)
-	if data.CompositionStartX != 0 || data.CompositionStartY != 0 {
-		c.compositionStartX = data.CompositionStartX
-		c.compositionStartY = data.CompositionStartY
-		c.compositionStartValid = true
+	// Store composition start position from C++ TSF (via ITfComposition::GetRange).
+	// 锁定语义：在同一次 composition 期间只接受首次到达的有效 compositionStart，
+	// 后续 update 即便携带新值也不再覆盖。否则 WebView / 微信 / WPS 部分控件
+	// 的 GetRange 会让 START anchor 跟随 caret 漂移，导致候选窗口随输入移动。
+	// composition 终止 / 焦点切换会调用 clearState() 把 compositionStartValid 复位。
+	//
+	// 校验：若首次接收到的 compositionStart 与 caret 距离过大（>500px），
+	// 视为坐标系不一致（logical vs physical），拒绝并仅做诊断标记。
+	if (data.CompositionStartX != 0 || data.CompositionStartY != 0) && !c.compositionStartValid {
+		dx := data.CompositionStartX - data.X
+		dy := data.CompositionStartY - data.Y
+		if dx < 0 {
+			dx = -dx
+		}
+		if dy < 0 {
+			dy = -dy
+		}
+		if dx < 500 && dy < 500 {
+			c.compositionStartX = data.CompositionStartX
+			c.compositionStartY = data.CompositionStartY
+			c.compositionStartValid = true
+		} else {
+			if c.pendingFirstShow {
+				c.diagRejectedCompStart = true
+			}
+			c.logger.Debug("Rejected compositionStart: too far from caret (coordinate space mismatch)",
+				"caretX", data.X, "caretY", data.Y,
+				"compStartX", data.CompositionStartX, "compStartY", data.CompositionStartY,
+				"dx", dx, "dy", dy)
+		}
 	}
 
 	// If there's active input, refresh the candidate window position.
@@ -82,7 +116,9 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 				// 同步调用栈或中间值更新，跳过（不逐条输出日志，仅计数）
 				return nil
 			}
-			// OnLayoutChange 或超时后的更新，可信赖
+			// OnLayoutChange 或超时后的更新，可信赖。
+			// WPS 等应用首次 OnLayoutChange 携带 pre-reflow 旧坐标的情况由 C++ 端
+			// 通过退化矩形（height=0）过滤 + 延迟重查解决，这里不再二次拦截。
 			c.pendingFirstShow = false
 			reliable := dx <= 4 && dy <= 4
 			c.updateCaretProfile(reliable)
@@ -95,6 +131,11 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 				"skipped", c.diagCaretUpdateCount-1,
 				"reliable", reliable,
 				"pid", c.activeProcessID)
+			// 解析分支必须立即显示候选窗口，绕过下方的小位移过滤；
+			// 否则连续两次 caret update 坐标相同时（如 WPS reflow 后定格），
+			// pendingFirstShow→false 之后会被 moveDx/moveDy ≤3 的过滤吞掉。
+			c.showUI()
+			return nil
 		} else if !c.lastKeyTime.IsZero() {
 			sinceKey := time.Since(c.lastKeyTime)
 			profile := c.caretProfiles[c.activeProcessID]
@@ -119,6 +160,19 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 					c.updateCaretProfile(false)
 				}
 			}
+		}
+		// 过滤小位移：候选窗口已显示后，caret 位移 ≤3px 时跳过重绘，
+		// 避免应用 reflow 后期微调（如 WPS 的 2px Y 偏移）导致可见闪烁。
+		moveDx := data.X - prevCaretX
+		moveDy := data.Y - prevCaretY
+		if moveDx < 0 {
+			moveDx = -moveDx
+		}
+		if moveDy < 0 {
+			moveDy = -moveDy
+		}
+		if !c.pendingFirstShow && moveDx <= 3 && moveDy <= 3 && c.caretValid {
+			return nil
 		}
 		c.showUI()
 	} else if c.pendingFirstShow && hasInput && hasUI && !hasCandidates {
