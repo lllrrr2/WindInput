@@ -118,11 +118,18 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 	// 将上一次上屏的内容作为首选候选插入到候选列表顶部。
 	zKeyRepeat := c.inputBuffer == "z" && c.engineMgr.IsZKeyRepeatEnabled()
 
-	// 分级加载：拼音/混输引擎首次加载 300 条，其他引擎不限制
+	// 分级加载：拼音/混输引擎首次加载 300 条；码表引擎短前缀（1字符→100条，2字符→300条）也限制初始量
 	initialLimit := 0
-	if c.engineMgr.GetCurrentType() == engine.EngineTypePinyin ||
-		c.engineMgr.GetCurrentType() == engine.EngineTypeMixed {
+	switch c.engineMgr.GetCurrentType() {
+	case engine.EngineTypePinyin, engine.EngineTypeMixed:
 		initialLimit = 300
+	case engine.EngineTypeCodetable:
+		inputLen := len(c.inputBuffer)
+		if inputLen <= 1 {
+			initialLimit = 100
+		} else if inputLen == 2 {
+			initialLimit = 300
+		}
 	}
 	c.candidateLimit = initialLimit
 	c.candidateInput = c.inputBuffer
