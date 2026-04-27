@@ -59,6 +59,12 @@ export interface CodetableConfig {
   single_code_input: boolean;
   single_code_complete: boolean; // 逐码空码补全
   candidate_sort_mode: string; // 候选排序模式：frequency（词频）、natural（自然顺序）
+  load_mode?: string;
+  prefix_mode?: string;
+  bucket_limit?: number;
+  weight_mode?: string;
+  short_code_first?: boolean;
+  charset_preference?: string;
 }
 
 // 引擎配置
@@ -374,6 +380,12 @@ export function getDefaultConfig(): Config {
         single_code_input: false,
         single_code_complete: true,
         candidate_sort_mode: "frequency",
+        load_mode: "mmap",
+        prefix_mode: "bfs_bucket",
+        bucket_limit: 30,
+        weight_mode: "auto",
+        short_code_first: false,
+        charset_preference: "none",
       },
     },
     hotkeys: {
