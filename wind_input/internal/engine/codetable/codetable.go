@@ -533,14 +533,33 @@ func (e *Engine) applyPrefixWeights(prefixCandidates []candidate.Candidate, inpu
 }
 
 // applyCharsetPreference 在最终合并候选上应用字符集偏好特权。
-// 目前实现 full_code_phrase_first：满码时把词组（多于 1 个 rune）权重抬高，确保排在单字之前。
+//
+// 支持三种模式：
+//   - single_first: 任意码长下，单字权重抬高，确保排在词组之前。
+//   - phrase_first: 任意码长下，词组权重抬高，确保排在单字之前。
+//   - full_code_phrase_first: 仅在满码（inputLen == MaxCodeLength）时，词组权重抬高。
 func (e *Engine) applyCharsetPreference(candidates []candidate.Candidate, inputLen int) {
-	if e.config.CharsetPreference != "full_code_phrase_first" || inputLen != e.config.MaxCodeLength {
-		return
-	}
-	for i := range candidates {
-		if len([]rune(candidates[i].Text)) > 1 {
-			candidates[i].Weight += fullCodePhraseBoost
+	switch e.config.CharsetPreference {
+	case "single_first":
+		for i := range candidates {
+			if len([]rune(candidates[i].Text)) == 1 {
+				candidates[i].Weight += fullCodePhraseBoost
+			}
+		}
+	case "phrase_first":
+		for i := range candidates {
+			if len([]rune(candidates[i].Text)) > 1 {
+				candidates[i].Weight += fullCodePhraseBoost
+			}
+		}
+	case "full_code_phrase_first":
+		if inputLen != e.config.MaxCodeLength {
+			return
+		}
+		for i := range candidates {
+			if len([]rune(candidates[i].Text)) > 1 {
+				candidates[i].Weight += fullCodePhraseBoost
+			}
 		}
 	}
 }
