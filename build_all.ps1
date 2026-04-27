@@ -320,6 +320,10 @@ function Build-SettingUI {
         }
     } finally {
         Pop-Location
+        # 还原 wails.json，避免脚本写入的版本/产品名进入 git 提交列表
+        if (Test-Path $wailsJsonPath) {
+            & git checkout -- $wailsJsonPath 2>$null
+        }
     }
     Write-Host ""
 }
