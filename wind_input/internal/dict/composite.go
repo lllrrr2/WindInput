@@ -155,6 +155,14 @@ func (c *CompositeDict) searchInternal(code string, limit int, isPrefix bool) []
 				if cand.Weight > results[idx].Weight {
 					results[idx].Weight = cand.Weight
 				}
+				// 前缀搜索：同 Text 有多个编码时，保留最短码的 Code 和 NaturalOrder。
+				// 最短码离输入最近，其 NaturalOrder 代表该字词在词库中最早出现的位置。
+				// 不按此修正会导致代表条目携带长码高权重的 NaturalOrder（偏后），
+				// 使该候选在自然顺序排序中错排到后面。
+				if isPrefix && len(cand.Code) < len(results[idx].Code) {
+					results[idx].Code = cand.Code
+					results[idx].NaturalOrder = cand.NaturalOrder
+				}
 				continue
 			}
 			seenIdx[cand.Text] = len(results)

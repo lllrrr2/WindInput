@@ -76,8 +76,14 @@ func Better(a, b Candidate) bool {
 }
 
 // BetterNatural 按自然顺序比较两个候选的优先级
-// 规则：自然顺序升序（靠前的排前面）；同顺序按权重降序。
+// 规则：精确匹配（W≥0）始终优先于前缀候选（W<0，已施加降权惩罚）；
+// 同 tier 内按自然顺序升序；同顺序按权重降序。
 func BetterNatural(a, b Candidate) bool {
+	aIsPrefix := a.Weight < 0
+	bIsPrefix := b.Weight < 0
+	if aIsPrefix != bIsPrefix {
+		return !aIsPrefix
+	}
 	if a.NaturalOrder != b.NaturalOrder {
 		return a.NaturalOrder < b.NaturalOrder
 	}
