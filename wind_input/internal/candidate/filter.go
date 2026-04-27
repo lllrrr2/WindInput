@@ -15,20 +15,39 @@ func FilterCandidates(candidates []Candidate, mode string) []Candidate {
 	case "gb18030":
 		return candidates
 	case "smart":
-		filtered := filterCommonOnly(candidates)
-		if len(filtered) == 0 {
-			return candidates
-		}
-		return filtered
+		return filterSmart(candidates)
 	default:
 		return candidates
 	}
 }
 
+// filterSmart 智能过滤：仅在同编码内部进行生僻字过滤
+func filterSmart(candidates []Candidate) []Candidate {
+	// 1. 识别哪些编码拥有常用字或指令
+	hasCommon := make(map[string]bool)
+	for _, c := range candidates {
+		if c.IsCommon || c.IsCommand || c.IsGroup {
+			hasCommon[c.Code] = true
+		}
+	}
+
+	// 2. 过滤：仅当同编码下存在常用字时，才过滤掉该编码下的生僻字
+	result := make([]Candidate, 0, len(candidates))
+	for _, c := range candidates {
+		// 满足以下任一条件即保留：
+		// - 自身是常用字、指令或组
+		// - 同编码下没有任何常用字/指令（孤儿词条，必须保留）
+		if c.IsCommon || c.IsCommand || c.IsGroup || !hasCommon[c.Code] {
+			result = append(result, c)
+		}
+	}
+	return result
+}
+
 func filterCommonOnly(candidates []Candidate) []Candidate {
 	result := make([]Candidate, 0, len(candidates))
 	for _, c := range candidates {
-		if c.IsCommon {
+		if c.IsCommon || c.IsCommand || c.IsGroup {
 			result = append(result, c)
 		}
 	}

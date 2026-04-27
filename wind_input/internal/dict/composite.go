@@ -23,6 +23,22 @@ type CompositeDict struct {
 	sortMode candidate.CandidateSortMode
 }
 
+// defaultPrefixSafeLimit 根据前缀长度计算底层 layer 的安全候选上限。
+// 短前缀候选池天然庞大，给更大的窗口避免按字母序遍历时把高权重候选挡在外面；
+// 长前缀候选自然收敛，无需放大。
+func defaultPrefixSafeLimit(prefixLen int) int {
+	switch prefixLen {
+	case 0, 1:
+		return 8000
+	case 2:
+		return 2000
+	case 3:
+		return 800
+	default:
+		return 300
+	}
+}
+
 // NewCompositeDict 创建聚合词库
 func NewCompositeDict() *CompositeDict {
 	return &CompositeDict{
@@ -118,7 +134,9 @@ func (c *CompositeDict) searchInternal(code string, limit int, isPrefix bool) []
 
 	// 前缀查询对底层传递安全限制，避免短前缀（如单字母"s"）触发全量 Trie 遍历。
 	// 精确匹配不受影响（候选数天然有限）。
-	const prefixSafeLimit = 300
+	// 上限按前缀长度分级：越短的前缀允许越大的窗口，避免高权重候选被字母序截断
+	// （例如 jidian 词库中 `swy` 段会被一律 cap 在 ~600 条以前）。
+	prefixSafeLimit := defaultPrefixSafeLimit(len(code))
 	for _, layer := range c.layers {
 		var layerResults []candidate.Candidate
 		if isPrefix {

@@ -11,10 +11,13 @@ import (
 func setTestConfigDir(t *testing.T) string {
 	t.Helper()
 	tmpDir := t.TempDir()
-	orig := os.Getenv("APPDATA")
+	origApp := os.Getenv("APPDATA")
+	origLocal := os.Getenv("LOCALAPPDATA")
 	os.Setenv("APPDATA", tmpDir)
+	os.Setenv("LOCALAPPDATA", tmpDir)
 	t.Cleanup(func() {
-		os.Setenv("APPDATA", orig)
+		os.Setenv("APPDATA", origApp)
+		os.Setenv("LOCALAPPDATA", origLocal)
 	})
 	return tmpDir
 }
