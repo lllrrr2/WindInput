@@ -86,8 +86,11 @@ public:
     // Commit text atomically (end composition + insert text in one EditSession)
     BOOL CommitText(const std::wstring& text);
 
-    // End current composition
-    void EndComposition();
+    // End current composition.
+    // pDocMgrHint: 失焦场景下 GetFocus() 已为 nullptr，调用方可传入 pDocMgrPrevFocus
+    // 兜底，确保 composition 范围被清空后再 EndComposition；否则 Excel/WPS 等
+    // 表格类宿主会把残留 composition 文本提交到目标 doc。
+    void EndComposition(ITfDocumentMgr* pDocMgrHint = nullptr);
 
     // Reset KeyEventSink composing state (called after push pipe commit/clear)
     void ResetComposingState();

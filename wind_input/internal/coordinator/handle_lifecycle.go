@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"time"
+	"unicode/utf8"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/engine"
@@ -16,6 +17,13 @@ import (
 const (
 	firstShowDefaultTimeout  = 150 * time.Millisecond
 	firstShowExtendedTimeout = 600 * time.Millisecond
+
+	// Excel/WPS 表格风格焦点切换检测窗口（HandleFocusLost）。
+	replayDetectKeyWindow = 200 * time.Millisecond
+	// 同 PID focus_gained 必须在此窗口内到达才会重放（HandleFocusGained）。
+	replayGainedWindow = 500 * time.Millisecond
+	// 重放 buffer 长度上限：超过则视为长串输入，直接清空避免误重放。
+	replayMaxBufferLen = 8
 )
 
 // armPendingFirstShow 推迟首次 showUI（持锁状态下调用）。
@@ -67,6 +75,17 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 	// C++ 端传递原始 height：h=0 表示退化矩形（应用尚未 reflow，坐标不可靠），
 	// 跳过此次更新，等待 OnLayoutChange 提供真实坐标。
 	if data.Height == 0 {
+		return nil
+	}
+
+	// 跨焦点 buffer 重放等待中：FocusGained 包内嵌的 caret 是新文档的"初始"坐标
+	// （Excel 单元格选中区/编辑栏区域），不是 composition reflow 后的真实位置。
+	// 此时不能 showUI，否则会先在错位置出现再跳到正确位置。仅缓存坐标，等
+	// HandleFocusGained 完成 PushUpdateComposition 后由真实 OnLayoutChange caret 触发 show。
+	if c.pendingReplay {
+		c.caretX = data.X
+		c.caretY = data.Y
+		c.caretHeight = data.Height
 		return nil
 	}
 
@@ -131,10 +150,19 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 
 	// If there's active input, refresh the candidate window position.
 	// C++ 端保证每次到达的 caret update 都是 reflow 后的权威坐标。
-	hasInput := len(c.inputBuffer) > 0
+	// 覆盖所有模式（主输入 / 临时英文 / 临时拼音 / 快捷输入），否则 replay 后
+	// 候选窗在新焦点首个 caret 到达时不会重新 show。
+	hasMainInput := len(c.inputBuffer) > 0
+	hasTempEnglish := len(c.tempEnglishBuffer) > 0
+	hasTempPinyin := c.tempPinyinMode
+	hasQuickInput := c.quickInputMode
+	hasInput := hasMainInput || hasTempEnglish || hasTempPinyin || hasQuickInput
 	hasCandidates := len(c.candidates) > 0
 	hasUI := c.uiManager != nil
-	if hasInput && hasCandidates && hasUI {
+	// 主输入流程必须有候选才 show；模式入口（quickInput / tempPinyin）允许空候选，
+	// 因为 preedit 中含触发键 prefix，仍需把候选窗（即便只有 prefix）渲染出来。
+	canShow := hasUI && (hasCandidates || hasTempPinyin || hasQuickInput)
+	if hasInput && canShow {
 		// 首次 show（pendingFirstShow 刚被消费）必须无条件 show，无视 3px 过滤；
 		// 否则若 reflow 后坐标恰好与按键前差 ≤3px，候选窗会一直不显示。
 		if !wasPendingFirstShow {
@@ -152,7 +180,17 @@ func (c *Coordinator) HandleCaretUpdate(data bridge.CaretData) error {
 				return nil
 			}
 		}
-		c.showUI()
+		// 派发到模式特定的 show 函数，避免主流程 showUI 覆盖模式标签 / Index 重编号 / preedit。
+		switch {
+		case hasTempEnglish:
+			c.showTempEnglishUI()
+		case hasTempPinyin:
+			c.showPinyinModeUI(c.tempPinyinOps())
+		case hasQuickInput:
+			c.showQuickInputUI()
+		default:
+			c.showUI()
+		}
 	}
 
 	return nil
@@ -249,7 +287,78 @@ func (c *Coordinator) HandleFocusLost() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lastOutputWasDigit = false
+
+	// Excel/WPS 表格兼容：在 composition 刚启动后立即丢焦，推断为应用切换
+	// ITfDocumentMgr（cell-select → cell-edit），保留 buffer 等待重放。
+	if c.shouldDeferClearForReplay() {
+		c.pendingReplay = true
+		c.pendingReplayPID = c.activeProcessID
+		c.pendingReplayDeadline = time.Now().Add(replayGainedWindow)
+		// 让旧 pendingFirstShow 兜底定时器作废，避免在新焦点到达前用旧坐标 show。
+		c.pendingFirstShow = false
+		c.pendingFirstShowToken++
+		c.logger.Info("Focus lost during pendingFirstShow, preserving buffer for replay",
+			"bufferLen", len(c.inputBuffer), "pid", c.activeProcessID)
+		return
+	}
+
+	c.pendingReplay = false
 	c.clearState()
+}
+
+// shouldDeferClearForReplay 判定是否处于"打字驱动焦点切换"竞态。
+// 调用方必须持有 c.mu 锁。
+func (c *Coordinator) shouldDeferClearForReplay() bool {
+	if !c.pendingFirstShow {
+		c.logger.Debug("shouldDeferClearForReplay=false", "reason", "pendingFirstShow=false")
+		return false
+	}
+	bufLen := c.replayBufferLen()
+	if bufLen == 0 || bufLen > replayMaxBufferLen {
+		c.logger.Debug("shouldDeferClearForReplay=false", "reason", "bufferLen", "len", bufLen)
+		return false
+	}
+	if c.lastKeyTime.IsZero() {
+		c.logger.Debug("shouldDeferClearForReplay=false", "reason", "lastKeyTime zero")
+		return false
+	}
+	if time.Since(c.lastKeyTime) > replayDetectKeyWindow {
+		c.logger.Debug("shouldDeferClearForReplay=false", "reason", "key window expired",
+			"sinceLastKey", time.Since(c.lastKeyTime).String())
+		return false
+	}
+	// confirmed segments 非空意味着用户已经选过候选，正常焦点切换应清空，不重放。
+	if len(c.confirmedSegments) > 0 {
+		c.logger.Debug("shouldDeferClearForReplay=false", "reason", "confirmedSegments non-empty")
+		return false
+	}
+	return true
+}
+
+// replayBufferLen 返回当前活动模式下的待重放 composition 长度（字节数）。
+// 覆盖：主输入 / 临时英文 / 临时拼音 / 快捷输入。
+// 注意：临时拼音和快捷输入的触发键字符在 buffer 之外，通过 prefix 注入 composition，
+// 所以即便 buffer 为空，只要 mode 已开启，仍需返回 prefix 长度，否则
+// shouldDeferClearForReplay 会漏判，触发键直接上屏到宿主。
+// 调用方必须持有 c.mu 锁。
+func (c *Coordinator) replayBufferLen() int {
+	if len(c.inputBuffer) > 0 {
+		return len(c.inputBuffer)
+	}
+	if len(c.tempEnglishBuffer) > 0 {
+		return len(c.tempEnglishBuffer)
+	}
+	if c.tempPinyinMode {
+		return len(c.tempPinyinPrefix()) + len(c.tempPinyinBuffer)
+	}
+	if c.quickInputMode {
+		prefix := c.quickInputPrefix()
+		if len(c.quickInputPinyinBuffer) > 0 {
+			return len(prefix) + len(c.quickInputPinyinBuffer)
+		}
+		return len(prefix) + len(c.quickInputBuffer)
+	}
+	return 0
 }
 
 // HandleCompositionTerminated handles composition unexpectedly terminated events
@@ -305,6 +414,7 @@ func (c *Coordinator) HandleIMEDeactivated() {
 	c.mu.Lock()
 	c.imeActivated = false
 	c.lastOutputWasDigit = false
+	c.pendingReplay = false
 	c.clearState()
 	c.mu.Unlock()
 
@@ -379,7 +489,61 @@ func (c *Coordinator) HandleFocusGained(processID uint32) *bridge.StatusUpdateDa
 	// This ensures composition state is consistent
 	c.mu.Lock()
 	c.lastOutputWasDigit = false
-	if len(c.inputBuffer) > 0 {
+
+	// Excel/WPS 重放：满足"同 PID + 时间窗 + 仍有 buffer"时，保留状态并向新文档
+	// 推送 update_composition，让 IME 在新 ITfDocumentMgr 上重新建立 composition。
+	replayText := ""
+	replayCaretPos := 0
+	doReplay := false
+	if c.pendingReplay {
+		samePID := processID != 0 && processID == c.pendingReplayPID
+		inWindow := time.Now().Before(c.pendingReplayDeadline)
+		if samePID && inWindow && c.replayBufferLen() > 0 {
+			// InlinePreedit=false 时，主流程对 UpdateComposition 发送空 Text，
+			// 由 C++ 端注入占位空格并把光标定位到空格前，借此稳定上报真实 caret。
+			// Replay 路径必须遵循同样契约，否则首次重建的 composition 会嵌入真实
+			// 字符，下一个按键才切回空文本，导致 Excel 中"先嵌入字母再替换为空格"。
+			inlinePreedit := c.config == nil || c.config.UI.InlinePreedit
+			if !inlinePreedit {
+				replayText = ""
+				replayCaretPos = 0
+			} else {
+				// 主输入流程仍走 compositionText（含 preeditDisplay 处理 / 拼音分段光标），
+				// 临时英文 / 临时拼音 / 快捷输入则按可视 preedit 重建（prefix + buffer），
+				// 因为触发键字符在 buffer 之外，仅通过 prefix 注入 composition。
+				switch {
+				case len(c.inputBuffer) > 0:
+					replayText = c.compositionText()
+					replayCaretPos = c.displayCursorPos()
+				case c.tempPinyinMode:
+					replayText = c.tempPinyinPrefix() + c.tempPinyinBuffer
+					replayCaretPos = utf8.RuneCountInString(replayText)
+				case c.quickInputMode:
+					prefix := c.quickInputPrefix()
+					if len(c.quickInputPinyinBuffer) > 0 {
+						replayText = prefix + c.quickInputPinyinBuffer
+					} else {
+						replayText = prefix + c.quickInputBuffer
+					}
+					replayCaretPos = utf8.RuneCountInString(replayText)
+				default:
+					replayText = c.getPendingBufferText()
+					replayCaretPos = utf8.RuneCountInString(replayText)
+				}
+			}
+			doReplay = true
+			c.armPendingFirstShowWithTimeout(firstShowExtendedTimeout)
+			c.logger.Info("Replaying preserved buffer in new focus context",
+				"bufferLen", c.replayBufferLen(), "pid", processID)
+		} else {
+			c.logger.Debug("Pending replay skipped",
+				"samePID", samePID, "inWindow", inWindow,
+				"reqPID", c.pendingReplayPID, "newPID", processID)
+		}
+		c.pendingReplay = false
+	}
+
+	if !doReplay && len(c.inputBuffer) > 0 {
 		c.inputBuffer = ""
 		c.inputCursorPos = 0
 		c.candidates = nil
@@ -389,8 +553,15 @@ func (c *Coordinator) HandleFocusGained(processID uint32) *bridge.StatusUpdateDa
 	}
 	c.mu.Unlock()
 
-	// Hide candidate window (will be shown again when user starts typing)
-	c.hideUI()
+	if doReplay && c.bridgeServer != nil {
+		c.bridgeServer.PushUpdateCompositionToActiveClient(replayText, replayCaretPos)
+	}
+
+	// Hide candidate window (will be shown again when user starts typing).
+	// Replay 路径下不 hide：候选已就绪，等待新焦点 caret 到达后由 pendingFirstShow 兜底显示。
+	if !doReplay {
+		c.hideUI()
+	}
 
 	// Set IME as activated (this will show toolbar if enabled)
 	c.SetIMEActivated(true)

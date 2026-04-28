@@ -1093,8 +1093,10 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
     {
         WIND_LOG_DEBUG_FMT(L"Focus lost focusSession=%llu, notifying service", _focusSessionId);
 
-        // End any active composition before sending focus_lost
-        EndComposition();
+        // End any active composition before sending focus_lost.
+        // 传入 pDocMgrPrevFocus：此刻 GetFocus()=null，必须靠它兜底跑 EditSession，
+        // 否则 forced cleanup 会让 composition 残留文本被提交（Excel/WPS 表格的 'd' 漏字）。
+        EndComposition(pDocMgrPrevFocus);
 
         // Send focus_lost to service (async, no response expected)
         if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
@@ -3117,7 +3119,7 @@ fallback:
 // NOTE: This method is now ASYNC - it returns immediately without waiting for
 // the composition to actually end. The _pComposition pointer is cleared immediately
 // so that HasActiveComposition() returns FALSE and new compositions can start.
-void CTextService::EndComposition()
+void CTextService::EndComposition(ITfDocumentMgr* pDocMgrHint)
 {
     LARGE_INTEGER startTime, endTime, freq;
     QueryPerformanceCounter(&startTime);
@@ -3142,14 +3144,25 @@ void CTextService::EndComposition()
     _pComposition = nullptr;  // Clear immediately - HasActiveComposition() now returns FALSE
     _compositionJustStarted = FALSE;
 
-    // Need a document manager to request edit session
+    // Need a document manager to request edit session.
+    // 优先使用 GetFocus 拿当前焦点 doc；失败时退回 pDocMgrHint（来自 OnSetFocus 的
+    // pDocMgrPrevFocus），保证失焦时仍能在旧 doc 上跑 EditSession 清空 composition。
     ITfDocumentMgr* pDocMgr = nullptr;
     if (_pThreadMgr == nullptr || FAILED(_pThreadMgr->GetFocus(&pDocMgr)) || pDocMgr == nullptr)
     {
-        // Can't get document manager, force cleanup
-        WIND_LOG_DEBUG(L"EndComposition: Can't get DocMgr, forcing cleanup\n");
-        pCompToEnd->Release();
-        return;
+        if (pDocMgrHint != nullptr)
+        {
+            WIND_LOG_DEBUG(L"EndComposition: GetFocus null, using pDocMgrHint\n");
+            pDocMgr = pDocMgrHint;
+            pDocMgr->AddRef();
+        }
+        else
+        {
+            // Can't get document manager, force cleanup
+            WIND_LOG_DEBUG(L"EndComposition: Can't get DocMgr, forcing cleanup\n");
+            pCompToEnd->Release();
+            return;
+        }
     }
 
     ITfContext* pContext = nullptr;

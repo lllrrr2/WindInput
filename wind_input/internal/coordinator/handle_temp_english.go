@@ -129,6 +129,9 @@ func (c *Coordinator) enterTempEnglishMode(key string) *bridge.KeyEventResult {
 
 	c.logger.Debug("Entered temp English mode", "buffer", c.tempEnglishBuffer)
 	c.updateTempEnglishCandidates()
+	// 首次进入触发 C++ 端 StartComposition，同步标记 pendingFirstShow，
+	// 让 Excel/WPS 表格 cell-select→cell-edit 的失焦能命中 replay 路径。
+	c.armPendingFirstShow()
 	c.showTempEnglishUI()
 
 	return c.tempEnglishCompositionResult()
@@ -146,6 +149,7 @@ func (c *Coordinator) enterTempEnglishModeWithTrigger(triggerKey string) *bridge
 	}
 
 	c.logger.Debug("Entered temp English mode via trigger key", "triggerKey", triggerKey)
+	c.armPendingFirstShow()
 	c.showTempEnglishUI()
 
 	return c.tempEnglishCompositionResult()

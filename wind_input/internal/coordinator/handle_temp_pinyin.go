@@ -162,6 +162,9 @@ func (c *Coordinator) enterTempPinyinMode(triggerKey string) *bridge.KeyEventRes
 	c.logger.Debug("Entered temp pinyin mode", "triggerKey", triggerKey)
 
 	ops := c.tempPinyinOps()
+	// 首次进入触发 C++ 端 StartComposition，同步标记 pendingFirstShow，
+	// 让 Excel/WPS 表格 cell-select→cell-edit 的失焦能命中 replay 路径。
+	c.armPendingFirstShow()
 	c.showPinyinModeUI(ops)
 
 	prefix := c.tempPinyinPrefix()

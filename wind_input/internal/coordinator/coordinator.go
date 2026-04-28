@@ -106,6 +106,18 @@ type caretState struct {
 	// pendingFirstShowToken 用于超时回调比对身份。
 	pendingFirstShow      bool
 	pendingFirstShowToken uint64
+
+	// Excel/WPS 表格等"打字驱动焦点切换"应用兼容：单元格选中态收到首键时，
+	// 应用会立即切换到单元格编辑态的 ITfDocumentMgr，旧 composition 被终止，
+	// 此时清空 buffer 会丢失用户首键意图。检测条件（HandleFocusLost 中评估）：
+	//   1) pendingFirstShow=true（composition 刚启动，候选还没来得及 show）
+	//   2) inputBuffer 非空且短（≤8）
+	//   3) 距上次按键 <200ms
+	// 满足时设置 pendingReplay=true 并保留 buffer，等同 PID 在 500ms 内
+	// HandleFocusGained 重新到达时，向新文档 push update_composition 重放。
+	pendingReplay         bool
+	pendingReplayPID      uint32
+	pendingReplayDeadline time.Time
 }
 
 // tempModeState 临时输入模式（临时英文/临时拼音）状态

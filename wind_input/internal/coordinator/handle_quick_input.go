@@ -151,6 +151,10 @@ func (c *Coordinator) enterQuickInputMode(triggerKey string) *bridge.KeyEventRes
 	// 更新候选（缓冲区为空时显示重复上屏候选）
 	c.updateQuickInputCandidates()
 
+	// 首次进入触发 C++ 端 StartComposition，同步标记 pendingFirstShow，
+	// 让 Excel/WPS 表格 cell-select→cell-edit 的失焦能命中 replay 路径。
+	c.armPendingFirstShow()
+
 	// 显示初始 UI
 	c.showQuickInputUI()
 

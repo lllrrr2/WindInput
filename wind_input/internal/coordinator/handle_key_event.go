@@ -65,6 +65,9 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventR
 	prevDigitState := c.lastOutputWasDigit
 	if !isModifierOnlyKey(uint32(data.KeyCode)) {
 		c.lastOutputWasDigit = false
+		// 统一记录最近一次按键时间，覆盖所有模式（主输入 / 临时英文 / 临时拼音 / 快捷输入），
+		// 让 shouldDeferClearForReplay 在跨焦点 replay 场景下能正确识别"打字驱动焦点切换"。
+		c.lastKeyTime = startTime
 	}
 
 	// Check for Ctrl or Alt modifiers
