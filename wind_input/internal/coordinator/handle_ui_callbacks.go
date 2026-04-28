@@ -266,8 +266,14 @@ func (c *Coordinator) handleCandidateSelect(index int) {
 		c.showUI()
 
 		// 通过 push pipe 更新 TSF 组合文本
-		compositionText := c.compositionText()
-		caretPos := c.displayCursorPos()
+		// InlinePreedit 关闭时发送空文本，避免嵌入编码与候选窗同时显示
+		inlinePreedit := c.config == nil || c.config.UI.InlinePreedit
+		compositionText := ""
+		caretPos := 0
+		if inlinePreedit {
+			compositionText = c.compositionText()
+			caretPos = c.displayCursorPos()
+		}
 		bridgeServer := c.bridgeServer
 		c.mu.Unlock()
 

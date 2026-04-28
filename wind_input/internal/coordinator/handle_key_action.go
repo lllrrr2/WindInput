@@ -784,10 +784,17 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 		c.selectedIndex = 0
 		c.updateCandidates()
 		c.showUI()
+		inlinePreedit := c.config == nil || c.config.UI.InlinePreedit
+		groupText := ""
+		groupCaret := 0
+		if inlinePreedit {
+			groupText = c.compositionText()
+			groupCaret = c.displayCursorPos()
+		}
 		return &bridge.KeyEventResult{
 			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.compositionText(),
-			CaretPos: c.displayCursorPos(),
+			Text:     groupText,
+			CaretPos: groupCaret,
 		}
 	}
 
@@ -830,10 +837,18 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 		c.showUI()
 
 		// 返回 UpdateComposition 而非 InsertText，文字留在组合态中
+		// InlinePreedit 关闭时发送空文本，避免嵌入编码与候选窗同时显示
+		inlinePreedit := c.config == nil || c.config.UI.InlinePreedit
+		partialText := ""
+		partialCaret := 0
+		if inlinePreedit {
+			partialText = c.compositionText()
+			partialCaret = c.displayCursorPos()
+		}
 		return &bridge.KeyEventResult{
 			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     c.compositionText(),
-			CaretPos: c.displayCursorPos(),
+			Text:     partialText,
+			CaretPos: partialCaret,
 		}
 	}
 
