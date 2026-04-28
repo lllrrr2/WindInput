@@ -101,11 +101,11 @@ type SchemaConfigEngine struct {
 
 // SchemaConfigDict 词库配置项
 type SchemaConfigDict struct {
-	ID         string      `yaml:"id" json:"id"`
-	Path       string      `yaml:"path" json:"path"`
-	Type       string      `yaml:"type" json:"type"`
-	Default    bool        `yaml:"default" json:"default"`
-	Role       string      `yaml:"role,omitempty" json:"role,omitempty"`
+	ID            string      `yaml:"id" json:"id"`
+	Path          string      `yaml:"path" json:"path"`
+	Type          string      `yaml:"type" json:"type"`
+	Default       bool        `yaml:"default" json:"default"`
+	Role          string      `yaml:"role,omitempty" json:"role,omitempty"`
 	WeightAsOrder bool        `yaml:"weight_as_order,omitempty" json:"weight_as_order,omitempty"`
 	WeightSpec    interface{} `yaml:"weight_spec,omitempty" json:"weight_spec,omitempty"`
 }

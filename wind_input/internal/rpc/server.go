@@ -40,6 +40,8 @@ type Server struct {
 	batchEncoder   BatchEncoder
 
 	paused bool // 服务暂停状态
+
+	statCollector *store.StatCollector
 }
 
 // StatusProvider 系统状态提供者接口
@@ -93,6 +95,13 @@ func (s *Server) SetBatchEncoder(encoder BatchEncoder) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.batchEncoder = encoder
+}
+
+// SetStatCollector 设置统计采集器
+func (s *Server) SetStatCollector(sc *store.StatCollector) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statCollector = sc
 }
 
 // Start 启动 IPC 服务
@@ -154,6 +163,15 @@ func (s *Server) Start() error {
 	RegisterMethod(s.router, "System.Pause", systemSvc.Pause)
 	RegisterMethod(s.router, "System.Resume", systemSvc.Resume)
 	RegisterMethod(s.router, "System.Shutdown", systemSvc.Shutdown)
+
+	// 注册 Stats 方法
+	statsSvc := &StatsService{store: s.store, logger: s.logger, statCollector: s.statCollector, server: s}
+	RegisterMethod(s.router, "Stats.GetSummary", statsSvc.GetSummary)
+	RegisterMethod(s.router, "Stats.GetDaily", statsSvc.GetDaily)
+	RegisterMethod(s.router, "Stats.GetConfig", statsSvc.GetConfig)
+	RegisterMethod(s.router, "Stats.UpdateConfig", statsSvc.UpdateConfig)
+	RegisterMethod(s.router, "Stats.Clear", statsSvc.Clear)
+	RegisterMethod(s.router, "Stats.Prune", statsSvc.Prune)
 
 	// 注册 Phrase 方法
 	RegisterMethod(s.router, "Phrase.List", phraseSvc.List)

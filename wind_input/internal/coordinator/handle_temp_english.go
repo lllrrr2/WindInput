@@ -8,6 +8,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/ipc"
+	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
 )
 
@@ -177,6 +178,7 @@ func (c *Coordinator) exitTempEnglishMode(commit bool, text string) *bridge.KeyE
 		if c.fullWidth {
 			text = transform.ToFullWidth(text)
 		}
+		c.recordCommit(text, 0, -1, store.SourceTempEnglish)
 		return &bridge.KeyEventResult{
 			Type: bridge.ResponseTypeInsertText,
 			Text: text,

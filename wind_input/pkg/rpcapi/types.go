@@ -439,3 +439,90 @@ type PhraseBatchAddArgs struct {
 type PhraseBatchAddReply struct {
 	Count int `json:"count"`
 }
+
+// ── Stats 服务类型 ──
+
+// StatsGetDailyArgs 获取每日统计请求
+type StatsGetDailyArgs struct {
+	From string `json:"from"` // 开始日期 "2006-01-02"
+	To   string `json:"to"`   // 结束日期 "2006-01-02"
+}
+
+// StatsDailyItem 每日统计条目
+type StatsDailyItem struct {
+	Date          string                      `json:"d"`
+	TotalChars    int                         `json:"tc"`
+	ChineseChars  int                         `json:"cc"`
+	EnglishChars  int                         `json:"ec"`
+	PunctChars    int                         `json:"pc"`
+	OtherChars    int                         `json:"oc"`
+	Hours         [24]int                     `json:"h"`
+	CommitCount   int                         `json:"cn"`
+	CodeLenSum    int                         `json:"cls"`
+	CodeLenCount  int                         `json:"clc"`
+	CodeLenDist   [6]int                      `json:"cld"`
+	CandPosDist   [5]int                      `json:"cpd"`
+	ActiveSeconds int                         `json:"as"`
+	BySchema      map[string]*SchemaStatsItem `json:"bs,omitempty"`
+	BySource      [9]int                      `json:"src"`
+}
+
+// SchemaStatsItem 方案统计条目
+type SchemaStatsItem struct {
+	TotalChars   int    `json:"tc"`
+	CommitCount  int    `json:"cn"`
+	CodeLenSum   int    `json:"cls"`
+	CodeLenCount int    `json:"clc"`
+	CandPosDist  [5]int `json:"cpd"`
+}
+
+// StatsGetDailyReply 每日统计响应
+type StatsGetDailyReply struct {
+	Days []StatsDailyItem `json:"days"`
+}
+
+// StatsSummaryReply 统计概览响应
+type StatsSummaryReply struct {
+	TodayChars      int     `json:"today_chars"`
+	TodayChinese    int     `json:"today_chinese"`
+	TodayEnglish    int     `json:"today_english"`
+	TotalChars      int64   `json:"total_chars"`
+	ActiveDays      int     `json:"active_days"`
+	DailyAvg        int     `json:"daily_avg"`
+	StreakCurrent   int     `json:"streak_current"`
+	StreakMax       int     `json:"streak_max"`
+	WeekChars       int     `json:"week_chars"`
+	MonthChars      int     `json:"month_chars"`
+	MaxDayChars     int     `json:"max_day_chars"`
+	MaxDayDate      string  `json:"max_day_date"`
+	AvgCodeLen      float64 `json:"avg_code_len"`
+	FirstSelectRate float64 `json:"first_select_rate"`
+	TodaySpeed      int     `json:"today_speed"`   // 今日平均速度（字/分钟）
+	OverallSpeed    int     `json:"overall_speed"` // 统计区间平均速度（字/分钟）
+	MaxSpeed        int     `json:"max_speed"`     // 历史最快速度（字/分钟）
+}
+
+// StatsConfigReply 统计配置响应
+type StatsConfigReply struct {
+	Enabled      bool `json:"enabled"`
+	RetainDays   int  `json:"retain_days"`
+	TrackEnglish bool `json:"track_english"`
+}
+
+// StatsConfigUpdateArgs 更新统计配置请求
+type StatsConfigUpdateArgs struct {
+	Enabled      bool `json:"enabled"`
+	RetainDays   int  `json:"retain_days"`
+	TrackEnglish bool `json:"track_english"`
+}
+
+// StatsPruneArgs 清理指定天数之前的统计数据
+type StatsPruneArgs struct {
+	Days int `json:"days"`
+}
+
+// StatsPruneReply 清理统计数据响应
+type StatsPruneReply struct {
+	Count  int    `json:"count"`
+	Before string `json:"before"`
+}

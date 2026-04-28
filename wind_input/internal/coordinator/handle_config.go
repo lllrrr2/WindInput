@@ -186,6 +186,28 @@ func (c *Coordinator) UpdateInputConfig(inputConfig *config.InputConfig) {
 	c.logger.Debug("Input config updated", "punctFollowMode", c.punctFollowMode)
 }
 
+// UpdateStatsConfig updates runtime stats config and pushes it to TSF clients.
+func (c *Coordinator) UpdateStatsConfig(statsConfig *config.StatsConfig) {
+	if statsConfig == nil {
+		return
+	}
+
+	enabled := statsConfig.IsEnabled()
+	trackEnglish := statsConfig.IsTrackEnglish()
+
+	c.mu.Lock()
+	if c.config != nil {
+		c.config.Stats = *statsConfig
+	}
+	c.mu.Unlock()
+
+	if c.bridgeServer != nil {
+		go c.bridgeServer.PushStatsConfigToAllClients(enabled, trackEnglish)
+	}
+
+	c.logger.Debug("Stats config updated", "enabled", enabled, "trackEnglish", trackEnglish)
+}
+
 // UpdateHotkeyConfig 更新快捷键配置
 func (c *Coordinator) UpdateHotkeyConfig(hotkeyConfig *config.HotkeyConfig) {
 	c.mu.Lock()

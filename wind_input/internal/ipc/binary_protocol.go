@@ -25,6 +25,7 @@ const (
 	CmdSelectionChanged      uint16 = 0x0302 // Selection/caret changed without composition (from ITfTextEditSink)
 	CmdCaretPending          uint16 = 0x0303 // First-show handshake: composition just started, real caret coming after reflow
 	CmdBatchEvents           uint16 = 0x0F01 // Batch events container
+	CmdInputStats            uint16 = 0x0F03 // Input stats report (async, from TSF English mode)
 )
 
 // Downstream commands (Go -> C++)
@@ -50,6 +51,7 @@ const (
 
 // Config sync keys (used with CmdSyncConfig)
 const ConfigKeyEnglishPairs = "en_pairs"
+const ConfigKeyStats = "stats"
 
 // Host render commands (C++ -> Go)
 const (

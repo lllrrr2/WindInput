@@ -9,6 +9,7 @@ import (
 
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/engine"
+	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
 )
@@ -603,6 +604,10 @@ func (c *Coordinator) HandleFocusGained(processID uint32) *bridge.StatusUpdateDa
 			c.config.Input.AutoPair.English,
 			c.config.Input.AutoPair.EnglishPairs,
 		)
+		c.bridgeServer.PushStatsConfigToAllClients(
+			c.config.Stats.IsEnabled(),
+			c.config.Stats.IsTrackEnglish(),
+		)
 	}
 
 	return &bridge.StatusUpdateData{
@@ -667,6 +672,10 @@ func (c *Coordinator) HandleIMEActivated(processID uint32) *bridge.StatusUpdateD
 			c.config.Input.AutoPair.English,
 			c.config.Input.AutoPair.EnglishPairs,
 		)
+		c.bridgeServer.PushStatsConfigToAllClients(
+			c.config.Stats.IsEnabled(),
+			c.config.Stats.IsTrackEnglish(),
+		)
 	}
 
 	return &bridge.StatusUpdateData{
@@ -687,6 +696,7 @@ func (c *Coordinator) HandleCommitRequest(data bridge.CommitRequestData) *bridge
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.statRecorded = false
 	c.logger.Debug("Handling commit request",
 		"barrierSeq", data.BarrierSeq,
 		"triggerKey", data.TriggerKey,
@@ -767,6 +777,7 @@ func (c *Coordinator) handleSpaceInternal() *bridge.KeyEventResult {
 			finalText += raw
 		}
 
+		c.recordCommit(finalText, len(c.inputBuffer), -1, store.SourceRawInput)
 		c.clearState()
 		c.hideUI()
 		return &bridge.KeyEventResult{
@@ -796,6 +807,7 @@ func (c *Coordinator) handleEnterInternal() *bridge.KeyEventResult {
 			finalText += raw
 		}
 
+		c.recordCommit(finalText, len(c.inputBuffer), -1, store.SourceRawInput)
 		c.clearState()
 		c.hideUI()
 		return &bridge.KeyEventResult{
@@ -917,6 +929,11 @@ func (c *Coordinator) selectCandidateInternal(index int) *bridge.KeyEventResult 
 		}
 		finalText = allText + text
 	}
+
+	// 统计：候选词选择上屏
+	codeLen := len(c.inputBuffer)
+	candPos := index % c.candidatesPerPage
+	c.recordCommit(finalText, codeLen, candPos, store.SourceCandidate)
 
 	c.clearState()
 	c.hideUI()

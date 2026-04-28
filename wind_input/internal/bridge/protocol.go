@@ -129,4 +129,6 @@ type MessageHandler interface {
 	HandleSelectionChanged(prevChar rune)
 	// Called when host render is set up for the active client (shared memory ready)
 	HandleHostRenderReady()
+	// Input stats report from TSF English mode (async)
+	HandleInputStats(chars, digits, puncts, spaces, elapsedMs int)
 }

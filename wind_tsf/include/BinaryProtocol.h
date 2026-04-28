@@ -29,6 +29,7 @@ constexpr uint16_t CMD_CARET_UPDATE     = 0x0301; // Caret position update
 constexpr uint16_t CMD_SELECTION_CHANGED = 0x0302; // Selection/caret changed without composition (from ITfTextEditSink)
 constexpr uint16_t CMD_CARET_PENDING    = 0x0303; // First-show handshake: composition just started, real caret coming after reflow
 constexpr uint16_t CMD_BATCH_EVENTS     = 0x0F01; // Batch events container
+constexpr uint16_t CMD_INPUT_STATS      = 0x0F03; // Input stats report (async, from English mode)
 
 // ============================================================================
 // Downstream commands (Go -> C++)
@@ -271,6 +272,18 @@ struct HostRenderSetupHeader
 };
 static_assert(sizeof(HostRenderSetupHeader) == 12, "HostRenderSetupHeader must be 12 bytes");
 
+// Input stats payload (from C++ to Go, async)
+// Counts of characters typed in English mode (not intercepted by Go)
+struct InputStatsPayload
+{
+    uint32_t englishChars;    // English letter count (a-z, A-Z)
+    uint32_t englishDigits;   // Digit count (0-9)
+    uint32_t englishPuncts;   // Punctuation/symbol count
+    uint32_t englishSpaces;   // Space count
+    uint32_t elapsedMs;        // Milliseconds covered by this batch
+};
+static_assert(sizeof(InputStatsPayload) == 20, "InputStatsPayload must be 20 bytes");
+
 #pragma pack(pop)
 
 // ============================================================================
@@ -279,6 +292,7 @@ static_assert(sizeof(HostRenderSetupHeader) == 12, "HostRenderSetupHeader must b
 
 // Config sync keys (must match Go side)
 constexpr const char* CONFIG_KEY_ENGLISH_PAIRS = "en_pairs";
+constexpr const char* CONFIG_KEY_STATS = "stats";
 
 // Calculate key hash for hotkey matching
 // Format: (modifiers << 16) | keyCode

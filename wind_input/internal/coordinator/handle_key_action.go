@@ -6,6 +6,7 @@ import (
 
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/engine"
+	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
 )
 
@@ -42,8 +43,9 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 		commitText, newInput, shouldCommit := c.engineMgr.HandleTopCode(c.inputBuffer)
 		if shouldCommit {
 			// 记录输入历史（用于z键重复上屏），需在修改 inputBuffer 之前记录
+			topCodeLen := len(c.inputBuffer) - len(newInput)
 			if c.inputHistory != nil {
-				commitCode := c.inputBuffer[:len(c.inputBuffer)-len(newInput)]
+				commitCode := c.inputBuffer[:topCodeLen]
 				c.inputHistory.Record(commitText, commitCode, "", 0)
 			}
 			c.inputBuffer = newInput
@@ -58,6 +60,7 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 			if c.fullWidth {
 				commitText = transform.ToFullWidth(commitText)
 			}
+			c.recordCommit(commitText, topCodeLen, 0, store.SourceCandidate)
 
 			// 如果还有剩余输入，继续处理并更新候选
 			if len(c.inputBuffer) > 0 {
@@ -104,6 +107,7 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 	// 检查自动上屏
 	if result != nil && result.ShouldCommit {
 		text := result.CommitText
+		codeLen := len(c.inputBuffer)
 		// 记录输入历史（用于z键重复上屏），需在 clearState 之前记录
 		if c.inputHistory != nil {
 			c.inputHistory.Record(result.CommitText, c.inputBuffer, "", 0)
@@ -117,6 +121,7 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 		if c.fullWidth && prefix != "" {
 			prefix = transform.ToFullWidth(prefix)
 		}
+		c.recordCommit(prefix+text, codeLen, 0, store.SourceCandidate)
 		c.clearState()
 		c.hideUI()
 		return &bridge.KeyEventResult{
@@ -134,6 +139,7 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 				if c.fullWidth {
 					prefix = transform.ToFullWidth(prefix)
 				}
+				c.recordCommit(prefix, 0, -1, store.SourceCandidate)
 				c.clearState()
 				c.hideUI()
 				return &bridge.KeyEventResult{
@@ -155,6 +161,7 @@ func (c *Coordinator) handleAlphaKey(key string) *bridge.KeyEventResult {
 			if c.fullWidth {
 				text = transform.ToFullWidth(text)
 			}
+			c.recordCommit(prefix+text, 0, -1, store.SourceRawInput)
 			c.clearState()
 			c.hideUI()
 			return &bridge.KeyEventResult{
@@ -516,6 +523,7 @@ func (c *Coordinator) handleEnter() *bridge.KeyEventResult {
 			finalText += raw
 		}
 
+		c.recordCommit(finalText, len(c.inputBuffer), -1, store.SourceRawInput)
 		c.clearState()
 		c.hideUI()
 
@@ -584,6 +592,7 @@ func (c *Coordinator) handleSpace() *bridge.KeyEventResult {
 			finalText += raw
 		}
 
+		c.recordCommit(finalText, len(c.inputBuffer), -1, store.SourceRawInput)
 		c.clearState()
 		c.hideUI()
 		return &bridge.KeyEventResult{
@@ -883,6 +892,7 @@ func (c *Coordinator) selectCandidate(index int) *bridge.KeyEventResult {
 	c.logger.Debug("Candidate selected (full commit)", "index", index, "original", originalText,
 		"output", finalText, "fullWidth", c.fullWidth, "confirmedSegments", len(c.confirmedSegments))
 
+	c.recordCommit(finalText, len(c.inputBuffer), index%c.candidatesPerPage, store.SourceCandidate)
 	c.clearState()
 	c.hideUI()
 

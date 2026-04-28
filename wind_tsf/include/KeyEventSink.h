@@ -58,7 +58,8 @@ private:
     bool _enabled = false;
 };
 
-class CKeyEventSink : public ITfKeyEventSink
+class CKeyEventSink : public ITfKeyEventSink,
+                      public ITfKeyTraceEventSink
 {
 public:
     CKeyEventSink(CTextService* pTextService);
@@ -77,6 +78,10 @@ public:
     STDMETHODIMP OnKeyUp(ITfContext* pContext, WPARAM wParam, LPARAM lParam, BOOL* pfEaten);
     STDMETHODIMP OnPreservedKey(ITfContext* pContext, REFGUID rguid, BOOL* pfEaten);
 
+    // ITfKeyTraceEventSink
+    STDMETHODIMP OnKeyTraceDown(WPARAM wParam, LPARAM lParam);
+    STDMETHODIMP OnKeyTraceUp(WPARAM wParam, LPARAM lParam);
+
     // Initialize/Uninitialize
     BOOL Initialize();
     void Uninitialize();
@@ -88,6 +93,13 @@ public:
     // 标点目标键清零）和光标 Y 跨行检测兜底，不应在 IME 会话状态重置时一起清。
     void ResetComposingState() { _isComposing = FALSE; _hasCandidates = FALSE; _skipKeyCount = 0; _pendingPairAction = {}; _englishPairEngine.Clear(); }
 
+    // Flush pending English pass-through stats before focus/mode teardown.
+    void FlushEnglishStats();
+
+    // Status queries
+    BOOL IsStatsTrackingEnglish() const { return _statsEnabled && _statsTrackEnglish; }
+    BOOL IsEnglishAutoPairEnabled() const { return _englishPairEngine.IsEnabled(); }
+
     // Handle config sync from Go service (called from async reader thread)
     void OnSyncConfig(const std::string& key, const std::vector<uint8_t>& value);
 
@@ -96,9 +108,15 @@ public:
     void OnCompositionUnexpectedlyTerminated();
 
 private:
+    static constexpr uint32_t ENGLISH_STATS_REPORT_COUNT = 5;
+    static constexpr ULONGLONG ENGLISH_STATS_REPORT_INTERVAL_MS = 5000;
+
     LONG _refCount;
     CTextService* _pTextService;
     DWORD _dwKeySinkCookie;
+    DWORD _dwKeyTraceSinkCookie;
+    bool _statsEnabled = true;
+    bool _statsTrackEnglish = true;
 
     // State
     BOOL _isComposing;
@@ -191,4 +209,49 @@ private:
     int _skipKeyCount = 0;
     void _PushSkipKey(WORD vk);
     BOOL _TryConsumeSkipKey(WPARAM wParam);
+
+    // English mode input stats counter
+    struct EnglishStatsCounter {
+        uint32_t chars = 0;   // a-z, A-Z
+        uint32_t digits = 0;  // 0-9
+        uint32_t puncts = 0;  // punctuation/symbols
+        uint32_t spaces = 0;  // spaces
+        ULONGLONG lastReportTick = 0;
+
+        uint32_t Total() const { return chars + digits + puncts + spaces; }
+
+        void StartIfIdle() {
+            if (Total() == 0 || lastReportTick == 0)
+                lastReportTick = GetTickCount64();
+        }
+
+        uint32_t ElapsedMs() const {
+            if (lastReportTick == 0)
+                return 0;
+            ULONGLONG elapsed = GetTickCount64() - lastReportTick;
+            return elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
+        }
+
+        void RecordChar(char ch) {
+            StartIfIdle();
+            if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) chars++;
+            else if (ch >= '0' && ch <= '9') digits++;
+            else if (ch == ' ') spaces++;
+            else if (ch >= 0x21 && ch <= 0x7E) puncts++;
+        }
+
+        bool ShouldReport() const {
+            uint32_t total = Total();
+            return total >= ENGLISH_STATS_REPORT_COUNT ||
+                   (total > 0 && lastReportTick != 0 && GetTickCount64() - lastReportTick >= ENGLISH_STATS_REPORT_INTERVAL_MS);
+        }
+
+        void Reset() {
+            chars = digits = puncts = spaces = 0;
+            lastReportTick = 0;
+        }
+    };
+    EnglishStatsCounter _englishStats;
+    void _RecordEnglishKeyTrace(WPARAM wParam, uint32_t modifiers);
+    void _ReportEnglishStats();
 };

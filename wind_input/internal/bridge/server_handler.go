@@ -121,6 +121,9 @@ func (s *Server) processRequest(header *ipc.IpcHeader, payload []byte, clientID 
 	case ipc.CmdHostRenderRequest:
 		return s.handleHostRenderRequest(clientID, processID)
 
+	case ipc.CmdInputStats:
+		return s.handleInputStats(payload, clientID)
+
 	default:
 		s.logger.Error("Unknown command from Bridge", "clientID", clientID, "command", fmt.Sprintf("0x%04X", header.Command))
 		return s.codec.EncodeAck()
@@ -484,6 +487,23 @@ func (s *Server) handleHostRenderRequest(clientID int, processID uint32) []byte 
 	s.handler.HandleHostRenderReady()
 
 	return s.codec.EncodeHostRenderSetup(setup)
+}
+
+// handleInputStats 处理 TSF 英文模式的输入统计上报（异步，无需响应）
+func (s *Server) handleInputStats(payload []byte, clientID int) []byte {
+	if len(payload) < 20 {
+		s.logger.Error("InputStats payload too short", "clientID", clientID, "len", len(payload))
+		return s.codec.EncodeAck()
+	}
+	chars := int(binary.LittleEndian.Uint32(payload[0:4]))
+	digits := int(binary.LittleEndian.Uint32(payload[4:8]))
+	puncts := int(binary.LittleEndian.Uint32(payload[8:12]))
+	spaces := int(binary.LittleEndian.Uint32(payload[12:16]))
+	elapsedMs := int(binary.LittleEndian.Uint32(payload[16:20]))
+	s.logger.Debug("InputStats received from TSF English mode", "clientID", clientID,
+		"chars", chars, "digits", digits, "puncts", puncts, "spaces", spaces, "elapsedMs", elapsedMs, "total", chars+digits+puncts+spaces)
+	s.handler.HandleInputStats(chars, digits, puncts, spaces, elapsedMs)
+	return s.codec.EncodeAck()
 }
 
 // keyCodeToKeyName converts a virtual key code to a key name string

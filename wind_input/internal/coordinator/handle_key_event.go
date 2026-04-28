@@ -48,12 +48,22 @@ func numpadKeyToChar(keyCode int) string {
 
 // HandleKeyEvent handles key events from C++ Bridge
 // Returns a result indicating what action to take
-func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) *bridge.KeyEventResult {
+func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) (result *bridge.KeyEventResult) {
 	startTime := time.Now()
 
 	c.mu.Lock()
 	lockTime := time.Since(startTime)
-	defer c.mu.Unlock()
+
+	// 重置统计标记，用于 fallback 采集
+	c.statRecorded = false
+	defer func() {
+		// fallback: 若具体路径未记录统计，在此兜底
+		if result != nil && !c.statRecorded &&
+			(result.Type == bridge.ResponseTypeInsertText || result.Type == bridge.ResponseTypeInsertTextWithCursor) {
+			c.recordCommitFallback(result.Text)
+		}
+		c.mu.Unlock()
+	}()
 
 	// Use Debug for high-frequency key events to reduce log noise
 	c.logger.Debug("HandleKeyEvent", "key", data.Key, "keycode", data.KeyCode, "modifiers", data.Modifiers, "chineseMode", c.chineseMode, "lockWait", lockTime.String())

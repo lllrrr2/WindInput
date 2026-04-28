@@ -6,6 +6,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/internal/schema"
+	"github.com/huanfeng/wind_input/internal/store"
 )
 
 // getTempPinyinTriggerKey 检查按键是否应触发临时拼音模式，返回匹配的触发键类型，空串表示不触发
@@ -231,6 +232,7 @@ func (c *Coordinator) exitTempPinyinMode(commit bool, text string) *bridge.KeyEv
 			c.inputHistory.Record(c.tempPinyinCommitted+text, "", "", 0)
 		}
 		c.tempPinyinCommitted = ""
+		c.recordCommit(text, 0, -1, store.SourceTempPinyin)
 		return &bridge.KeyEventResult{
 			Type: bridge.ResponseTypeInsertText,
 			Text: text,

@@ -26,6 +26,7 @@ var validPages = map[string]bool{
 	"dictionary": true,
 	"advanced":   true,
 	"about":      true,
+	"stats":      true,
 	"add-word":   true,
 }
 

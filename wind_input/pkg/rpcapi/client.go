@@ -458,6 +458,40 @@ func (c *Client) PhraseBatchAdd(phrases []PhraseAddArgs) (*PhraseBatchAddReply, 
 	return &reply, err
 }
 
+// ── Stats 方法 ──
+
+func (c *Client) StatsGetSummary() (*StatsSummaryReply, error) {
+	var reply StatsSummaryReply
+	err := c.call("Stats.GetSummary", &Empty{}, &reply)
+	return &reply, err
+}
+
+func (c *Client) StatsGetDaily(from, to string) (*StatsGetDailyReply, error) {
+	var reply StatsGetDailyReply
+	err := c.call("Stats.GetDaily", &StatsGetDailyArgs{From: from, To: to}, &reply)
+	return &reply, err
+}
+
+func (c *Client) StatsGetConfig() (*StatsConfigReply, error) {
+	var reply StatsConfigReply
+	err := c.call("Stats.GetConfig", &Empty{}, &reply)
+	return &reply, err
+}
+
+func (c *Client) StatsUpdateConfig(args StatsConfigUpdateArgs) error {
+	return c.call("Stats.UpdateConfig", &args, &Empty{})
+}
+
+func (c *Client) StatsClear() error {
+	return c.call("Stats.Clear", &Empty{}, &Empty{})
+}
+
+func (c *Client) StatsPrune(days int) (*StatsPruneReply, error) {
+	var reply StatsPruneReply
+	err := c.call("Stats.Prune", &StatsPruneArgs{Days: days}, &reply)
+	return &reply, err
+}
+
 // ── Event 方法 ──
 
 // SubscribeEvents connects to the event pipe and calls handler for each event.

@@ -179,3 +179,9 @@ func (d *DeferredHandler) HandleHostRenderReady() {
 		h.HandleHostRenderReady()
 	}
 }
+
+func (d *DeferredHandler) HandleInputStats(chars, digits, puncts, spaces, elapsedMs int) {
+	if h := d.getHandler(); h != nil {
+		h.HandleInputStats(chars, digits, puncts, spaces, elapsedMs)
+	}
+}

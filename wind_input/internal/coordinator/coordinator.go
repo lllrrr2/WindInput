@@ -11,6 +11,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/candidate"
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/hotkey"
+	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/config"
@@ -235,6 +236,11 @@ type Coordinator struct {
 
 	// 快捷输入模式
 	quickInputState
+
+	// 输入统计采集器
+	statCollector *store.StatCollector
+	statRecorded  bool // 当前按键处理中是否已记录统计
+
 }
 
 // BridgeServer interface for broadcasting state to TSF clients
@@ -244,6 +250,7 @@ type BridgeServer interface {
 	PushClearCompositionToActiveClient()                           // Clear inline composition on active client
 	PushUpdateCompositionToActiveClient(text string, caretPos int) // Update inline composition on active client (mouse partial confirm)
 	PushEnglishPairConfigToAllClients(enabled bool, pairs []string)
+	PushStatsConfigToAllClients(enabled bool, trackEnglish bool)
 	RestartService()
 	// GetActiveHostRender returns write/hide functions if the active process has host rendering.
 	// Returns nil functions if host rendering is not active for the current process.

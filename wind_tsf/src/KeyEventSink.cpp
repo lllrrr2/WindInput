@@ -85,6 +85,7 @@ CKeyEventSink::CKeyEventSink(CTextService* pTextService)
     : _refCount(1)
     , _pTextService(pTextService)
     , _dwKeySinkCookie(TF_INVALID_COOKIE)
+    , _dwKeyTraceSinkCookie(TF_INVALID_COOKIE)
     , _isComposing(FALSE)
     , _hasCandidates(FALSE)
     , _lastPassthroughDigit(0)
@@ -120,6 +121,10 @@ STDAPI CKeyEventSink::QueryInterface(REFIID riid, void** ppvObj)
     if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfKeyEventSink))
     {
         *ppvObj = (ITfKeyEventSink*)this;
+    }
+    else if (IsEqualIID(riid, IID_ITfKeyTraceEventSink))
+    {
+        *ppvObj = (ITfKeyTraceEventSink*)this;
     }
 
     if (*ppvObj)
@@ -1061,6 +1066,68 @@ STDAPI CKeyEventSink::OnPreservedKey(ITfContext* pContext, REFGUID rguid, BOOL* 
     return S_OK;
 }
 
+STDAPI CKeyEventSink::OnKeyTraceDown(WPARAM wParam, LPARAM lParam)
+{
+    if (_pTextService == nullptr || _pTextService->IsKeyboardDisabled())
+        return S_OK;
+
+    // Only record in English mode. Chinese mode stats are handled by recordCommit in Go.
+    if (_pTextService->IsChineseMode())
+        return S_OK;
+
+    // Check if stats are enabled
+    if (!_statsEnabled || !_statsTrackEnglish)
+        return S_OK;
+
+    bool isPrintableTraceKey =
+        (wParam >= 'A' && wParam <= 'Z') ||
+        (wParam >= '0' && wParam <= '9') ||
+        (wParam >= VK_NUMPAD0 && wParam <= VK_NUMPAD9) ||
+        wParam == VK_MULTIPLY || wParam == VK_ADD || wParam == VK_SUBTRACT ||
+        wParam == VK_DECIMAL || wParam == VK_DIVIDE ||
+        wParam == VK_SPACE ||
+        CHotkeyManager::IsPunctuationKey(wParam);
+    if (!isPrintableTraceKey)
+        return S_OK;
+
+    uint32_t modifiers = CHotkeyManager::GetCurrentModifiers();
+
+    // Optimization: avoid double counting.
+    // If a key is intercepted by OnTestKeyDown in English mode (for full-width or auto-pair),
+    // it will be sent to Go and recorded there. We should not count it here.
+    // 1. English auto-pair check
+    if (_englishPairEngine.IsEnabled())
+    {
+        bool hasShift = (modifiers & KEYMOD_SHIFT) != 0;
+        wchar_t pairChar = _MapVkToEnglishPairChar(wParam, hasShift);
+        if (pairChar != 0 && (_englishPairEngine.IsLeft(pairChar) || _englishPairEngine.IsRight(pairChar)))
+        {
+            // This key will be eaten by OnTestKeyDown for auto-pairing.
+            return S_OK;
+        }
+    }
+
+    // 2. Full-width mode check
+    if (_pTextService->IsFullWidth())
+    {
+        HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
+        if (keyType == HotkeyType::Letter || keyType == HotkeyType::Number ||
+            keyType == HotkeyType::Punctuation || keyType == HotkeyType::Space)
+        {
+            // This key will be eaten by OnTestKeyDown for full-width conversion.
+            return S_OK;
+        }
+    }
+
+    _RecordEnglishKeyTrace(wParam, modifiers);
+    return S_OK;
+}
+
+STDAPI CKeyEventSink::OnKeyTraceUp(WPARAM wParam, LPARAM lParam)
+{
+    return S_OK;
+}
+
 BOOL CKeyEventSink::Initialize()
 {
     WIND_LOG_INFO(L"KeyEventSink::Initialize\n");
@@ -1090,6 +1157,28 @@ BOOL CKeyEventSink::Initialize()
         return FALSE;
     }
 
+    ITfSource* pSource = nullptr;
+    hr = pThreadMgr->QueryInterface(IID_ITfSource, (void**)&pSource);
+    if (SUCCEEDED(hr) && pSource != nullptr)
+    {
+        hr = pSource->AdviseSink(IID_ITfKeyTraceEventSink, (ITfKeyTraceEventSink*)this, &_dwKeyTraceSinkCookie);
+        pSource->Release();
+
+        if (FAILED(hr))
+        {
+            _dwKeyTraceSinkCookie = TF_INVALID_COOKIE;
+            WIND_LOG_ERROR_FMT(L"AdviseKeyTraceEventSink failed: hr=0x%08X\n", (uint32_t)hr);
+        }
+        else
+        {
+            WIND_LOG_INFO(L"KeyTraceEventSink initialized successfully\n");
+        }
+    }
+    else
+    {
+        WIND_LOG_ERROR(L"Failed to get ITfSource for key trace sink");
+    }
+
     WIND_LOG_INFO(L"KeyEventSink initialized successfully\n");
     return TRUE;
 }
@@ -1107,6 +1196,17 @@ void CKeyEventSink::Uninitialize()
     {
         pKeystrokeMgr->UnadviseKeyEventSink(_pTextService->GetClientId());
         pKeystrokeMgr->Release();
+    }
+
+    if (_dwKeyTraceSinkCookie != TF_INVALID_COOKIE)
+    {
+        ITfSource* pSource = nullptr;
+        if (SUCCEEDED(pThreadMgr->QueryInterface(IID_ITfSource, (void**)&pSource)) && pSource != nullptr)
+        {
+            pSource->UnadviseSink(_dwKeyTraceSinkCookie);
+            pSource->Release();
+        }
+        _dwKeyTraceSinkCookie = TF_INVALID_COOKIE;
     }
 }
 
@@ -1641,6 +1741,20 @@ void CKeyEventSink::OnSyncConfig(const std::string& key, const std::vector<uint8
 
         WIND_LOG_INFO_FMT(L"English pair config updated: enabled=%d, pairs=%d\n", enabled, (int)pairs.size());
     }
+    else if (key == CONFIG_KEY_STATS)
+    {
+        if (value.size() < 2) return;
+
+        _statsEnabled = value[0] != 0;
+        _statsTrackEnglish = value[1] != 0;
+        if (!_statsEnabled || !_statsTrackEnglish)
+        {
+            _englishStats.Reset();
+        }
+
+        WIND_LOG_INFO_FMT(L"Stats config updated: enabled=%d, trackEnglish=%d\n",
+            _statsEnabled ? 1 : 0, _statsTrackEnglish ? 1 : 0);
+    }
 }
 
 // ============================================================================
@@ -1814,5 +1928,108 @@ BOOL CKeyEventSink::_TryConsumeSkipKey(WPARAM wParam)
         return TRUE;
     }
     return FALSE;
+}
+
+void CKeyEventSink::_RecordEnglishKeyTrace(WPARAM wParam, uint32_t modifiers)
+{
+    if (!_statsEnabled || !_statsTrackEnglish)
+        return;
+
+    if (_pTextService->IsChineseMode())
+        return;
+
+    // Count source keystrokes only. Ctrl/Alt combinations are shortcuts, not text input.
+    if (modifiers & (KEYMOD_CTRL | KEYMOD_ALT))
+        return;
+
+    bool counted = false;
+    if (wParam >= 'A' && wParam <= 'Z')
+    {
+        _englishStats.chars++;
+        counted = true;
+    }
+    else if (wParam >= '0' && wParam <= '9')
+    {
+        if (modifiers & KEYMOD_SHIFT)
+            _englishStats.puncts++; // Shift+digit produces a symbol.
+        else
+            _englishStats.digits++;
+        counted = true;
+    }
+    else if (wParam >= VK_NUMPAD0 && wParam <= VK_NUMPAD9)
+    {
+        _englishStats.digits++;
+        counted = true;
+    }
+    else if (wParam == VK_MULTIPLY || wParam == VK_ADD || wParam == VK_SUBTRACT ||
+             wParam == VK_DECIMAL || wParam == VK_DIVIDE)
+    {
+        _englishStats.puncts++;
+        counted = true;
+    }
+    else if (wParam == VK_SPACE)
+    {
+        _englishStats.spaces++;
+        counted = true;
+    }
+    else
+    {
+        HotkeyType keyType = CHotkeyManager::ClassifyInputKey(wParam, modifiers);
+        if (keyType == HotkeyType::Punctuation ||
+            keyType == HotkeyType::PageKey ||
+            keyType == HotkeyType::SelectKey)
+        {
+            _englishStats.puncts++;
+            counted = true;
+        }
+    }
+
+    if (!counted)
+        return;
+
+    _englishStats.StartIfIdle();
+    WIND_LOG_DEBUG_FMT(L"EnglishStats counted from key trace: vk=0x%02X total=%u shouldReport=%d\n",
+        (uint32_t)wParam, _englishStats.Total(), _englishStats.ShouldReport() ? 1 : 0);
+
+    if (_englishStats.ShouldReport())
+        _ReportEnglishStats();
+}
+
+void CKeyEventSink::_ReportEnglishStats()
+{
+    if (!_statsEnabled || !_statsTrackEnglish)
+    {
+        _englishStats.Reset();
+        return;
+    }
+
+    if (_englishStats.Total() == 0)
+        return;
+
+    CIPCClient* pIPCClient = _pTextService->GetIPCClient();
+    if (pIPCClient == nullptr || !pIPCClient->IsConnected())
+    {
+        _englishStats.Reset();
+        return;
+    }
+
+    InputStatsPayload payload = {};
+    payload.englishChars = _englishStats.chars;
+    payload.englishDigits = _englishStats.digits;
+    payload.englishPuncts = _englishStats.puncts;
+    payload.englishSpaces = _englishStats.spaces;
+    payload.elapsedMs = _englishStats.ElapsedMs();
+
+    pIPCClient->SendAsync(CMD_INPUT_STATS, &payload, sizeof(payload));
+
+    WIND_LOG_INFO_FMT(L"InputStats reported: chars=%u digits=%u puncts=%u spaces=%u elapsedMs=%u\n",
+        _englishStats.chars, _englishStats.digits, _englishStats.puncts, _englishStats.spaces, payload.elapsedMs);
+
+    _englishStats.Reset();
+}
+
+void CKeyEventSink::FlushEnglishStats()
+{
+    _ReportEnglishStats();
 }
 

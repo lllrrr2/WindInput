@@ -4,6 +4,7 @@ package coordinator
 import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/ipc"
+	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
 )
@@ -497,6 +498,7 @@ func (c *Coordinator) exitQuickInputMode(commit bool, text string) *bridge.KeyEv
 	c.logger.Debug("Exited quick input mode", "commit", commit, "textLen", len(text))
 
 	if commit && len(text) > 0 {
+		c.recordCommit(text, 0, -1, store.SourceQuickInput)
 		return &bridge.KeyEventResult{
 			Type: bridge.ResponseTypeInsertText,
 			Text: text,

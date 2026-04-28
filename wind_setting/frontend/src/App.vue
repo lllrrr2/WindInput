@@ -32,6 +32,7 @@ import HotkeyPage from "./pages/HotkeyPage.vue";
 import AppearancePage from "./pages/AppearancePage.vue";
 import DictionaryPage from "./pages/DictionaryPage.vue";
 import AdvancedPage from "./pages/AdvancedPage.vue";
+import StatsPage from "./pages/StatsPage.vue";
 import AboutPage from "./pages/AboutPage.vue";
 import AddWordPage from "./pages/AddWordPage.vue";
 import type { AddWordParams } from "./api/wails";
@@ -98,6 +99,7 @@ const tabs = [
   { id: "appearance", label: "外观", icon: "🎨" },
   { id: "dictionary", label: "词库", icon: "📚" },
   { id: "advanced", label: "高级", icon: "🛠" },
+  { id: "stats", label: "统计", icon: "📊" },
   { id: "about", label: "关于", icon: "ℹ" },
 ];
 
@@ -430,9 +432,7 @@ async function resetCurrentPageDefaults() {
       }
       formData.value.schema.available = [...defaults.schema.available];
       // 如果当前方案不在默认列表中，切换到默认列表的第一个
-      if (
-        !defaults.schema.available.includes(formData.value.schema.active)
-      ) {
+      if (!defaults.schema.available.includes(formData.value.schema.active)) {
         formData.value.schema.active = defaults.schema.available[0];
       }
       break;
@@ -734,6 +734,8 @@ onMounted(async () => {
           v-show="activeTab === 'dictionary'"
           :isWailsEnv="isWailsEnv"
         />
+
+        <StatsPage v-show="activeTab === 'stats'" :isWailsEnv="isWailsEnv" />
 
         <AdvancedPage
           v-show="activeTab === 'advanced'"

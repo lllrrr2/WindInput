@@ -16,6 +16,33 @@ type Config struct {
 	Toolbar  ToolbarConfig  `yaml:"toolbar" json:"toolbar"`
 	Input    InputConfig    `yaml:"input" json:"input"`
 	Advanced AdvancedConfig `yaml:"advanced" json:"advanced"`
+	Stats    StatsConfig    `yaml:"stats" json:"stats"`
+}
+
+// StatsConfig 输入统计配置
+// 使用 *bool 指针类型避免 yaml.v3 反序列化时将未设置的字段归零
+type StatsConfig struct {
+	Enabled      *bool `yaml:"enabled,omitempty" json:"enabled"`             // 是否启用统计（nil=默认 true）
+	RetainDays   int   `yaml:"retain_days" json:"retain_days"`               // 数据保留天数（0=永久，默认 0）
+	TrackEnglish *bool `yaml:"track_english,omitempty" json:"track_english"` // 是否统计英文模式（nil=默认 true）
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+// IsEnabled 返回统计是否启用
+func (c *StatsConfig) IsEnabled() bool {
+	if c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
+}
+
+// IsTrackEnglish 返回是否统计英文
+func (c *StatsConfig) IsTrackEnglish() bool {
+	if c.TrackEnglish == nil {
+		return true
+	}
+	return *c.TrackEnglish
 }
 
 // SchemaConfig 输入方案配置
@@ -332,6 +359,11 @@ func DefaultConfig() *Config {
 		Advanced: AdvancedConfig{
 			LogLevel:            "info",
 			HostRenderProcesses: []string{"SearchHost.exe"},
+		},
+		Stats: StatsConfig{
+			Enabled:      boolPtr(true),
+			RetainDays:   0,
+			TrackEnglish: boolPtr(true),
 		},
 	}
 }

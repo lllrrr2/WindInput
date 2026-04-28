@@ -872,3 +872,89 @@ export async function changeUserDataDir(
 ): Promise<ChangeDataDirResult> {
   return App.ChangeUserDataDir(req) as unknown as ChangeDataDirResult;
 }
+
+// ── 统计 API ──
+
+export interface StatsSummary {
+  today_chars: number;
+  today_chinese: number;
+  today_english: number;
+  total_chars: number;
+  active_days: number;
+  daily_avg: number;
+  streak_current: number;
+  streak_max: number;
+  week_chars: number;
+  month_chars: number;
+  max_day_chars: number;
+  max_day_date: string;
+  avg_code_len: number;
+  first_select_rate: number;
+  today_speed: number;
+  overall_speed: number;
+  max_speed: number;
+}
+
+export interface DailyStatItem {
+  d: string;
+  tc: number;
+  cc: number;
+  ec: number;
+  pc: number;
+  oc: number;
+  h: number[];
+  cn: number;
+  cls: number;
+  clc: number;
+  cld: number[];
+  cpd: number[];
+  as: number;
+  bs?: Record<
+    string,
+    { tc: number; cn: number; cls: number; clc: number; cpd: number[] }
+  >;
+  src: number[];
+}
+
+export interface StatsConfig {
+  enabled: boolean;
+  retain_days: number;
+  track_english: boolean;
+}
+
+export async function getStatsSummary(): Promise<StatsSummary> {
+  return App.GetStatsSummary() as unknown as StatsSummary;
+}
+
+export async function getDailyStats(
+  from: string,
+  to: string,
+): Promise<DailyStatItem[]> {
+  const result = await App.GetDailyStats(from, to);
+  return (result as any)?.days || [];
+}
+
+export async function getStatsConfig(): Promise<StatsConfig> {
+  return App.GetStatsConfig() as unknown as StatsConfig;
+}
+
+export async function saveStatsConfig(cfg: StatsConfig): Promise<void> {
+  return App.SaveStatsConfig(cfg as any);
+}
+
+export async function clearStats(): Promise<void> {
+  return App.ClearStats();
+}
+
+export interface StatsPruneResult {
+  count: number;
+  before: string;
+}
+
+export async function clearStatsBefore(
+  days: number,
+): Promise<StatsPruneResult> {
+  return (window as any).go.main.App.ClearStatsBefore(
+    days,
+  ) as Promise<StatsPruneResult>;
+}

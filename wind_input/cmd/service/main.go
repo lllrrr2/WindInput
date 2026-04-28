@@ -17,6 +17,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/engine"
 	imrpc "github.com/huanfeng/wind_input/internal/rpc"
 	"github.com/huanfeng/wind_input/internal/schema"
+	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
 	"github.com/huanfeng/wind_input/pkg/config"
@@ -413,11 +414,22 @@ func main() {
 	coord := coordinator.NewCoordinator(engineMgr, uiManager, cfg, appCompat, logger)
 	coord.SetVersion(version)
 
+	// 初始化输入统计采集器（配置存储在 bbolt 中，始终创建）
+	if st := dictManager.GetStore(); st != nil {
+		statCollector := store.NewStatCollector(st, logger)
+		coord.SetStatCollector(statCollector)
+		defer statCollector.Close()
+		logger.Info("Input statistics collector started")
+	}
+
 	// 启动 RPC 服务端（统一 IPC 通道，供设置端使用）
 	rpcServer := imrpc.NewServer(logger, dictManager, dictManager.GetStore())
 	rpcServer.SetConfigReloader(coordinator.NewReloadHandler(coord, cfg, schemaMgr, engineMgr, dictManager, logger))
 	rpcServer.SetStatusProvider(&statusAdapter{coord: coord, dm: dictManager})
 	rpcServer.SetBatchEncoder(&batchEncoderAdapter{engineMgr: engineMgr})
+	if sc := coord.GetStatCollector(); sc != nil {
+		rpcServer.SetStatCollector(sc)
+	}
 	defer rpcServer.Stop()
 	rpcServer.StartAsync()
 

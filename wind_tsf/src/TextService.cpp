@@ -901,6 +901,11 @@ STDAPI CTextService::Deactivate()
 {
     WIND_LOG_INFO(L"TextService::Deactivate called\n");
 
+    if (_pKeyEventSink != nullptr)
+    {
+        _pKeyEventSink->FlushEnglishStats();
+    }
+
     // End any active composition before deactivating
     EndComposition();
 
@@ -1093,6 +1098,11 @@ STDAPI CTextService::OnSetFocus(ITfDocumentMgr* pDocMgrFocus, ITfDocumentMgr* pD
     {
         WIND_LOG_DEBUG_FMT(L"Focus lost focusSession=%llu, notifying service", _focusSessionId);
 
+        if (_pKeyEventSink != nullptr)
+        {
+            _pKeyEventSink->FlushEnglishStats();
+        }
+
         // End any active composition before sending focus_lost.
         // 传入 pDocMgrPrevFocus：此刻 GetFocus()=null，必须靠它兜底跑 EditSession，
         // 否则 forced cleanup 会让 composition 残留文本被提交（Excel/WPS 表格的 'd' 漏字）。
@@ -1161,10 +1171,8 @@ void CTextService::_SyncStateFromResponse(const ServiceResponse& response)
     _bChineseMode = response.IsChineseMode();
     _bFullWidth = response.IsFullWidth();
 
-    // Sync compartment so system OPENCLOSE state matches our mode
-    // This is critical: without it, switching apps causes compartment desync
-    // (e.g., _bChineseMode=TRUE but compartment=FALSE → first Ctrl+Space has no effect)
-    _SetOpenCloseCompartment(_bChineseMode);
+    // Keep compartment always OPEN so TSF calls OnTestKeyDown even in English mode.
+    _SetOpenCloseCompartment(TRUE);
 
     // Sync full status to LangBarItemButton
     if (_pLangBarItemButton != nullptr)
@@ -1469,60 +1477,52 @@ STDAPI CTextService::OnChange(REFGUID rguid)
     WIND_LOG_INFO_FMT(L"Compartment OPENCLOSE changed: %d (current mode: %s)\n",
         bOpen, _bChineseMode ? L"Chinese" : L"English");
 
-    // Only act if state actually differs from current mode
-    if ((bOpen && _bChineseMode) || (!bOpen && !_bChineseMode))
-        return S_OK;
-
-    // Sync request to Go service: let Go handle CommitOnSwitch before we end composition
-    if (_pIPCClient != nullptr && _pIPCClient->IsConnected())
+    // NOTE: We keep compartment always OPEN to enable English mode features
+    // (stats collection, auto-pair, etc.). Only handle the closing case.
+    if (bOpen)
     {
-        ServiceResponse response;
-        if (_pIPCClient->SendSystemModeSwitch(bOpen ? true : false, response))
-        {
-            // Handle response from Go: CommitText (has pending input) or ModeChanged (no pending input)
-            if (response.type == ResponseType::CommitText && !response.text.empty())
-            {
-                // Commit the pending text atomically (ends composition + inserts text)
-                CommitText(response.text);
-                WIND_LOG_INFO_FMT(L"System mode switch: committed pending text (len=%zu)\n", response.text.length());
-            }
-            else
-            {
-                // No pending text, just end composition (clear without committing)
-                if (!bOpen)
-                    EndComposition();
-            }
+        // Compartment opened (or reopened after we set it back) - do nothing
+        // We maintain the invariant: compartment is always open regardless of input mode
+        return S_OK;
+    }
 
-            // Apply mode from response
-            _bChineseMode = response.chineseMode;
-        }
-        else
-        {
-            // IPC failed, fallback: end composition and update locally
-            if (!bOpen)
-                EndComposition();
-            _bChineseMode = bOpen;
-        }
+    // Someone closed the compartment (e.g., system language bar, app focus change)
+    // We need to switch to English mode.
+    // We only set the compartment back to OPEN if English stats or other English features
+    // that require key interception are enabled.
 
-        // Reset KeyEventSink composing state (clear _hasCandidates, _isComposing)
-        // Without this, apps that don't handle OnTestKeyDown(TRUE)+OnKeyDown(FALSE)
-        // flip (e.g., WPS, WindTerm) will swallow keys after Ctrl+Space mode switch
-        ResetComposingState();
+    BOOL shouldKeepOpen = FALSE;
+    if (_pKeyEventSink != nullptr)
+    {
+        _pKeyEventSink->FlushEnglishStats();
+        // Keep open if stats are enabled or auto-pair is enabled
+        shouldKeepOpen = _pKeyEventSink->IsStatsTrackingEnglish() || _pKeyEventSink->IsEnglishAutoPairEnabled();
+    }
+
+    // End any active composition since we're switching modes
+    EndComposition();
+
+    // Switch to English mode
+    _bChineseMode = FALSE;
+
+    // Reset KeyEventSink composing state
+    ResetComposingState();
+
+    // Update language bar to show English
+    if (_pLangBarItemButton != nullptr)
+        _pLangBarItemButton->UpdateLangBarButton(FALSE);
+
+    // Re-open the compartment if needed so TSF keeps calling OnTestKeyDown
+    if (shouldKeepOpen)
+    {
+        _SetOpenCloseCompartment(TRUE);
+        WIND_LOG_INFO(L"Mode switched to English via system compartment (compartment kept open for stats/features)\n");
     }
     else
     {
-        // No IPC connection, fallback
-        if (!bOpen)
-            EndComposition();
-        _bChineseMode = bOpen;
-        ResetComposingState();
+        WIND_LOG_INFO(L"Mode switched to English via system compartment (compartment closed)\n");
     }
 
-    // Update language bar
-    if (_pLangBarItemButton != nullptr)
-        _pLangBarItemButton->UpdateLangBarButton(_bChineseMode);
-
-    WIND_LOG_INFO_FMT(L"Mode switched via system compartment to %s\n", _bChineseMode ? L"Chinese" : L"English");
     return S_OK;
 }
 
@@ -2535,6 +2535,11 @@ void CTextService::ToggleInputMode()
 {
     WIND_LOG_INFO(L"ToggleInputMode called (local fallback)\n");
 
+    if (!_bChineseMode && _pKeyEventSink != nullptr)
+    {
+        _pKeyEventSink->FlushEnglishStats();
+    }
+
     // Toggle mode locally (this is used as a fallback when Go service is unavailable)
     // The actual mode toggle is handled via KeyUp event -> Go service -> ModeChanged response
     EndComposition();
@@ -2542,8 +2547,10 @@ void CTextService::ToggleInputMode()
 
     WIND_LOG_INFO_FMT(L"Switched to %s mode\n", _bChineseMode ? L"Chinese" : L"English");
 
-    // Sync compartment state so system knows our open/close status
-    _SetOpenCloseCompartment(_bChineseMode);
+    // Keep compartment always OPEN so TSF calls OnTestKeyDown even in English mode.
+    // This allows English stats collection, auto-pair, and other features to work.
+    // The actual key pass-through is handled by pfEaten=FALSE in OnTestKeyDown.
+    _SetOpenCloseCompartment(TRUE);
 
     // Update language bar button
     if (_pLangBarItemButton != nullptr)
@@ -2555,12 +2562,17 @@ void CTextService::ToggleInputMode()
 void CTextService::SetInputMode(BOOL bChineseMode)
 {
     // Set mode directly from service response (no IPC call)
+    if (!_bChineseMode && bChineseMode && _pKeyEventSink != nullptr)
+    {
+        _pKeyEventSink->FlushEnglishStats();
+    }
+
     _bChineseMode = bChineseMode;
 
     WIND_LOG_INFO_FMT(L"Mode set to %s (from service)\n", _bChineseMode ? L"Chinese" : L"English");
 
-    // Sync compartment state so system knows our open/close status
-    _SetOpenCloseCompartment(_bChineseMode);
+    // Keep compartment always OPEN so TSF calls OnTestKeyDown even in English mode.
+    _SetOpenCloseCompartment(TRUE);
 
     // Update language bar button
     if (_pLangBarItemButton != nullptr)
@@ -2711,8 +2723,8 @@ void CTextService::UpdateFullStatus(BOOL bChineseMode, BOOL bFullWidth, BOOL bCh
     _bChineseMode = bChineseMode;
     _bFullWidth = bFullWidth;
 
-    // Sync compartment state so system knows our open/close status
-    _SetOpenCloseCompartment(_bChineseMode);
+    // Keep compartment always OPEN so TSF calls OnTestKeyDown even in English mode.
+    _SetOpenCloseCompartment(TRUE);
 
     if (_pLangBarItemButton != nullptr)
     {

@@ -66,6 +66,7 @@ func (h *ReloadHandler) ReloadConfig() error {
 		h.coord.UpdateUIConfig(&newCfg.UI)
 		h.coord.UpdateToolbarConfig(&newCfg.Toolbar)
 		h.coord.UpdateInputConfig(&newCfg.Input)
+		h.coord.UpdateStatsConfig(&newCfg.Stats)
 	}
 
 	// 从全局配置更新候选过滤模式

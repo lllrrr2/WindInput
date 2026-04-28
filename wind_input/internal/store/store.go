@@ -49,6 +49,18 @@ func (s *Store) init() error {
 			return fmt.Errorf("create Phrases bucket: %w", err)
 		}
 
+		// Stats bucket (with sub-buckets)
+		statsBucket, err := tx.CreateBucketIfNotExists(bucketStats)
+		if err != nil {
+			return fmt.Errorf("create Stats bucket: %w", err)
+		}
+		if _, err := statsBucket.CreateBucketIfNotExists(bucketStatsDay); err != nil {
+			return fmt.Errorf("create Stats/Daily bucket: %w", err)
+		}
+		if _, err := statsBucket.CreateBucketIfNotExists(bucketStatsMeta); err != nil {
+			return fmt.Errorf("create Stats/Meta bucket: %w", err)
+		}
+
 		// Seed version if not yet set.
 		if meta.Get([]byte("version")) == nil {
 			if err := meta.Put([]byte("version"), []byte("1")); err != nil {

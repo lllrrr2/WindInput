@@ -365,11 +365,8 @@ func (s *Server) PushUpdateCompositionToActiveClient(text string, caretPos int) 
 	s.logger.Debug("Update composition push completed to active client", "processID", activeProcessID)
 }
 
-// PushEnglishPairConfigToAllClients pushes English auto-pair config to all TSF clients
-func (s *Server) PushEnglishPairConfigToAllClients(enabled bool, pairs []string) {
-	value := ipc.EncodeEnglishPairsValue(enabled, pairs)
-	encoded := s.codec.EncodeSyncConfig(ipc.ConfigKeyEnglishPairs, value)
-
+func (s *Server) pushSyncConfigToAllClients(key string, value []byte, logName string) {
+	encoded := s.codec.EncodeSyncConfig(key, value)
 	s.pushMu.RLock()
 	type clientInfo struct {
 		handle windows.Handle
@@ -382,14 +379,14 @@ func (s *Server) PushEnglishPairConfigToAllClients(enabled bool, pairs []string)
 	s.pushMu.RUnlock()
 
 	if len(clients) == 0 {
-		s.logger.Debug("No push pipe clients to send English pair config to")
+		s.logger.Debug("No push pipe clients to send config to", "config", logName)
 		return
 	}
 
 	var failedHandles []windows.Handle
 	for _, client := range clients {
 		if err := s.codec.WriteMessage(client.writer, encoded); err != nil {
-			s.logger.Debug("Failed to push English pair config", "error", err)
+			s.logger.Debug("Failed to push config", "config", logName, "error", err)
 			failedHandles = append(failedHandles, client.handle)
 		}
 	}
@@ -407,6 +404,24 @@ func (s *Server) PushEnglishPairConfigToAllClients(enabled bool, pairs []string)
 		}
 		s.pushMu.Unlock()
 	}
+}
+
+// PushEnglishPairConfigToAllClients pushes English auto-pair config to all TSF clients
+func (s *Server) PushEnglishPairConfigToAllClients(enabled bool, pairs []string) {
+	value := ipc.EncodeEnglishPairsValue(enabled, pairs)
+	s.pushSyncConfigToAllClients(ipc.ConfigKeyEnglishPairs, value, "English pair config")
+}
+
+// PushStatsConfigToAllClients pushes input stats config to all TSF clients.
+func (s *Server) PushStatsConfigToAllClients(enabled bool, trackEnglish bool) {
+	value := []byte{0, 0}
+	if enabled {
+		value[0] = 1
+	}
+	if trackEnglish {
+		value[1] = 1
+	}
+	s.pushSyncConfigToAllClients(ipc.ConfigKeyStats, value, "stats config")
 }
 
 // GetActiveClientCount returns the number of active TSF clients
