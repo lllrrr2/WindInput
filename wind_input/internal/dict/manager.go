@@ -462,6 +462,39 @@ func (dm *DictManager) GetStoreShadowLayer() *StoreShadowLayer {
 	return dm.activeStoreShadow
 }
 
+// GetOrCreateStoreUserLayer 获取或创建指定 schemaID 的用户词库层（按需 lazy-create）
+// 用于混输模式下让拼音子引擎使用独立 bucket，避免污染主码表用户词库
+func (dm *DictManager) GetOrCreateStoreUserLayer(schemaID string) *StoreUserLayer {
+	if dm.store == nil || schemaID == "" {
+		return nil
+	}
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	userLayer, ok := dm.storeUserLayers[schemaID]
+	if !ok {
+		userLayer = NewStoreUserLayer(dm.store, schemaID)
+		dm.storeUserLayers[schemaID] = userLayer
+		dm.logger.Info("Store 用户词库层已创建（按需）", "dataSchemaID", schemaID, "entries", userLayer.EntryCount())
+	}
+	return userLayer
+}
+
+// GetOrCreateStoreTempLayer 获取或创建指定 schemaID 的临时词库层
+func (dm *DictManager) GetOrCreateStoreTempLayer(schemaID string) *StoreTempLayer {
+	if dm.store == nil || schemaID == "" {
+		return nil
+	}
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	tempLayer, ok := dm.storeTempLayers[schemaID]
+	if !ok {
+		tempLayer = NewStoreTempLayer(dm.store, schemaID)
+		dm.storeTempLayers[schemaID] = tempLayer
+		dm.logger.Info("Store 临时词库层已创建（按需）", "dataSchemaID", schemaID)
+	}
+	return tempLayer
+}
+
 // ActivateEnglishStoreLayers 激活英文词库的 Store 层（用户词 + Shadow）
 // 英文词库使用固定 schemaID "english"，跨方案共享
 func (dm *DictManager) ActivateEnglishStoreLayers() {

@@ -277,7 +277,8 @@ func (m *Manager) UpdateLearningConfig(ls *schema.LearningSpec) {
 		codetableLearning = &schema.ManualLearning{}
 	}
 
-	// 拼音策略：始终使用 AutoLearning
+	// 拼音策略：始终使用 AutoLearning（默认绑定当前活跃 user/temp 层；
+	// 混输模式下会在 case *mixed.Engine 分支中重建为独立 pinyin bucket）
 	pinyinLearning = schema.NewLearningStrategy(ls, dm.GetStoreUserLayer())
 	if al, ok := pinyinLearning.(*schema.AutoLearning); ok {
 		if dm.GetStoreTempLayer() != nil {
@@ -295,14 +296,31 @@ func (m *Manager) UpdateLearningConfig(ls *schema.LearningSpec) {
 		e.SetFreqHandler(freqHandler)
 		e.SetLearningStrategy(pinyinLearning)
 	case *mixed.Engine:
-		// 混输引擎：码表子引擎用码表策略，拼音子引擎用拼音策略
+		// 混输引擎：码表子引擎用码表策略，拼音子引擎用独立 dataSchemaID 的拼音策略
+		// 避免拼音学到的词污染主码表用户词库
 		if ce := e.GetCodetableEngine(); ce != nil {
 			ce.SetFreqHandler(freqHandler)
 			ce.SetLearningStrategy(codetableLearning)
 		}
 		if pe := e.GetPinyinEngine(); pe != nil {
-			pe.SetFreqHandler(freqHandler)
-			pe.SetLearningStrategy(pinyinLearning)
+			pinyinDataSchemaID := m.GetPrimaryPinyinID()
+			if pinyinDataSchemaID == "" {
+				pinyinDataSchemaID = "pinyin"
+			}
+			var pinyinFreq *dict.FreqHandler
+			if ls.IsFreqEnabled() {
+				pinyinFreq = dict.NewFreqHandler(dm.GetStore(), pinyinDataSchemaID)
+			}
+			pinyinUserLayer := dm.GetOrCreateStoreUserLayer(pinyinDataSchemaID)
+			mixedPinyinLearning := schema.NewLearningStrategy(ls, pinyinUserLayer)
+			if al, ok := mixedPinyinLearning.(*schema.AutoLearning); ok {
+				if tl := dm.GetOrCreateStoreTempLayer(pinyinDataSchemaID); tl != nil {
+					al.SetTempLayer(tl)
+				}
+				al.SetSystemChecker(dm)
+			}
+			pe.SetFreqHandler(pinyinFreq)
+			pe.SetLearningStrategy(mixedPinyinLearning)
 		}
 	}
 

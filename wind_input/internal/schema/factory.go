@@ -985,18 +985,29 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 	// 由 mixed.Engine.addCodeHintsFromCodetable() 直接使用主码表的反向索引，
 	// 避免生成冗余的 _reverse.wdb 文件
 
+	// 拼音子引擎的独立 dataSchemaID：
+	// 优先使用次级方案（如 "pinyin"/"shuangpin"）的 DataSchemaID，回退 "pinyin"。
+	// 这样混输下选拼音候选时学到的词只写入拼音独立 bucket，不会污染主码表（如 wubi86）的用户词库。
+	pinyinDataSchemaID := "pinyin"
+	if secondarySchema != nil {
+		pinyinDataSchemaID = secondarySchema.DataSchemaID()
+	}
+
 	// 设置拼音引擎的 DictManager（用于用户词频学习）
 	if dm != nil {
 		pinyinEngine.SetDictManager(dm)
 
-		// 注入拼音引擎的 FreqHandler 和 LearningStrategy
+		// 注入拼音引擎的 FreqHandler 和 LearningStrategy（统一使用独立 pinyinDataSchemaID）
 		if s.Learning.IsFreqEnabled() {
-			pinyinFreqHandler := dict.NewFreqHandler(dm.GetStore(), s.Schema.ID)
+			pinyinFreqHandler := dict.NewFreqHandler(dm.GetStore(), pinyinDataSchemaID)
 			pinyinEngine.SetFreqHandler(pinyinFreqHandler)
 		}
-		pinyinLearning := NewLearningStrategy(&s.Learning, dm.GetStoreUserLayer())
-		if al, ok := pinyinLearning.(*AutoLearning); ok && dm.GetStoreTempLayer() != nil {
-			al.SetTempLayer(dm.GetStoreTempLayer())
+		pinyinUserLayer := dm.GetOrCreateStoreUserLayer(pinyinDataSchemaID)
+		pinyinLearning := NewLearningStrategy(&s.Learning, pinyinUserLayer)
+		if al, ok := pinyinLearning.(*AutoLearning); ok {
+			if tl := dm.GetOrCreateStoreTempLayer(pinyinDataSchemaID); tl != nil {
+				al.SetTempLayer(tl)
+			}
 		}
 		pinyinEngine.SetLearningStrategy(pinyinLearning)
 	}
@@ -1004,7 +1015,7 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 	// 加载拼音用户词频
 	if s.Learning.IsFreqEnabled() || s.Learning.IsAutoLearnEnabled() {
 		if dm != nil && dm.GetStore() != nil {
-			loadPinyinUserFreqs(pinyinEngine, dm.GetStore(), s.Schema.ID, logger)
+			loadPinyinUserFreqs(pinyinEngine, dm.GetStore(), pinyinDataSchemaID, logger)
 		}
 	}
 
