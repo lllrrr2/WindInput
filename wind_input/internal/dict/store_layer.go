@@ -212,6 +212,30 @@ func (l *StoreTempLayer) LearnWord(code, text string, weightDelta int) bool {
 	return false
 }
 
+// IncrementIfExists 仅当词条已在临时词库中时增加计数, 不创建新条目。
+// 返回 (exists, promoted): exists 表示词条原本是否在临时库, promoted 表示是否达到晋升条件。
+// 用于码表 autoPhrase: 用户再次选中已学到的临时词组时, 给它加计数, 但不无脑创建。
+func (l *StoreTempLayer) IncrementIfExists(code, text string, weightDelta int) (bool, bool) {
+	code = strings.ToLower(code)
+	textLower := strings.ToLower(text)
+	recs, err := l.store.GetTempWords(l.schemaID, code)
+	if err != nil {
+		return false, false
+	}
+	exists := false
+	for _, rec := range recs {
+		if rec.Text == textLower {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		return false, false
+	}
+	promoted := l.LearnWord(code, text, weightDelta)
+	return true, promoted
+}
+
 // PromoteWord 将词条晋升到用户词库。
 func (l *StoreTempLayer) PromoteWord(code, text string) bool {
 	code = strings.ToLower(code)

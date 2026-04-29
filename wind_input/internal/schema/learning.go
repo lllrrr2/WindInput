@@ -157,7 +157,7 @@ func (p *CodeTableAutoPhrase) SetSystemChecker(checker SystemWordChecker) {
 }
 
 // OnWordCommitted 用户上屏回调
-// 单字 → 追加到缓冲区；多字词 → 终止当前序列（多字词本身已在词库中）
+// 单字 → 追加到缓冲区；多字词 → 终止当前序列；若多字词已在临时词库中, 增加其计数
 func (p *CodeTableAutoPhrase) OnWordCommitted(code, text string) {
 	runes := []rune(text)
 	now := time.Now()
@@ -171,8 +171,14 @@ func (p *CodeTableAutoPhrase) OnWordCommitted(code, text string) {
 		p.lastCharTime = now
 		return
 	}
-	// 多字词上屏 = 终止符
+	// 多字词上屏 = 终止符: 先 flush 已累积的单字序列
 	p.flush()
+	// 如果该多字词已在临时词库中, 增加计数（达到阈值则晋升）
+	if p.tempLayer != nil && code != "" {
+		if exists, promoted := p.tempLayer.IncrementIfExists(code, text, p.config.WeightDelta); exists && promoted {
+			p.tempLayer.PromoteWord(code, text)
+		}
+	}
 }
 
 // OnPhraseTerminated 终止信号（标点、回车、焦点切换）
