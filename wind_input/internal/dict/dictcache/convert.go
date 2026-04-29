@@ -511,8 +511,7 @@ func parseRimeImportTables(path string) []string {
 		}
 
 		if inImportTables {
-			if strings.HasPrefix(trimmed, "- ") {
-				name := strings.TrimPrefix(trimmed, "- ")
+			if name, ok := strings.CutPrefix(trimmed, "- "); ok {
 				// 移除行内注释
 				if idx := strings.Index(name, "#"); idx >= 0 {
 					name = strings.TrimSpace(name[:idx])
@@ -534,8 +533,8 @@ func parseRimeImportTables(path string) []string {
 	return tables
 }
 
-// loadRimeCodetableFile 解析 rime 格式的码表 .dict.yaml 文件
-// 格式: text\tcode\tweight（weight 可选，可能有第四列 stem 被忽略）
+// loadRimeCodetableFile 解析 rime 格式的码表 .dict.yaml 文件。
+// 列顺序由 YAML header 的 columns 字段决定，默认为 text/code/weight。
 //
 // 权重策略基于词库自身的 sort 字段：
 //   - sort: by_weight → 使用显式权重（权威词库，如主词库）
@@ -551,7 +550,11 @@ func loadRimeCodetableFile(path string, codeEntries map[string][]dictEntry, glob
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	inHeader := true
-	sortMode := "" // 从 YAML header 提取
+	sortMode := ""
+	// 列索引：默认 rime 标准顺序 text/code/weight
+	colText, colCode, colWeight := 0, 1, 2
+	inColumns := false
+	var columnNames []string
 	count := 0
 	hasWeight := false
 
@@ -561,17 +564,50 @@ func loadRimeCodetableFile(path string, codeEntries map[string][]dictEntry, glob
 		if inHeader {
 			trimmed := strings.TrimSpace(line)
 			if trimmed == "..." {
+				// 解析完 header，根据收集到的 columns 列表确定索引
+				if len(columnNames) > 0 {
+					colText, colCode, colWeight = -1, -1, -1
+					for i, name := range columnNames {
+						switch name {
+						case "text":
+							colText = i
+						case "code":
+							colCode = i
+						case "weight":
+							colWeight = i
+						}
+					}
+				}
 				inHeader = false
 				continue
 			}
 			// 提取 sort 字段
-			if strings.HasPrefix(trimmed, "sort:") {
-				val := strings.TrimPrefix(trimmed, "sort:")
-				// 移除行内注释
+			if val, ok := strings.CutPrefix(trimmed, "sort:"); ok {
 				if idx := strings.Index(val, "#"); idx >= 0 {
 					val = val[:idx]
 				}
 				sortMode = strings.TrimSpace(val)
+				inColumns = false
+				continue
+			}
+			// 收集 columns 列表
+			if strings.HasPrefix(trimmed, "columns:") {
+				inColumns = true
+				columnNames = nil
+				continue
+			}
+			if inColumns {
+				if name, ok := strings.CutPrefix(trimmed, "- "); ok {
+					name = strings.TrimSpace(name)
+					if idx := strings.Index(name, "#"); idx >= 0 {
+						name = strings.TrimSpace(name[:idx])
+					}
+					if name != "" {
+						columnNames = append(columnNames, name)
+					}
+				} else if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+					inColumns = false
+				}
 			}
 			continue
 		}
@@ -582,12 +618,16 @@ func loadRimeCodetableFile(path string, codeEntries map[string][]dictEntry, glob
 		}
 
 		parts := strings.Split(line, "\t")
-		if len(parts) < 2 {
-			continue
+
+		getCol := func(idx int) string {
+			if idx < 0 || idx >= len(parts) {
+				return ""
+			}
+			return strings.TrimSpace(parts[idx])
 		}
 
-		text := parts[0]
-		code := strings.TrimSpace(parts[1])
+		text := getCol(colText)
+		code := getCol(colCode)
 
 		if text == "" || code == "" {
 			continue
@@ -596,8 +636,8 @@ func loadRimeCodetableFile(path string, codeEntries map[string][]dictEntry, glob
 		// 权重策略：by_weight 使用原始权重，original 统一为 1
 		weight := 1
 		if sortMode == "by_weight" {
-			if len(parts) >= 3 {
-				if w, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil && w > 0 {
+			if ws := getCol(colWeight); ws != "" {
+				if w, err := strconv.Atoi(ws); err == nil && w > 0 {
 					weight = w
 					hasWeight = true
 				}
