@@ -326,11 +326,16 @@ func (m *Manager) UpdateLearningConfig(ls *schema.LearningSpec) {
 		}
 	}
 
+	// 同步临时词库 limits（temp_promote_count / temp_max_entries 修改后立即生效）
+	dm.UpdateActiveTempLimits(ls.TempMaxEntries, ls.TempPromoteCount)
+
 	m.logger.Info("学习配置已热更新",
 		"freqEnabled", ls.IsFreqEnabled(),
 		"autoLearnEnabled", ls.IsAutoLearnEnabled(),
 		"autoPhraseEnabled", ls.IsAutoPhraseEnabled(),
-		"codetableAutoPhrase", codetableLearning != nil)
+		"codetableAutoPhrase", codetableLearning != nil,
+		"tempPromoteCount", ls.TempPromoteCount,
+		"tempMaxEntries", ls.TempMaxEntries)
 }
 
 // getCodeTable 从当前引擎获取码表（须持有 mu 锁）

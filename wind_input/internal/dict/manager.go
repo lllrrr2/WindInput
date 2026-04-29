@@ -262,10 +262,12 @@ func (dm *DictManager) switchSchemaStore(schemaID, dataSchemaID, freqSchemaID st
 	tempLayer, ok := dm.storeTempLayers[dataSchemaID]
 	if !ok {
 		tempLayer = NewStoreTempLayer(dm.store, dataSchemaID)
-		tempLayer.SetLimits(tempMaxEntries, tempPromoteCount)
 		dm.storeTempLayers[dataSchemaID] = tempLayer
 		dm.logger.Info("Store 临时词库层已创建", "dataSchemaID", dataSchemaID)
 	}
+	// 总是应用最新的 limits（GetOrCreate 可能提前创建过 layer 但未设过 limits；
+	// 配置热更新后 promoteCount/maxEntries 也需要重新生效）
+	tempLayer.SetLimits(tempMaxEntries, tempPromoteCount)
 	dm.compositeDict.AddLayer(tempLayer)
 	dm.activeStoreTemp = tempLayer
 }
@@ -477,6 +479,17 @@ func (dm *DictManager) GetOrCreateStoreUserLayer(schemaID string) *StoreUserLaye
 		dm.logger.Info("Store 用户词库层已创建（按需）", "dataSchemaID", schemaID, "entries", userLayer.EntryCount())
 	}
 	return userLayer
+}
+
+// UpdateActiveTempLimits 更新当前活跃临时词库层的 limits（用于配置热更新）
+// 不持有 m.mu 等其它锁，可在外层锁的回调中安全调用。
+func (dm *DictManager) UpdateActiveTempLimits(maxEntries, promoteCount int) {
+	dm.mu.RLock()
+	tempLayer := dm.activeStoreTemp
+	dm.mu.RUnlock()
+	if tempLayer != nil {
+		tempLayer.SetLimits(maxEntries, promoteCount)
+	}
 }
 
 // GetOrCreateStoreTempLayer 获取或创建指定 schemaID 的临时词库层
