@@ -5,8 +5,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/engine"
+	"github.com/huanfeng/wind_input/internal/store"
+	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
 )
 
@@ -468,9 +471,143 @@ func (c *Coordinator) expandCandidates() {
 		"limit", newLimit, "hasMore", c.hasMoreCandidates)
 }
 
+// compositionUpdateResult 构建 UpdateComposition 响应，遵循 InlinePreedit 配置：
+// 关闭时发送空文本，避免编码嵌入应用与候选窗同时显示。
+func (c *Coordinator) compositionUpdateResult() *bridge.KeyEventResult {
+	if c.config != nil && !c.config.UI.InlinePreedit {
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeUpdateComposition}
+	}
+	return &bridge.KeyEventResult{
+		Type:     bridge.ResponseTypeUpdateComposition,
+		Text:     c.compositionText(),
+		CaretPos: c.displayCursorPos(),
+	}
+}
+
 func (c *Coordinator) hideUI() {
 	if c.uiManager != nil {
 		c.uiManager.Hide()
 		c.uiManager.HideTooltip()
+	}
+}
+
+// doSelectCandidate 是候选词选择的统一核心实现（调用方须持锁）。
+// 处理组候选展开、拼音分步确认、完整上屏三种情形，
+// 包含学习回调、输入历史记录和统计上报，返回需交付给 TSF 的结果。
+func (c *Coordinator) doSelectCandidate(index int) *bridge.KeyEventResult {
+	if index < 0 || index >= len(c.candidates) {
+		return nil
+	}
+	cand := c.candidates[index]
+	c.logger.Debug("Candidate selected", "index", index)
+
+	// ── 组候选：替换 inputBuffer 为组的完整编码，触发二级展开 ──────────────
+	if cand.IsGroup && cand.GroupCode != "" {
+		c.inputBuffer = cand.GroupCode
+		c.inputCursorPos = len(c.inputBuffer)
+		c.currentPage = 1
+		c.selectedIndex = 0
+		c.updateCandidates()
+		c.showUI()
+		return c.compositionUpdateResult()
+	}
+
+	originalText := cand.Text
+	text := originalText
+	if c.fullWidth {
+		text = transform.ToFullWidth(text)
+	}
+
+	isPinyin := c.engineMgr != nil && c.engineMgr.GetCurrentType() == engine.EngineTypePinyin
+	isMixed := c.engineMgr != nil && c.engineMgr.GetCurrentType() == engine.EngineTypeMixed
+
+	// ── 拼音分步确认：候选消耗长度 < 缓冲区长度，暂存已确认段 ──────────────
+	if (isPinyin || (isMixed && cand.ConsumedLength > 0)) &&
+		cand.ConsumedLength > 0 && cand.ConsumedLength < len(c.inputBuffer) {
+
+		consumedCode := c.inputBuffer[:cand.ConsumedLength]
+		if !cand.IsCommand {
+			c.engineMgr.OnCandidateSelected(consumedCode, originalText, cand.Source)
+		}
+
+		remaining := c.inputBuffer[cand.ConsumedLength:]
+		c.logger.Debug("Partial confirm (pinyin)", "index", index, "text", text,
+			"consumed", cand.ConsumedLength, "remaining", remaining,
+			"confirmedCount", len(c.confirmedSegments)+1)
+
+		c.confirmedSegments = append(c.confirmedSegments, ConfirmedSegment{
+			Text:         originalText,
+			ConsumedCode: consumedCode,
+		})
+		c.inputBuffer = remaining
+		c.inputCursorPos = len(remaining)
+		c.currentPage = 1
+		c.updateCandidates()
+		c.showUI()
+		return c.compositionUpdateResult()
+	}
+
+	// 预计算分步确认场景下的合并编码和文本，供学习回调和历史记录共用
+	// （学习和历史记录基于原始文本，不受 fullWidth 显示变换影响）
+	var segCode, segText string
+	if (isPinyin || isMixed) && len(c.confirmedSegments) > 0 {
+		var codeBuilder, textBuilder strings.Builder
+		for _, seg := range c.confirmedSegments {
+			codeBuilder.WriteString(seg.ConsumedCode)
+			textBuilder.WriteString(seg.Text)
+		}
+		segCode = codeBuilder.String()
+		segText = textBuilder.String()
+	}
+
+	// ── 完全消费：学习回调 ────────────────────────────────────────────────
+	if c.engineMgr != nil && !cand.IsCommand {
+		if (isPinyin || isMixed) && len(c.confirmedSegments) > 0 {
+			c.engineMgr.OnCandidateSelected(segCode+c.inputBuffer, segText+originalText, cand.Source)
+		} else {
+			selectedCode := c.inputBuffer
+			if cand.Code != "" {
+				selectedCode = cand.Code
+			}
+			c.engineMgr.OnCandidateSelected(selectedCode, originalText, cand.Source)
+		}
+	}
+
+	// ── 输入历史记录（用于加词推荐）────────────────────────────────────────
+	if c.inputHistory != nil && !cand.IsCommand {
+		histText := originalText
+		histCode := c.inputBuffer
+		if (isPinyin || isMixed) && len(c.confirmedSegments) > 0 {
+			histText = segText + originalText
+			histCode = segCode + c.inputBuffer
+		}
+		c.inputHistory.Record(histText, histCode, "", 0)
+	}
+
+	// ── 拼接已确认段 + 当前候选，构建最终上屏文本 ──────────────────────────
+	finalText := text
+	if (isPinyin || isMixed) && len(c.confirmedSegments) > 0 {
+		var sb strings.Builder
+		for _, seg := range c.confirmedSegments {
+			t := seg.Text
+			if c.fullWidth {
+				t = transform.ToFullWidth(t)
+			}
+			sb.WriteString(t)
+		}
+		finalText = sb.String() + text
+	}
+
+	c.logger.Debug("Candidate selected (full commit)", "index", index,
+		"original", originalText, "output", finalText,
+		"fullWidth", c.fullWidth, "confirmedSegments", len(c.confirmedSegments))
+
+	c.recordCommit(finalText, len(c.inputBuffer), index%c.candidatesPerPage, store.SourceCandidate)
+	c.clearState()
+	c.hideUI()
+
+	return &bridge.KeyEventResult{
+		Type: bridge.ResponseTypeInsertText,
+		Text: finalText,
 	}
 }

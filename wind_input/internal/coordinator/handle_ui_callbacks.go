@@ -2,8 +2,8 @@
 package coordinator
 
 import (
+	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/engine"
-	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/config"
 )
@@ -205,149 +205,18 @@ func (c *Coordinator) setupCandidateCallbacks() {
 	})
 }
 
-// handleCandidateSelect handles candidate selection via mouse click
+// handleCandidateSelect 处理鼠标点击选词（在独立 goroutine 中调用，通过 push 管道交付结果）
 func (c *Coordinator) handleCandidateSelect(index int) {
 	c.mu.Lock()
 
-	// Convert page-local index to actual candidate index
 	actualIndex := (c.currentPage-1)*c.candidatesPerPage + index
+	c.logger.Debug("Candidate selected via mouse", "pageIndex", index, "actualIndex", actualIndex)
 
-	c.logger.Debug("Candidate selected via mouse", "pageIndex", index, "actualIndex", actualIndex, "currentPage", c.currentPage)
-
-	if actualIndex < 0 || actualIndex >= len(c.candidates) {
-		c.logger.Warn("Invalid candidate index", "actualIndex", actualIndex, "candidateCount", len(c.candidates))
-		c.mu.Unlock()
-		return
-	}
-
-	candidate := c.candidates[actualIndex]
-	originalText := candidate.Text
-	text := originalText
-
-	// Apply full-width conversion if enabled
-	if c.fullWidth {
-		text = transform.ToFullWidth(text)
-	}
-
-	// 收集学习所需信息（在 clearState 前）
-	isCommand := candidate.IsCommand
-	candidateSource := candidate.Source
-	engineMgr := c.engineMgr
-	isPinyin := engineMgr != nil && engineMgr.GetCurrentType() == engine.EngineTypePinyin
-	isMixed := engineMgr != nil && engineMgr.GetCurrentType() == engine.EngineTypeMixed
-
-	c.logger.Debug("Candidate selected via mouse click", "index", actualIndex)
-
-	// 拼音引擎分步确认：候选消耗的输入长度小于缓冲区长度时，
-	// 将已确认的文字暂存到 confirmedSegments 而非直接上屏，
-	// 与键盘空格/数字键选择行为一致。
-	if (isPinyin || (isMixed && candidate.ConsumedLength > 0)) && candidate.ConsumedLength > 0 && candidate.ConsumedLength < len(c.inputBuffer) {
-		consumedCode := c.inputBuffer[:candidate.ConsumedLength]
-		if !isCommand {
-			engineMgr.OnCandidateSelected(consumedCode, originalText, candidateSource)
-		}
-
-		remaining := c.inputBuffer[candidate.ConsumedLength:]
-		c.logger.Debug("Partial confirm via mouse click (pinyin)", "index", actualIndex, "text", text,
-			"consumed", candidate.ConsumedLength, "remaining", remaining,
-			"confirmedCount", len(c.confirmedSegments)+1)
-
-		// 推入确认栈，不上屏
-		c.confirmedSegments = append(c.confirmedSegments, ConfirmedSegment{
-			Text:         originalText,
-			ConsumedCode: consumedCode,
-		})
-
-		// 更新缓冲区为剩余部分，光标重置到末尾，重新触发候选更新
-		c.inputBuffer = remaining
-		c.inputCursorPos = len(remaining)
-		c.currentPage = 1
-		c.updateCandidates()
-		c.showUI()
-
-		// 通过 push pipe 更新 TSF 组合文本
-		// InlinePreedit 关闭时发送空文本，避免嵌入编码与候选窗同时显示
-		inlinePreedit := c.config == nil || c.config.UI.InlinePreedit
-		compositionText := ""
-		caretPos := 0
-		if inlinePreedit {
-			compositionText = c.compositionText()
-			caretPos = c.displayCursorPos()
-		}
-		bridgeServer := c.bridgeServer
-		c.mu.Unlock()
-
-		if bridgeServer != nil {
-			bridgeServer.PushUpdateCompositionToActiveClient(compositionText, caretPos)
-		}
-		return
-	}
-
-	// 完全消费：触发学习回调
-	code := c.inputBuffer
-	confirmedSegs := c.confirmedSegments
-
-	if engineMgr != nil && !isCommand && originalText != "" {
-		if (isPinyin || isMixed) && len(confirmedSegs) > 0 {
-			var fullCode, fullText string
-			for _, seg := range confirmedSegs {
-				fullCode += seg.ConsumedCode
-				fullText += seg.Text
-			}
-			fullCode += code
-			fullText += originalText
-			engineMgr.OnCandidateSelected(fullCode, fullText, candidateSource)
-		} else {
-			selectedCode := code
-			if candidate.Code != "" {
-				selectedCode = candidate.Code
-			}
-			engineMgr.OnCandidateSelected(selectedCode, originalText, candidateSource)
-		}
-	}
-
-	// 记录输入历史（用于加词推荐）
-	if c.inputHistory != nil && !isCommand {
-		histText := originalText
-		histCode := code
-		if (isPinyin || isMixed) && len(confirmedSegs) > 0 {
-			var fCode, fText string
-			for _, seg := range confirmedSegs {
-				fCode += seg.ConsumedCode
-				fText += seg.Text
-			}
-			histText = fText + originalText
-			histCode = fCode + code
-		}
-		c.inputHistory.Record(histText, histCode, "", 0)
-	}
-
-	// 拼接所有已确认段的文本 + 当前选中的候选
-	finalText := text
-	if (isPinyin || isMixed) && len(confirmedSegs) > 0 {
-		var allText string
-		for _, seg := range confirmedSegs {
-			t := seg.Text
-			if c.fullWidth {
-				t = transform.ToFullWidth(t)
-			}
-			allText += t
-		}
-		finalText = allText + text
-	}
-
-	// Clear state and hide UI
-	c.clearState()
-	c.hideUI()
-
-	// Get bridge server reference (release lock before network I/O)
+	result := c.doSelectCandidate(actualIndex)
 	bridgeServer := c.bridgeServer
 	c.mu.Unlock()
 
-	// Send text to TSF via push pipe (only to active client for security)
-	if bridgeServer != nil && finalText != "" {
-		bridgeServer.PushCommitTextToActiveClient(finalText)
-	}
+	pushKeyEventResult(bridgeServer, result)
 }
 
 // handleCandidateHoverChange handles hover state change
@@ -1068,4 +937,20 @@ func (c *Coordinator) resetAndResync() {
 // Note: This should be called with lock held, or use broadcastState() instead
 func (c *Coordinator) syncToolbarState() {
 	c.syncToolbarStateNoLock()
+}
+
+// pushKeyEventResult 将 KeyEventResult 通过 bridge push 管道发送给活跃 TSF 客户端。
+// 用于鼠标等异步路径（无法通过 return 交付结果）。
+func pushKeyEventResult(srv BridgeServer, result *bridge.KeyEventResult) {
+	if result == nil || srv == nil {
+		return
+	}
+	switch result.Type {
+	case bridge.ResponseTypeInsertText:
+		srv.PushCommitTextToActiveClient(result.Text)
+	case bridge.ResponseTypeUpdateComposition:
+		srv.PushUpdateCompositionToActiveClient(result.Text, result.CaretPos)
+	case bridge.ResponseTypeClearComposition:
+		srv.PushClearCompositionToActiveClient()
+	}
 }

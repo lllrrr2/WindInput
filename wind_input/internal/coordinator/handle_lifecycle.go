@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/huanfeng/wind_input/internal/bridge"
-	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
@@ -757,7 +756,7 @@ func (c *Coordinator) handleSpaceInternal() *bridge.KeyEventResult {
 		// Calculate index of first candidate on current page
 		index := (c.currentPage - 1) * c.candidatesPerPage
 		if index < len(c.candidates) {
-			return c.selectCandidateInternal(index)
+			return c.doSelectCandidate(index)
 		}
 	} else if len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 {
 		// No candidates, commit confirmed segments + raw input
@@ -823,138 +822,7 @@ func (c *Coordinator) handleNumberKeyInternal(num int) *bridge.KeyEventResult {
 	// num is 1-9 or 10 (key '0'), convert to 0-based index within current page
 	index := (c.currentPage-1)*c.candidatesPerPage + (num - 1)
 	if index < len(c.candidates) {
-		return c.selectCandidateInternal(index)
+		return c.doSelectCandidate(index)
 	}
 	return nil
-}
-
-// selectCandidateInternal is the internal implementation of selectCandidate (without lock)
-func (c *Coordinator) selectCandidateInternal(index int) *bridge.KeyEventResult {
-	if index < 0 || index >= len(c.candidates) {
-		return nil
-	}
-
-	cand := c.candidates[index]
-	c.logger.Debug("Candidate selected (internal)", "index", index)
-
-	// 组候选：替换 inputBuffer 为组的完整编码，触发二级展开
-	if cand.IsGroup && cand.GroupCode != "" {
-		c.inputBuffer = cand.GroupCode
-		c.inputCursorPos = len(c.inputBuffer)
-		c.currentPage = 1
-		c.selectedIndex = 0
-		c.updateCandidates()
-		c.showUI()
-		inlinePreedit := c.config == nil || c.config.UI.InlinePreedit
-		groupText := ""
-		groupCaret := 0
-		if inlinePreedit {
-			groupText = c.compositionText()
-			groupCaret = c.displayCursorPos()
-		}
-		return &bridge.KeyEventResult{
-			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     groupText,
-			CaretPos: groupCaret,
-		}
-	}
-
-	originalText := cand.Text
-	text := originalText
-
-	// Apply full-width conversion if enabled
-	if c.fullWidth {
-		text = transform.ToFullWidth(text)
-	}
-
-	// 拼音引擎分步确认：候选消耗的输入长度小于缓冲区长度时，
-	// 将已确认的文字暂存到 confirmedSegments 而非直接上屏。
-	isPinyin := c.engineMgr != nil && c.engineMgr.GetCurrentType() == engine.EngineTypePinyin
-	isMixed := c.engineMgr != nil && c.engineMgr.GetCurrentType() == engine.EngineTypeMixed
-	if (isPinyin || (isMixed && cand.ConsumedLength > 0)) && cand.ConsumedLength > 0 && cand.ConsumedLength < len(c.inputBuffer) {
-		consumedCode := c.inputBuffer[:cand.ConsumedLength]
-		if !cand.IsCommand {
-			c.engineMgr.OnCandidateSelected(consumedCode, originalText, cand.Source)
-		}
-
-		remaining := c.inputBuffer[cand.ConsumedLength:]
-		c.logger.Debug("Partial confirm internal (pinyin)", "index", index, "text", text,
-			"consumed", cand.ConsumedLength, "remaining", remaining,
-			"confirmedCount", len(c.confirmedSegments)+1)
-
-		// 推入确认栈，不上屏
-		c.confirmedSegments = append(c.confirmedSegments, ConfirmedSegment{
-			Text:         originalText,
-			ConsumedCode: consumedCode,
-		})
-
-		c.inputBuffer = remaining
-		c.inputCursorPos = len(remaining)
-		c.currentPage = 1
-		c.updateCandidates()
-		c.showUI()
-
-		// 返回 UpdateComposition 而非 InsertText
-		// InlinePreedit 关闭时发送空文本，避免嵌入编码与候选窗同时显示
-		inlinePreedit := c.config == nil || c.config.UI.InlinePreedit
-		compText := ""
-		compCaret := 0
-		if inlinePreedit {
-			compText = c.compositionText()
-			compCaret = c.displayCursorPos()
-		}
-		return &bridge.KeyEventResult{
-			Type:     bridge.ResponseTypeUpdateComposition,
-			Text:     compText,
-			CaretPos: compCaret,
-		}
-	}
-
-	// 完全消费：触发学习回调（拼音和五笔统一）
-	if c.engineMgr != nil && !cand.IsCommand {
-		if (isPinyin || isMixed) && len(c.confirmedSegments) > 0 {
-			// 分段输入：合并所有段的编码和文本，作为完整词组学习
-			var fullCode, fullText string
-			for _, seg := range c.confirmedSegments {
-				fullCode += seg.ConsumedCode
-				fullText += seg.Text
-			}
-			fullCode += c.inputBuffer
-			fullText += originalText
-			c.engineMgr.OnCandidateSelected(fullCode, fullText, cand.Source)
-		} else {
-			selectedCode := c.inputBuffer
-			if cand.Code != "" {
-				selectedCode = cand.Code
-			}
-			c.engineMgr.OnCandidateSelected(selectedCode, originalText, cand.Source)
-		}
-	}
-
-	// 拼接所有已确认段的文本 + 当前选中的候选
-	finalText := text
-	if (isPinyin || isMixed) && len(c.confirmedSegments) > 0 {
-		var allText string
-		for _, seg := range c.confirmedSegments {
-			t := seg.Text
-			if c.fullWidth {
-				t = transform.ToFullWidth(t)
-			}
-			allText += t
-		}
-		finalText = allText + text
-	}
-
-	// 统计：候选词选择上屏
-	codeLen := len(c.inputBuffer)
-	candPos := index % c.candidatesPerPage
-	c.recordCommit(finalText, codeLen, candPos, store.SourceCandidate)
-
-	c.clearState()
-	c.hideUI()
-
-	return &bridge.KeyEventResult{
-		Type: bridge.ResponseTypeInsertText,
-		Text: finalText,
-	}
 }
