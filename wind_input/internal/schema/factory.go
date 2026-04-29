@@ -174,13 +174,14 @@ func createCodeTableEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManag
 
 		// 注入 LearningStrategy（造词）
 		// 码表引擎：auto_learn 或 auto_phrase 启用时使用码表自动造词
+		// 学习层按 schema 自身的 dataSchemaID 绑定，避免预加载时被绑到当前活跃方案的 bucket
 		if s.Learning.IsAutoPhraseEnabled() || s.Learning.IsAutoLearnEnabled() {
 			autoPhrase := NewCodeTableLearningStrategy(&s.Learning, logger)
-			if dm.GetStoreUserLayer() != nil {
-				autoPhrase.SetUserLayer(dm.GetStoreUserLayer())
+			if ul := dm.GetOrCreateStoreUserLayer(s.DataSchemaID()); ul != nil {
+				autoPhrase.SetUserLayer(ul)
 			}
-			if dm.GetStoreTempLayer() != nil {
-				autoPhrase.SetTempLayer(dm.GetStoreTempLayer())
+			if tl := dm.GetOrCreateStoreTempLayer(s.DataSchemaID()); tl != nil {
+				autoPhrase.SetTempLayer(tl)
 			}
 			autoPhrase.SetSystemChecker(dm)
 			// 编码计算器：使用编码规则 + 码表反向索引（惰性构建）
@@ -316,10 +317,12 @@ func createPinyinEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager,
 		}
 
 		// 注入 LearningStrategy（造词）
-		learningStrategy := NewLearningStrategy(&s.Learning, dm.GetStoreUserLayer())
+		// 按 schema 自身 dataSchemaID 绑定层，避免预加载时被绑到当前活跃方案
+		userLayer := dm.GetOrCreateStoreUserLayer(s.DataSchemaID())
+		learningStrategy := NewLearningStrategy(&s.Learning, userLayer)
 		if al, ok := learningStrategy.(*AutoLearning); ok {
-			if dm.GetStoreTempLayer() != nil {
-				al.SetTempLayer(dm.GetStoreTempLayer())
+			if tl := dm.GetOrCreateStoreTempLayer(s.DataSchemaID()); tl != nil {
+				al.SetTempLayer(tl)
 			}
 			al.SetSystemChecker(dm)
 		}
@@ -851,13 +854,14 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 			codetableEngine.SetFreqHandler(codetableFreqHandler)
 		}
 		// 混输码表子引擎：auto_learn 或 auto_phrase 启用时使用码表自动造词
+		// 按混输的 dataSchemaID（= 主方案 ID）绑定层，避免预加载时被绑到错误的活跃方案
 		if s.Learning.IsAutoPhraseEnabled() || s.Learning.IsAutoLearnEnabled() {
 			autoPhrase := NewCodeTableLearningStrategy(&s.Learning, logger)
-			if dm.GetStoreUserLayer() != nil {
-				autoPhrase.SetUserLayer(dm.GetStoreUserLayer())
+			if ul := dm.GetOrCreateStoreUserLayer(s.DataSchemaID()); ul != nil {
+				autoPhrase.SetUserLayer(ul)
 			}
-			if dm.GetStoreTempLayer() != nil {
-				autoPhrase.SetTempLayer(dm.GetStoreTempLayer())
+			if tl := dm.GetOrCreateStoreTempLayer(s.DataSchemaID()); tl != nil {
+				autoPhrase.SetTempLayer(tl)
 			}
 			autoPhrase.SetSystemChecker(dm)
 			encoder := s.Encoder
