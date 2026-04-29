@@ -537,21 +537,48 @@ func (ct *CodeTable) GetEntries() map[string][]candidate.Candidate {
 	return ct.entries
 }
 
-// BuildReverseIndex 构建反向索引（文字 -> 编码）
+// BuildReverseIndex 构建反向索引（文字 -> 编码列表，按词条权重降序排序）
+//
+// 排序规则确保下游（如自动造词的编码计算器）取 codes[0] 即得到"最常用全码"，
+// 不会被 import_tables 中的异体字代码（如四叠字 cccc 对应"晶/淼/众"等同码）干扰。
+//
+// 排序优先级：weight 降序 → code 长度降序 → code 字典序升序（保证稳定）。
 func (ct *CodeTable) BuildReverseIndex() map[string][]string {
-	reverseIndex := make(map[string][]string)
+	type codeRef struct {
+		code   string
+		weight int
+	}
+	collect := make(map[string][]codeRef)
 	if ct.binReader != nil {
 		ct.binReader.ForEachEntry(func(code string, entries []candidate.Candidate) {
 			for _, cand := range entries {
-				reverseIndex[cand.Text] = append(reverseIndex[cand.Text], code)
+				collect[cand.Text] = append(collect[cand.Text], codeRef{code: code, weight: cand.Weight})
 			}
 		})
-		return reverseIndex
-	}
-	for code, candidates := range ct.entries {
-		for _, cand := range candidates {
-			reverseIndex[cand.Text] = append(reverseIndex[cand.Text], code)
+	} else {
+		for code, candidates := range ct.entries {
+			for _, cand := range candidates {
+				collect[cand.Text] = append(collect[cand.Text], codeRef{code: code, weight: cand.Weight})
+			}
 		}
+	}
+
+	reverseIndex := make(map[string][]string, len(collect))
+	for text, refs := range collect {
+		sort.Slice(refs, func(i, j int) bool {
+			if refs[i].weight != refs[j].weight {
+				return refs[i].weight > refs[j].weight
+			}
+			if len(refs[i].code) != len(refs[j].code) {
+				return len(refs[i].code) > len(refs[j].code)
+			}
+			return refs[i].code < refs[j].code
+		})
+		codes := make([]string, len(refs))
+		for i, r := range refs {
+			codes[i] = r.code
+		}
+		reverseIndex[text] = codes
 	}
 	return reverseIndex
 }

@@ -303,13 +303,9 @@ func (c *EncoderWordCodeCalc) CalcWordCode(word string) string {
 		if !found || len(codes) == 0 {
 			return ""
 		}
-		best := codes[0]
-		for _, code := range codes {
-			if len(code) > len(best) {
-				best = code
-			}
-		}
-		charCodes[charStr] = best
+		// reverseIndex 已按 weight 降序 → 长度降序排序，codes[0] 即最常用的全码。
+		// 不再使用"取最长"的策略，避免被异体字代码（如四叠字 cccc）干扰。
+		charCodes[charStr] = codes[0]
 	}
 
 	code, err := encoding.CalcWordCode(word, charCodes, c.rules)
