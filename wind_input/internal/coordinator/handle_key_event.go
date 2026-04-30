@@ -296,11 +296,12 @@ func (c *Coordinator) HandleKeyEvent(data bridge.KeyEventData) (result *bridge.K
 
 	// 小键盘按键处理
 	if numpadChar := numpadKeyToChar(data.KeyCode); numpadChar != "" {
-		// "follow_main" 模式：小键盘数字键和小数点键视为主键盘按键，参与 IME 处理
+		// "follow_main" 模式：小键盘数字键、小数点键和运算符键视为主键盘按键，参与 IME 处理
 		isNumpadDigit := len(numpadChar) == 1 && numpadChar[0] >= '0' && numpadChar[0] <= '9'
 		isNumpadDecimal := uint32(data.KeyCode) == ipc.VK_DECIMAL
-		if (isNumpadDigit || isNumpadDecimal) && c.config != nil && c.config.Input.NumpadBehavior == "follow_main" {
-			// 将小键盘数字/小数点转为等效主键盘字符，继续后续 IME 流程
+		isNumpadOp := numpadChar == "*" || numpadChar == "+" || numpadChar == "-" || numpadChar == "/"
+		if (isNumpadDigit || isNumpadDecimal || isNumpadOp) && c.config != nil && c.config.Input.NumpadBehavior == "follow_main" {
+			// 将小键盘数字/小数点/运算符转为等效主键盘字符，继续后续 IME 流程
 			key = numpadChar
 		} else {
 			// 默认 "direct" 模式：直接输出字符，不参与候选选择或标点转换
