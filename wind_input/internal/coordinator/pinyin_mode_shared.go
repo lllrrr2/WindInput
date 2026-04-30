@@ -337,35 +337,34 @@ func (c *Coordinator) selectPinyinModeCandidate(ops *pinyinModeOps, index int) *
 		text = transform.ToFullWidth(text)
 	}
 
-	// 支持拼音部分上屏
+	// 拼音拆分选择：已选字保留在合成区（不立即上屏），等全部选完再统一提交
 	if cand.ConsumedLength > 0 && cand.ConsumedLength < len(*ops.buffer) {
-		// 累积已提交文本，供最终退出时记录完整输入历史
 		if ops.committed != nil {
 			*ops.committed += text
 		}
 		*ops.buffer = (*ops.buffer)[cand.ConsumedLength:]
-		// 部分上屏后重置光标到末尾
 		if ops.cursorPos != nil {
 			*ops.cursorPos = len(*ops.buffer)
 		}
 		c.currentPage = 1
 		c.updatePinyinModeCandidates(ops)
 		c.showPinyinModeUI(ops)
-
-		prefix := ops.prefix()
-		preedit := prefix + c.preeditDisplay
-		if c.preeditDisplay == "" {
-			preedit = prefix + *ops.buffer
-		}
-		return &bridge.KeyEventResult{
-			Type:           bridge.ResponseTypeInsertText,
-			Text:           text,
-			NewComposition: preedit,
-		}
+		// 返回合成区更新（非 InsertText），已选字作为 committed 前缀留在 preedit 中
+		return c.pinyinModeCompositionResult(ops)
 	}
 
+	// 完整匹配：将累积的 committed + 当前候选一次性提交
 	c.recordPinyinModeHistory(ops, text)
-	return ops.exitMode(true, text)
+	return ops.exitMode(true, pinyinModeFullText(ops, text))
+}
+
+// pinyinModeFullText 返回 committed 前缀与当前候选文本拼接后的完整提交文本。
+// 所有退出路径（全量选词、以词定字、标点附加）均通过此函数确保 committed 部分不被遗漏。
+func pinyinModeFullText(ops *pinyinModeOps, text string) string {
+	if ops.committed != nil && *ops.committed != "" {
+		return *ops.committed + text
+	}
+	return text
 }
 
 // selectPinyinModeChar 以词定字：从当前高亮候选词中取第 charIndex 个字符上屏（拼音模式专用）
@@ -388,7 +387,7 @@ func (c *Coordinator) selectPinyinModeChar(ops *pinyinModeOps, charIndex int) *b
 		text = transform.ToFullWidth(text)
 	}
 	c.recordPinyinModeHistory(ops, text)
-	return ops.exitMode(true, text)
+	return ops.exitMode(true, pinyinModeFullText(ops, text))
 }
 
 // recordPinyinModeHistory 记录拼音模式上屏文本到输入历史（仅候选文本，不含标点）
@@ -435,7 +434,7 @@ func (c *Coordinator) handlePinyinModeOverflowSelectKey(ops *pinyinModeOps, key 
 }
 
 // selectPinyinModeWithPunct 选择首候选并附加标点后退出
-// 输入历史只记录候选部分（不含标点），上屏内容仍含标点
+// 输入历史只记录候选部分（不含标点），上屏内容包含 committed 前缀和标点
 func (c *Coordinator) selectPinyinModeWithPunct(ops *pinyinModeOps, pageOffset int, key string) *bridge.KeyEventResult {
 	pageStart := (c.currentPage - 1) * c.candidatesPerPage
 	idx := pageStart + pageOffset
@@ -454,7 +453,7 @@ func (c *Coordinator) selectPinyinModeWithPunct(ops *pinyinModeOps, pageOffset i
 		}
 	}
 	c.recordPinyinModeHistory(ops, text)
-	return ops.exitMode(true, text+punctText)
+	return ops.exitMode(true, pinyinModeFullText(ops, text)+punctText)
 }
 
 // mapBufferPosToDisplayPos 将 buffer 中的光标位置映射到 preeditDisplay 中的位置
@@ -486,19 +485,25 @@ func (c *Coordinator) pinyinModeInsertChar(ops *pinyinModeOps, ch string) {
 }
 
 // pinyinModeCompositionResult 构建拼音模式的编辑区更新结果
+// preedit = prefix + committed + preeditDisplay（或 buffer）
 func (c *Coordinator) pinyinModeCompositionResult(ops *pinyinModeOps) *bridge.KeyEventResult {
 	prefix := ops.prefix()
-	preedit := prefix + c.preeditDisplay
-	if c.preeditDisplay == "" {
-		preedit = prefix + *ops.buffer
+	committed := ""
+	if ops.committed != nil {
+		committed = *ops.committed
 	}
-	// 计算光标位置（考虑 preeditDisplay 中的分隔符偏移）
+	preedit := prefix + committed + c.preeditDisplay
+	if c.preeditDisplay == "" {
+		preedit = prefix + committed + *ops.buffer
+	}
+	// 计算光标位置（考虑 committed 偏移和 preeditDisplay 中的分隔符偏移）
+	prefixCommittedLen := len(prefix) + len(committed)
 	caretPos := len(preedit)
 	if ops.cursorPos != nil {
 		if c.preeditDisplay != "" {
-			caretPos = len(prefix) + mapBufferPosToDisplayPos(*ops.buffer, c.preeditDisplay, *ops.cursorPos)
+			caretPos = prefixCommittedLen + mapBufferPosToDisplayPos(*ops.buffer, c.preeditDisplay, *ops.cursorPos)
 		} else {
-			caretPos = len(prefix) + *ops.cursorPos
+			caretPos = prefixCommittedLen + *ops.cursorPos
 		}
 	}
 	return c.modeCompositionResult(preedit, caretPos)
@@ -556,20 +561,25 @@ func (c *Coordinator) showPinyinModeUI(ops *pinyinModeOps) {
 	}
 
 	prefix := ops.prefix()
-	preedit := prefix + c.preeditDisplay
+	committed := ""
+	if ops.committed != nil {
+		committed = *ops.committed
+	}
+	preedit := prefix + committed + c.preeditDisplay
 	if c.preeditDisplay == "" && len(*ops.buffer) > 0 {
-		preedit = prefix + *ops.buffer
+		preedit = prefix + committed + *ops.buffer
 	} else if len(*ops.buffer) == 0 {
-		preedit = prefix
+		preedit = prefix + committed
 	}
 
-	// 计算候选窗中的光标位置（考虑 preeditDisplay 中的分隔符偏移）
+	// 计算候选窗中的光标位置（考虑 committed 偏移和 preeditDisplay 中的分隔符偏移）
+	prefixCommittedLen := len(prefix) + len(committed)
 	preeditCaret := len(preedit)
 	if ops.cursorPos != nil {
 		if c.preeditDisplay != "" {
-			preeditCaret = len(prefix) + mapBufferPosToDisplayPos(*ops.buffer, c.preeditDisplay, *ops.cursorPos)
+			preeditCaret = prefixCommittedLen + mapBufferPosToDisplayPos(*ops.buffer, c.preeditDisplay, *ops.cursorPos)
 		} else {
-			preeditCaret = len(prefix) + *ops.cursorPos
+			preeditCaret = prefixCommittedLen + *ops.cursorPos
 		}
 	}
 
