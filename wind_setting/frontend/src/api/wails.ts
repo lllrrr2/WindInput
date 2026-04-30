@@ -9,6 +9,7 @@ import {
   type Config,
   type TSFLogConfig,
 } from "./settings";
+import { WailsEvent } from "../lib/enums";
 
 // 重新导出类型
 export type UserWordItem = main.UserWordItem;
@@ -323,11 +324,11 @@ export async function getAllSchemaStatuses(): Promise<SchemaStatusItem[]> {
 
 // ── 事件监听 ──
 export function onDictEvent(callback: (event: DictEvent) => void): void {
-  (window as any).runtime.EventsOn("dict-event", callback);
+  (window as any).runtime.EventsOn(WailsEvent.Dict, callback);
 }
 
 export function offDictEvent(): void {
-  (window as any).runtime.EventsOff("dict-event");
+  (window as any).runtime.EventsOff(WailsEvent.Dict);
 }
 
 // 用户词库管理

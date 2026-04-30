@@ -134,7 +134,7 @@ func (d *DictService) Add(args *rpcapi.DictAddArgs, reply *rpcapi.Empty) error {
 	if err := d.store.AddUserWord(schemaID, args.Code, args.Text, weight); err != nil {
 		return err
 	}
-	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "add"})
+	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeUserDict, SchemaID: schemaID, Action: rpcapi.EventActionAdd})
 	return nil
 }
 
@@ -152,7 +152,7 @@ func (d *DictService) Remove(args *rpcapi.DictRemoveArgs, reply *rpcapi.Empty) e
 	if err := d.store.RemoveUserWord(schemaID, args.Code, args.Text); err != nil {
 		return err
 	}
-	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "remove"})
+	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeUserDict, SchemaID: schemaID, Action: rpcapi.EventActionRemove})
 	return nil
 }
 
@@ -169,7 +169,7 @@ func (d *DictService) Update(args *rpcapi.DictUpdateArgs, reply *rpcapi.Empty) e
 	if err := d.store.UpdateUserWordWeight(schemaID, args.Code, args.Text, args.NewWeight); err != nil {
 		return err
 	}
-	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "update"})
+	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeUserDict, SchemaID: schemaID, Action: rpcapi.EventActionUpdate})
 	return nil
 }
 
@@ -216,7 +216,7 @@ func (d *DictService) BatchAdd(args *rpcapi.DictBatchAddArgs, reply *rpcapi.Dict
 
 	d.logger.Info("RPC Dict.BatchAdd", "schemaID", schemaID, "count", reply.Count)
 	if reply.Count > 0 {
-		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "add"})
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeUserDict, SchemaID: schemaID, Action: rpcapi.EventActionAdd})
 	}
 	return nil
 }
@@ -307,7 +307,7 @@ func (d *DictService) ClearUserWords(args *rpcapi.DictClearUserWordsArgs, reply 
 	reply.Count = count
 	d.logger.Info("RPC Dict.ClearUserWords", "schemaID", schemaID, "cleared", count)
 	if count > 0 {
-		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "clear"})
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeUserDict, SchemaID: schemaID, Action: rpcapi.EventActionClear})
 	}
 	return nil
 }
@@ -324,7 +324,7 @@ func (d *DictService) ClearTemp(args *rpcapi.DictClearTempArgs, reply *rpcapi.Di
 	reply.Count = count
 	d.logger.Info("RPC Dict.ClearTemp", "schemaID", schemaID, "cleared", count)
 	if count > 0 {
-		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "temp", SchemaID: schemaID, Action: "clear"})
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeTemp, SchemaID: schemaID, Action: rpcapi.EventActionClear})
 	}
 	return nil
 }
@@ -338,8 +338,8 @@ func (d *DictService) PromoteTemp(args *rpcapi.DictPromoteTempArgs, reply *rpcap
 	if err := d.store.PromoteTempWord(schemaID, args.Code, args.Text); err != nil {
 		return err
 	}
-	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "temp", SchemaID: schemaID, Action: "remove"})
-	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "add"})
+	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeTemp, SchemaID: schemaID, Action: rpcapi.EventActionRemove})
+	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeUserDict, SchemaID: schemaID, Action: rpcapi.EventActionAdd})
 	return nil
 }
 
@@ -371,8 +371,8 @@ func (d *DictService) PromoteAllTemp(args *rpcapi.DictPromoteAllTempArgs, reply 
 
 	d.logger.Info("RPC Dict.PromoteAllTemp", "schemaID", schemaID, "promoted", reply.Count)
 	if reply.Count > 0 {
-		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "temp", SchemaID: schemaID, Action: "clear"})
-		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "userdict", SchemaID: schemaID, Action: "add"})
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeTemp, SchemaID: schemaID, Action: rpcapi.EventActionClear})
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeUserDict, SchemaID: schemaID, Action: rpcapi.EventActionAdd})
 	}
 	return nil
 }
@@ -439,7 +439,7 @@ func (d *DictService) DeleteFreq(args *rpcapi.FreqDeleteArgs, reply *rpcapi.Empt
 	if err := d.store.DeleteFreq(schemaID, args.Code, args.Text); err != nil {
 		return err
 	}
-	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "freq", SchemaID: schemaID, Action: "remove"})
+	d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeFreq, SchemaID: schemaID, Action: rpcapi.EventActionRemove})
 	return nil
 }
 
@@ -457,7 +457,7 @@ func (d *DictService) ClearFreq(args *rpcapi.FreqClearArgs, reply *rpcapi.FreqCl
 	reply.Count = count
 	d.logger.Info("RPC Dict.ClearFreq", "schemaID", schemaID, "cleared", count)
 	if count > 0 {
-		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "freq", SchemaID: schemaID, Action: "clear"})
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeFreq, SchemaID: schemaID, Action: rpcapi.EventActionClear})
 	}
 	return nil
 }
@@ -492,7 +492,7 @@ func (d *DictService) FreqBatchPut(args *rpcapi.FreqBatchPutArgs, reply *rpcapi.
 	}
 	reply.Count = count
 	if count > 0 {
-		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: "freq", SchemaID: schemaID, Action: "batch_put"})
+		d.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeFreq, SchemaID: schemaID, Action: rpcapi.EventActionBatchPut})
 	}
 	return nil
 }

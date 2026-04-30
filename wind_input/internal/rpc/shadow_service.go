@@ -34,7 +34,7 @@ func (s *ShadowService) Pin(args *rpcapi.ShadowPinArgs, reply *rpcapi.Empty) err
 	if err := s.store.PinShadow(schemaID, args.Code, args.Word, args.Position); err != nil {
 		return err
 	}
-	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "shadow", SchemaID: schemaID, Action: "add"})
+	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeShadow, SchemaID: schemaID, Action: rpcapi.EventActionAdd})
 	return nil
 }
 
@@ -48,7 +48,7 @@ func (s *ShadowService) Delete(args *rpcapi.ShadowDeleteArgs, reply *rpcapi.Empt
 	if err := s.store.DeleteShadow(schemaID, args.Code, args.Word); err != nil {
 		return err
 	}
-	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "shadow", SchemaID: schemaID, Action: "add"})
+	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeShadow, SchemaID: schemaID, Action: rpcapi.EventActionAdd})
 	return nil
 }
 
@@ -61,7 +61,7 @@ func (s *ShadowService) RemoveRule(args *rpcapi.ShadowDeleteArgs, reply *rpcapi.
 	if err := s.store.RemoveShadowRule(schemaID, args.Code, args.Word); err != nil {
 		return err
 	}
-	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "shadow", SchemaID: schemaID, Action: "remove"})
+	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeShadow, SchemaID: schemaID, Action: rpcapi.EventActionRemove})
 	return nil
 }
 
@@ -124,7 +124,7 @@ func (s *ShadowService) BatchSet(args *rpcapi.ShadowBatchSetArgs, reply *rpcapi.
 		reply.DelCount++
 	}
 	if reply.PinCount > 0 || reply.DelCount > 0 {
-		s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "shadow", SchemaID: schemaID, Action: "batch_set"})
+		s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeShadow, SchemaID: schemaID, Action: rpcapi.EventActionBatchSet})
 	}
 	return nil
 }

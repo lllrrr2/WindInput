@@ -89,7 +89,7 @@ func (p *PhraseService) Add(args *rpcapi.PhraseAddArgs, reply *rpcapi.Empty) err
 		return err
 	}
 	p.reloadPhrases()
-	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: "phrase", Action: "add"})
+	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypePhrase, Action: rpcapi.EventActionAdd})
 	return nil
 }
 
@@ -154,7 +154,7 @@ func (p *PhraseService) Update(args *rpcapi.PhraseUpdateArgs, reply *rpcapi.Empt
 	}
 
 	p.reloadPhrases()
-	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: "phrase", Action: "update"})
+	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypePhrase, Action: rpcapi.EventActionUpdate})
 	return nil
 }
 
@@ -172,7 +172,7 @@ func (p *PhraseService) Remove(args *rpcapi.PhraseRemoveArgs, reply *rpcapi.Empt
 		return err
 	}
 	p.reloadPhrases()
-	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: "phrase", Action: "remove"})
+	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypePhrase, Action: rpcapi.EventActionRemove})
 	return nil
 }
 
@@ -193,7 +193,7 @@ func (p *PhraseService) ResetDefaults(args *rpcapi.Empty, reply *rpcapi.Empty) e
 		}
 	}
 	p.reloadPhrases()
-	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: "phrase", Action: "reset"})
+	p.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypePhrase, Action: rpcapi.EventActionReset})
 	return nil
 }
 
@@ -230,7 +230,7 @@ func (p *PhraseService) BatchAdd(args *rpcapi.PhraseBatchAddArgs, reply *rpcapi.
 	reply.Count = count
 	if count > 0 {
 		p.reloadPhrases()
-		p.broadcaster.Broadcast(rpcapi.EventMessage{Type: "phrase", Action: "batch_add"})
+		p.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypePhrase, Action: rpcapi.EventActionBatchAdd})
 	}
 	return nil
 }

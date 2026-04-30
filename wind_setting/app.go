@@ -79,17 +79,17 @@ func (a *App) startEventListener() {
 		for {
 			err := a.rpcClient.SubscribeEvents(ctx, func(msg rpcapi.EventMessage) {
 				switch msg.Type {
-				case "config":
+				case rpcapi.EventTypeConfig:
 					// 配置变更事件：通知前端刷新配置显示
-					wailsRuntime.EventsEmit(a.ctx, "config-event", map[string]string{
-						"type":   msg.Type,
-						"action": msg.Action,
+					wailsRuntime.EventsEmit(a.ctx, rpcapi.WailsEventConfig, map[string]string{
+						"type":   string(msg.Type),
+						"action": string(msg.Action),
 					})
 				default:
-					wailsRuntime.EventsEmit(a.ctx, "dict-event", map[string]string{
-						"type":      msg.Type,
+					wailsRuntime.EventsEmit(a.ctx, rpcapi.WailsEventDict, map[string]string{
+						"type":      string(msg.Type),
 						"schema_id": msg.SchemaID,
-						"action":    msg.Action,
+						"action":    string(msg.Action),
 					})
 				}
 			})

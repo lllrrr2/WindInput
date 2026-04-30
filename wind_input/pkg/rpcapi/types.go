@@ -12,11 +12,89 @@ var RPCPipeName = `\\.\pipe\wind_input` + buildvariant.Suffix() + `_rpc`
 // RPCEventPipeName 事件推送管道名称
 var RPCEventPipeName = `\\.\pipe\wind_input` + buildvariant.Suffix() + `_events`
 
+// EventType 数据变化事件的类型
+type EventType string
+
+const (
+	EventTypeConfig   EventType = "config"
+	EventTypeUserDict EventType = "userdict"
+	EventTypeTemp     EventType = "temp"
+	EventTypeShadow   EventType = "shadow"
+	EventTypeFreq     EventType = "freq"
+	EventTypePhrase   EventType = "phrase"
+)
+
+// Valid 校验 EventType 是否为已知值
+func (t EventType) Valid() bool {
+	switch t {
+	case EventTypeConfig, EventTypeUserDict, EventTypeTemp, EventTypeShadow, EventTypeFreq, EventTypePhrase:
+		return true
+	}
+	return false
+}
+
+// EventAction 数据变化事件的动作
+type EventAction string
+
+const (
+	EventActionAdd      EventAction = "add"
+	EventActionRemove   EventAction = "remove"
+	EventActionUpdate   EventAction = "update"
+	EventActionClear    EventAction = "clear"
+	EventActionReset    EventAction = "reset"
+	EventActionBatchPut EventAction = "batch_put"
+	EventActionBatchAdd EventAction = "batch_add"
+	EventActionBatchSet EventAction = "batch_set"
+)
+
+// Valid 校验 EventAction 是否为已知值
+func (a EventAction) Valid() bool {
+	switch a {
+	case EventActionAdd, EventActionRemove, EventActionUpdate, EventActionClear,
+		EventActionReset, EventActionBatchPut, EventActionBatchAdd, EventActionBatchSet:
+		return true
+	}
+	return false
+}
+
 // EventMessage 数据变化事件
 type EventMessage struct {
-	Type     string `json:"type"`                // "userdict" | "temp" | "shadow" | "freq" | "phrase"
-	SchemaID string `json:"schema_id,omitempty"` // 方案 ID
-	Action   string `json:"action"`              // "add" | "remove" | "update" | "clear" | "reset"
+	Type     EventType   `json:"type"`
+	SchemaID string      `json:"schema_id,omitempty"` // 方案 ID
+	Action   EventAction `json:"action"`
+}
+
+// ── Wails 前端事件名 ──
+
+const (
+	WailsEventConfig = "config-event"
+	WailsEventDict   = "dict-event"
+)
+
+// ── Config Section ──
+
+// ConfigSection 配置分区标识
+type ConfigSection string
+
+const (
+	ConfigSectionStartup  ConfigSection = "startup"
+	ConfigSectionSchema   ConfigSection = "schema"
+	ConfigSectionHotkeys  ConfigSection = "hotkeys"
+	ConfigSectionUI       ConfigSection = "ui"
+	ConfigSectionToolbar  ConfigSection = "toolbar"
+	ConfigSectionInput    ConfigSection = "input"
+	ConfigSectionAdvanced ConfigSection = "advanced"
+	ConfigSectionStats    ConfigSection = "stats"
+)
+
+// Valid 校验 ConfigSection 是否为已知值
+func (s ConfigSection) Valid() bool {
+	switch s {
+	case ConfigSectionStartup, ConfigSectionSchema, ConfigSectionHotkeys, ConfigSectionUI,
+		ConfigSectionToolbar, ConfigSectionInput, ConfigSectionAdvanced, ConfigSectionStats:
+		return true
+	}
+	return false
 }
 
 // ── Dict 服务类型 ──

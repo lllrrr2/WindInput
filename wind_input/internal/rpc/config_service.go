@@ -104,7 +104,7 @@ func (s *ConfigService) Set(args *rpcapi.ConfigSetArgs, reply *rpcapi.ConfigSetR
 	}
 	reply.RequiresRestart = requiresRestart
 
-	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "config", Action: "update"})
+	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeConfig, Action: rpcapi.EventActionUpdate})
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (s *ConfigService) SetAll(args *rpcapi.ConfigSetAllArgs, reply *rpcapi.Conf
 		reply.Applied = append(reply.Applied, sec)
 	}
 
-	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "config", Action: "update"})
+	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeConfig, Action: rpcapi.EventActionUpdate})
 	return nil
 }
 
@@ -177,7 +177,7 @@ func (s *ConfigService) Reset(args *rpcapi.ConfigResetArgs, reply *rpcapi.Config
 		return err
 	}
 	reply.Reset = setReply.Applied
-	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: "config", Action: "reset"})
+	s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeConfig, Action: rpcapi.EventActionReset})
 	return nil
 }
 
@@ -250,22 +250,22 @@ func resolveKeyPath(key string) (section string, path []string, err error) {
 // getSectionMap 将 config struct 的某个 section 序列化为 map[string]any
 func getSectionMap(cfg *config.Config, section string) (map[string]any, error) {
 	var sectionVal any
-	switch section {
-	case "startup":
+	switch rpcapi.ConfigSection(section) {
+	case rpcapi.ConfigSectionStartup:
 		sectionVal = cfg.Startup
-	case "schema":
+	case rpcapi.ConfigSectionSchema:
 		sectionVal = cfg.Schema
-	case "hotkeys":
+	case rpcapi.ConfigSectionHotkeys:
 		sectionVal = cfg.Hotkeys
-	case "ui":
+	case rpcapi.ConfigSectionUI:
 		sectionVal = cfg.UI
-	case "toolbar":
+	case rpcapi.ConfigSectionToolbar:
 		sectionVal = cfg.Toolbar
-	case "input":
+	case rpcapi.ConfigSectionInput:
 		sectionVal = cfg.Input
-	case "advanced":
+	case rpcapi.ConfigSectionAdvanced:
 		sectionVal = cfg.Advanced
-	case "stats":
+	case rpcapi.ConfigSectionStats:
 		sectionVal = cfg.Stats
 	default:
 		return nil, fmt.Errorf("unknown config section %q", section)
@@ -288,22 +288,22 @@ func setSectionFromMap(cfg *config.Config, section string, m map[string]any) err
 	if err != nil {
 		return fmt.Errorf("marshal section map %q: %w", section, err)
 	}
-	switch section {
-	case "startup":
+	switch rpcapi.ConfigSection(section) {
+	case rpcapi.ConfigSectionStartup:
 		return json.Unmarshal(data, &cfg.Startup)
-	case "schema":
+	case rpcapi.ConfigSectionSchema:
 		return json.Unmarshal(data, &cfg.Schema)
-	case "hotkeys":
+	case rpcapi.ConfigSectionHotkeys:
 		return json.Unmarshal(data, &cfg.Hotkeys)
-	case "ui":
+	case rpcapi.ConfigSectionUI:
 		return json.Unmarshal(data, &cfg.UI)
-	case "toolbar":
+	case rpcapi.ConfigSectionToolbar:
 		return json.Unmarshal(data, &cfg.Toolbar)
-	case "input":
+	case rpcapi.ConfigSectionInput:
 		return json.Unmarshal(data, &cfg.Input)
-	case "advanced":
+	case rpcapi.ConfigSectionAdvanced:
 		return json.Unmarshal(data, &cfg.Advanced)
-	case "stats":
+	case rpcapi.ConfigSectionStats:
 		return json.Unmarshal(data, &cfg.Stats)
 	default:
 		return fmt.Errorf("unknown config section %q", section)
@@ -365,14 +365,14 @@ func diffSections(oldCfg, newCfg *config.Config) map[string]bool {
 		new  any
 	}
 	pairs := []sectionPair{
-		{"startup", oldCfg.Startup, newCfg.Startup},
-		{"schema", oldCfg.Schema, newCfg.Schema},
-		{"hotkeys", oldCfg.Hotkeys, newCfg.Hotkeys},
-		{"ui", oldCfg.UI, newCfg.UI},
-		{"toolbar", oldCfg.Toolbar, newCfg.Toolbar},
-		{"input", oldCfg.Input, newCfg.Input},
-		{"advanced", oldCfg.Advanced, newCfg.Advanced},
-		{"stats", oldCfg.Stats, newCfg.Stats},
+		{string(rpcapi.ConfigSectionStartup), oldCfg.Startup, newCfg.Startup},
+		{string(rpcapi.ConfigSectionSchema), oldCfg.Schema, newCfg.Schema},
+		{string(rpcapi.ConfigSectionHotkeys), oldCfg.Hotkeys, newCfg.Hotkeys},
+		{string(rpcapi.ConfigSectionUI), oldCfg.UI, newCfg.UI},
+		{string(rpcapi.ConfigSectionToolbar), oldCfg.Toolbar, newCfg.Toolbar},
+		{string(rpcapi.ConfigSectionInput), oldCfg.Input, newCfg.Input},
+		{string(rpcapi.ConfigSectionAdvanced), oldCfg.Advanced, newCfg.Advanced},
+		{string(rpcapi.ConfigSectionStats), oldCfg.Stats, newCfg.Stats},
 	}
 	for _, p := range pairs {
 		oldData, _ := json.Marshal(p.old)

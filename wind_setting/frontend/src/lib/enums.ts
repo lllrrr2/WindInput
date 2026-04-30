@@ -183,3 +183,13 @@ export const ShiftBehavior = {
 } as const;
 export type ShiftBehaviorValue =
   (typeof ShiftBehavior)[keyof typeof ShiftBehavior];
+
+// ============================================================
+// Wails 前端事件名（对应 wind_input/pkg/rpcapi/types.go 中的 WailsEventXxx）
+// ============================================================
+
+export const WailsEvent = {
+  Config: "config-event",
+  Dict: "dict-event",
+} as const;
+export type WailsEventValue = (typeof WailsEvent)[keyof typeof WailsEvent];
