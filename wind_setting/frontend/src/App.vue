@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import {
   EventsOn,
   Quit,
@@ -59,7 +59,13 @@ const loading = ref(true);
 const error = ref("");
 const connected = ref(false);
 const activeTab = ref("general");
+const contentRef = ref<HTMLElement | null>(null);
 const saving = ref(false);
+
+// 切换页面时重置滚动位置
+watch(activeTab, () => {
+  if (contentRef.value) contentRef.value.scrollTop = 0;
+});
 const addWordParams = ref<AddWordParams | null>(null);
 const showAddWordDialog = ref(false);
 const isStandaloneAddWord = ref(false); // 独立加词窗口模式（无设置主界面）
@@ -702,7 +708,7 @@ onMounted(async () => {
         <Button @click="loadData">重试</Button>
       </div>
 
-      <div v-else class="content">
+      <div v-else class="content" ref="contentRef">
         <GeneralPage
           v-show="activeTab === 'general'"
           :formData="formData"

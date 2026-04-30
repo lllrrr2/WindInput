@@ -173,7 +173,9 @@ onUnmounted(() => {
         <div class="setting-info">
           <label class="inline-flex items-center gap-1">
             主题预览
-            <span class="hint-tip" data-tip="预览效果可能和实际有所差异">?</span>
+            <span class="hint-tip" data-tip="预览效果可能和实际有所差异"
+              >?</span
+            >
           </label>
           <p class="setting-hint">候选窗口与工具栏预览</p>
         </div>
@@ -438,14 +440,18 @@ onUnmounted(() => {
           />
         </div>
       </div>
-      <div class="setting-item" v-if="!formData.ui.inline_preedit">
+      <div
+        class="setting-item"
+        :class="{ 'item-disabled': formData.ui.inline_preedit }"
+      >
         <div class="setting-info">
-          <label>编码显示方式</label>
+          <label>非嵌入编码显示方式</label>
           <p class="setting-hint">未开启嵌入编码时，编码在候选窗中的显示位置</p>
         </div>
         <div class="setting-control">
           <Select
             :model-value="formData.ui.preedit_mode"
+            :disabled="formData.ui.inline_preedit"
             @update:model-value="formData.ui.preedit_mode = $event"
           >
             <SelectTrigger class="w-[160px]">

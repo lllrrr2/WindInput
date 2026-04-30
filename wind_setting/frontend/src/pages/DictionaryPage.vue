@@ -250,7 +250,9 @@ const schemaSubTabLabel = computed(() => {
 // 导入导出可见性
 const showImportExport = computed(() => {
   // 所有模式都显示导入/导出按钮（具体逻辑在对话框中处理）
-  return selection.value.mode === "phrases" || selection.value.mode === "schema";
+  return (
+    selection.value.mode === "phrases" || selection.value.mode === "schema"
+  );
 });
 
 // ===== 面板引用 =====
@@ -282,9 +284,7 @@ const allSchemaNames = computed(() => {
 
 // 非混输方案 ID 列表（用于导入目标选择，词库不能导入到混输方案）
 const nonMixedSchemaIds = computed(() =>
-  allSchemaStatuses.value
-    .filter((s) => !s.is_mixed)
-    .map((s) => s.schema_id),
+  allSchemaStatuses.value.filter((s) => !s.is_mixed).map((s) => s.schema_id),
 );
 
 function onLoading(_loading: boolean) {}
@@ -359,6 +359,7 @@ async function reloadCurrentPanel() {
 // ===== 重置/删除 =====
 async function handleResetCurrentSchema() {
   const name = selectedSchemaName.value;
+  await new Promise((r) => setTimeout(r, 100));
   if (
     !(await confirm(
       `确定重置「${name}」的所有用户数据吗？\n\n将清除：用户词库、临时词库、候选调整、词频数据\n\n此操作不可恢复！`,
@@ -376,6 +377,7 @@ async function handleResetCurrentSchema() {
 }
 
 async function handleResetAllSchemas() {
+  await new Promise((r) => setTimeout(r, 100));
   if (
     !(await confirm(
       "确定重置所有方案的用户数据吗？\n\n将清除所有方案的：用户词库、临时词库、候选调整、词频数据\n\n此操作不可恢复！",
@@ -394,6 +396,7 @@ async function handleResetAllSchemas() {
 
 async function handleDeleteOrphanedSchema() {
   const name = selectedSchemaName.value;
+  await new Promise((r) => setTimeout(r, 100));
   if (!(await confirm(`确定删除「${name}」的残留数据吗？\n\n此操作不可恢复！`)))
     return;
   try {
