@@ -196,7 +196,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 				return c.selectPinyinModeCandidate(ops, idx)
 			}
 		}
-		return c.selectPinyinModeWithPunct(ops, 0, key)
+		return c.handlePinyinModeOverflowSelectKey(ops, key)
 
 	// === 拼音分隔符 ===
 	case data.Modifiers&ModShift == 0 && ops.separator(key, data.KeyCode):
@@ -224,7 +224,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 				return c.selectPinyinModeCandidate(ops, idx)
 			}
 		}
-		return c.selectPinyinModeWithPunct(ops, 0, key)
+		return c.handlePinyinModeOverflowSelectKey(ops, key)
 
 	// === 触发键 ===
 	case ops.triggerKey != nil && ops.triggerKey(key, data.KeyCode):
@@ -382,6 +382,33 @@ func (c *Coordinator) selectPinyinModeChar(ops *pinyinModeOps, charIndex int) *b
 		text = transform.ToFullWidth(text)
 	}
 	return ops.exitMode(true, text)
+}
+
+// handlePinyinModeOverflowSelectKey 处理拼音模式下二/三选键候选不足时的行为
+// 复用 overflow_behavior.select_key 配置，与码表主路径保持一致：
+//   - "ignore"（默认）: 仅消费按键
+//   - "commit": 上屏当前高亮候选，不输出触发键
+//   - "commit_and_input": 上屏当前高亮候选并附加触发键（即原拼音模式行为）
+func (c *Coordinator) handlePinyinModeOverflowSelectKey(ops *pinyinModeOps, key string) *bridge.KeyEventResult {
+	behavior := "ignore"
+	if c.config != nil && c.config.Input.OverflowBehavior.SelectKey != "" {
+		behavior = c.config.Input.OverflowBehavior.SelectKey
+	}
+
+	pageStart := (c.currentPage - 1) * c.candidatesPerPage
+	highlightedIdx := pageStart + c.selectedIndex
+	if highlightedIdx >= len(c.candidates) {
+		highlightedIdx = pageStart
+	}
+
+	switch behavior {
+	case "commit":
+		return c.selectPinyinModeCandidate(ops, highlightedIdx)
+	case "commit_and_input":
+		return c.selectPinyinModeWithPunct(ops, c.selectedIndex, key)
+	default: // "ignore"
+		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
+	}
 }
 
 // selectPinyinModeWithPunct 选择首候选并附加标点后退出

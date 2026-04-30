@@ -9,6 +9,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/engine"
 	"github.com/huanfeng/wind_input/internal/engine/codetable"
 	"github.com/huanfeng/wind_input/internal/engine/mixed"
+	"github.com/huanfeng/wind_input/internal/engine/pinyin"
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/internal/transform"
 )
@@ -151,7 +152,8 @@ func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) 
 		c.engineMgr.OnPhraseTerminated()
 	}
 
-	// Check if punct_commit is enabled in wubi/mixed config
+	// Check if punct_commit is enabled
+	// 码表/Mixed 受 PunctCommit 开关控制；全拼引擎沿用传统行为，标点恒触发顶字上屏
 	punctCommitEnabled := false
 	if len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 {
 		if c.engineMgr != nil {
@@ -167,6 +169,8 @@ func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) 
 							punctCommitEnabled = cfg.PunctCommit
 						}
 					}
+				case *pinyin.Engine:
+					punctCommitEnabled = true
 				}
 			}
 		}
