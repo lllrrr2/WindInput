@@ -400,6 +400,7 @@ function Download-Dictionaries {
     Download-RemoteFile "$RimeIceBaseUrl/en_dicts" "en_ext.dict.yaml" $RimeEnglishDir "英文扩展词库, 约50KB"
 
     # 五笔词库 (rime-wubi86-jidian)
+    # 主词库 wubi86_jidian.dict.yaml 下载后由 dictgen 工具重新排序，输出到 data/schemas/wubi86/
     Write-Detail "  五笔词库 (rime-wubi86-jidian):"
     $RimeWubiDir = Join-Path $ScriptDir ".cache\rime-wubi"
     if (-not (Test-Path $RimeWubiDir)) { New-Item -ItemType Directory -Path $RimeWubiDir -Force | Out-Null }
@@ -408,7 +409,7 @@ function Download-Dictionaries {
     Download-RemoteFile $RimeWubiUrl "wubi86_jidian.dict.yaml" $RimeWubiDir "主词库"
     Download-RemoteFile $RimeWubiUrl "wubi86_jidian_extra.dict.yaml" $RimeWubiDir "扩展词库"
     Download-RemoteFile $RimeWubiUrl "wubi86_jidian_extra_district.dict.yaml" $RimeWubiDir "行政区域词库"
-    Download-RemoteFile $RimeWubiUrl "wubi86_jidian_user.dict.yaml" $RimeWubiDir "用户词库模板"
+    # Download-RemoteFile $RimeWubiUrl "wubi86_jidian_user.dict.yaml" $RimeWubiDir "用户词库模板"
     Write-DetailLine
 }
 
@@ -479,10 +480,29 @@ function Prepare-DataFiles {
         Write-Host "[提示] Unigram 语言模型不存在,智能组句功能不可用" -ForegroundColor Cyan
     }
 
+    # 生成五笔主词库（dictgen：按 unigram 词频重新排序，直接输出到 build 目录）
+    $jidianCachePath = Join-Path $ScriptDir ".cache\rime-wubi\wubi86_jidian.dict.yaml"
+    if (Test-Path $jidianCachePath) {
+        Write-Detail "  - 生成五笔主词库（dictgen）..."
+        $dictgenOutput = Join-Path $wubiDir "wubi86_jidian.dict.yaml"
+        Push-Location (Join-Path $ScriptDir "wind_input")
+        try {
+            & go run ./tools/dictgen -config tools/dictgen/dictgen.yaml -output $dictgenOutput
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[警告] dictgen 生成失败，五笔主词库缺失" -ForegroundColor Yellow
+            } else {
+                Write-Detail "  - 五笔主词库生成成功"
+            }
+        } finally {
+            Pop-Location
+        }
+    } else {
+        Write-Host "[警告] 未找到 jidian 原始词库，跳过 dictgen 生成" -ForegroundColor Yellow
+    }
+
     # 复制五笔词库 (rime-wubi86-jidian)
     $RimeWubiDir = Join-Path $ScriptDir ".cache\rime-wubi"
     $wubiFiles = @(
-        "wubi86_jidian.dict.yaml",
         "wubi86_jidian_extra.dict.yaml",
         "wubi86_jidian_extra_district.dict.yaml",
         "wubi86_jidian_user.dict.yaml"
@@ -634,7 +654,7 @@ if ($BuildAll) {
     Write-Host ""
     Write-Host "词库来源:"
     Write-Host "  拼音: 雾凇拼音 rime-ice (https://github.com/iDvel/rime-ice)"
-    Write-Host "  五笔: 极点五笔 rime-wubi86-jidian (https://github.com/KyleBing/rime-wubi86-jidian)"
+    Write-Host "  五笔: 极点五笔 rime-wubi86-jidian (https://github.com/KyleBing/rime-wubi86-jidian)，主词库由 wind_input/tools/dictgen 按 unigram 词频重新排序"
     Write-Host ""
     Write-Host "开发调试:"
     Write-Host "  cd $buildDirLabel; .\$exeLabel -log debug"

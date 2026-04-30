@@ -1,0 +1,55 @@
+# WindInput dictgen 配置文件
+# 路径均相对于本配置文件所在目录解析
+
+# 输入
+jidian_path: ../../../.cache/rime-wubi/wubi86_jidian.dict.yaml
+unigram_path: ../../../.cache/pinyin/unigram.txt
+
+# 自定义补充词表（不存在则跳过）
+custom_words_path: custom_words.txt
+
+# 输出
+# output_path 仅作为独立运行时的默认值；build_all.ps1 通过 -output 参数覆盖，直接输出到 build/data/
+output_path: ../../../.cache/rime-wubi/wubi86_jidian.dict.out.yaml
+output_name: wubi86_jidian
+dropped_path: ../../../.cache/rime-wubi/wubi86_jidian.dict.filtered.tsv
+
+# 生成文件中引用的扩展词库（写入 import_tables 段）
+import_tables:
+  - wubi86_jidian_extra
+  #- wubi86_jidian_extra_district
+
+# 权重归一化参数
+target_median: 1000   # unigram 中位词频映射到此权重
+weight_max: 9999
+weight_min: 1
+char_boost_factor: 1.3  # 单字权重倍增，让高频单字优先于低频词组
+
+# 生僻字保底权重（无 unigram 命中时按原始优先级给底线权重）
+fallback:
+  priority_30: 180
+  priority_20: 150
+  priority_10: 120
+
+# 内置过滤选项
+drop_z_code: true       # 过滤 z 开头的编码（反查占位码）
+drop_dollar: true       # 过滤 $ 开头的词条
+drop_emoji: true        # 过滤含 emoji 的词条
+drop_pure_latin: true   # 过滤纯 ASCII 词条
+drop_pua: false         # 不过滤 PUA 字符（五笔字根字，合法生僻字）
+require_cjk: false      # 不强制要求含 CJK（允许标点等）
+max_code_len: 4         # 最大编码长度
+max_text_len: 16        # 最大词条长度（Unicode 字符数）
+
+# 手动过滤规则
+# code_prefix: 过滤指定前缀的编码（优先级高于 code）
+# code: 过滤精确匹配的编码
+# except_codes: 例外编码列表（在过滤前缀内保留的特定编码）
+# reason: 过滤原因标记（出现在 .filtered.tsv 中）
+drop_rules:
+  - code_prefix: co
+    reason: co_shortcut
+    except_codes:
+      - cogw  # 驜
+      - coqh  # 驎
+      - coaw  # 鸡米花
