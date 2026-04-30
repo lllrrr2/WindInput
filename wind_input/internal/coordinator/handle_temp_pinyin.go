@@ -227,10 +227,8 @@ func (c *Coordinator) exitTempPinyinMode(commit bool, text string) *bridge.KeyEv
 	c.logger.Debug("Exited temp pinyin mode", "commit", commit, "textLen", len(text))
 
 	if commit && len(text) > 0 {
-		// 记录输入历史（含部分上屏累积文本），供重复上屏功能使用
-		if c.inputHistory != nil {
-			c.inputHistory.Record(c.tempPinyinCommitted+text, "", "", 0)
-		}
+		// 输入历史在候选最终化点（selectPinyinModeXxx / handlePunctuation）统一记录,
+		// 此处不再记录, 以避免把拼音码、触发键、标点等非候选文本误记
 		c.tempPinyinCommitted = ""
 		c.recordCommit(text, 0, -1, store.SourceTempPinyin)
 		return &bridge.KeyEventResult{

@@ -82,6 +82,10 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 	// === 回车：上屏编码（缓冲区为空时上屏触发键字符） ===
 	case vk == ipc.VK_RETURN:
 		if len(*ops.buffer) > 0 {
+			// 如有部分上屏累积的真实文本（committed），单独记入历史；buffer 是拼音码本身，不计为候选
+			if c.inputHistory != nil && ops.committed != nil && *ops.committed != "" {
+				c.inputHistory.Record(*ops.committed, "", "", 0)
+			}
 			return ops.exitMode(true, *ops.buffer)
 		}
 		return ops.exitMode(true, ops.prefix())
@@ -279,6 +283,7 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 					punctText = punctResult.Text
 				}
 			}
+			c.recordPinyinModeHistory(ops, text)
 			return ops.exitMode(true, text+punctText)
 		}
 		return ops.exitMode(false, "")
@@ -359,6 +364,7 @@ func (c *Coordinator) selectPinyinModeCandidate(ops *pinyinModeOps, index int) *
 		}
 	}
 
+	c.recordPinyinModeHistory(ops, text)
 	return ops.exitMode(true, text)
 }
 
@@ -381,7 +387,24 @@ func (c *Coordinator) selectPinyinModeChar(ops *pinyinModeOps, charIndex int) *b
 	if c.fullWidth {
 		text = transform.ToFullWidth(text)
 	}
+	c.recordPinyinModeHistory(ops, text)
 	return ops.exitMode(true, text)
+}
+
+// recordPinyinModeHistory 记录拼音模式上屏文本到输入历史（仅候选文本，不含标点）
+// 拼接 ops.committed（部分上屏累积）与本次 text，形成完整候选历史
+func (c *Coordinator) recordPinyinModeHistory(ops *pinyinModeOps, text string) {
+	if c.inputHistory == nil {
+		return
+	}
+	full := text
+	if ops.committed != nil {
+		full = *ops.committed + text
+	}
+	if full == "" {
+		return
+	}
+	c.inputHistory.Record(full, "", "", 0)
 }
 
 // handlePinyinModeOverflowSelectKey 处理拼音模式下二/三选键候选不足时的行为
@@ -412,6 +435,7 @@ func (c *Coordinator) handlePinyinModeOverflowSelectKey(ops *pinyinModeOps, key 
 }
 
 // selectPinyinModeWithPunct 选择首候选并附加标点后退出
+// 输入历史只记录候选部分（不含标点），上屏内容仍含标点
 func (c *Coordinator) selectPinyinModeWithPunct(ops *pinyinModeOps, pageOffset int, key string) *bridge.KeyEventResult {
 	pageStart := (c.currentPage - 1) * c.candidatesPerPage
 	idx := pageStart + pageOffset
@@ -429,6 +453,7 @@ func (c *Coordinator) selectPinyinModeWithPunct(ops *pinyinModeOps, pageOffset i
 			punctText = converted
 		}
 	}
+	c.recordPinyinModeHistory(ops, text)
 	return ops.exitMode(true, text+punctText)
 }
 

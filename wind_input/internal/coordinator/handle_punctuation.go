@@ -205,10 +205,15 @@ func (c *Coordinator) handlePunctuation(r rune, afterDigit bool, prevChar rune) 
 			// Convert punctuation
 			punctText := c.convertPunct(r, afterDigit, prevChar)
 
+			commitText := prefix + text
+
+			// 记录输入历史（仅候选文本，不含标点），需在 clearState 之前
+			if c.inputHistory != nil {
+				c.inputHistory.Record(commitText, "", "", 0)
+			}
+
 			c.clearState()
 			c.hideUI()
-
-			commitText := prefix + text
 
 			// punct_commit 后的标点也支持自动配对
 			if tracker := c.getAutoPairTracker(); tracker != nil {

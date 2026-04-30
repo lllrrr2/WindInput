@@ -83,10 +83,8 @@ func (c *Coordinator) exitQuickInputPinyinMode(commit bool, text string) *bridge
 	c.quickInputPinyinDictSwapped = false
 	c.preeditDisplay = ""
 
-	// 记录输入历史（含部分上屏累积文本），供重复上屏功能使用
-	if commit && len(text) > 0 && c.inputHistory != nil {
-		c.inputHistory.Record(c.quickInputPinyinCommitted+text, "", "", 0)
-	}
+	// 输入历史在候选最终化点（selectPinyinModeXxx）统一记录, 此处不再记录,
+	// 以避免把拼音码、触发键、标点等非候选文本误记
 	c.quickInputPinyinCommitted = ""
 
 	return c.exitQuickInputMode(commit, text)
