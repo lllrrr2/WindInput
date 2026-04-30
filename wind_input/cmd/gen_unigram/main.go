@@ -39,13 +39,17 @@ func main() {
 
 	freqMap := loadFromRime(*rimePath)
 
-	// 按频次排序
+	// 按频次降序排序；频次相同则按词条字典序升序，保证输出稳定
+	// （map 迭代顺序随机；若仅按 freq 排序，相同频次的条目顺序每次运行都会变）
 	words := make([]wordFreq, 0, len(freqMap))
 	for word, freq := range freqMap {
 		words = append(words, wordFreq{word, freq})
 	}
 	sort.Slice(words, func(i, j int) bool {
-		return words[i].freq > words[j].freq
+		if words[i].freq != words[j].freq {
+			return words[i].freq > words[j].freq
+		}
+		return words[i].word < words[j].word
 	})
 
 	// 写入文件
