@@ -7,6 +7,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
 	"github.com/huanfeng/wind_input/pkg/config"
+	"github.com/huanfeng/wind_input/pkg/keys"
 )
 
 // Compiler compiles hotkey configuration into KeyHash lists for C++ side
@@ -111,14 +112,14 @@ func (c *Compiler) parseHotkeyString(hotkeyStr string) (uint32, bool) {
 
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		switch part {
-		case "ctrl":
+		switch keys.Modifier(part) {
+		case keys.ModCtrl:
 			mods |= ipc.ModCtrl
-		case "shift":
+		case keys.ModShift:
 			mods |= ipc.ModShift
-		case "alt":
+		case keys.ModAlt:
 			mods |= ipc.ModAlt
-		case "win":
+		case keys.ModWin:
 			mods |= ipc.ModWin
 		default:
 			// This is the key part
@@ -141,20 +142,24 @@ func (c *Compiler) parseHotkeyString(hotkeyStr string) (uint32, bool) {
 // the generic modifier (ModShift/ModCtrl) AND the specific one (ModLShift/ModRShift).
 // So we need to include both in the hash for proper matching.
 func (c *Compiler) compileToggleModeKey(key string) (uint32, bool) {
-	switch strings.ToLower(key) {
-	case "lshift":
+	k, ok := keys.ParseKey(key)
+	if !ok {
+		return 0, false
+	}
+	switch k {
+	case keys.KeyLShift:
 		// Left Shift: includes both generic Shift and specific LShift
 		return ipc.CalcKeyHash(ipc.ModShift|ipc.ModLShift, ipc.VK_LSHIFT), true
-	case "rshift":
+	case keys.KeyRShift:
 		// Right Shift: includes both generic Shift and specific RShift
 		return ipc.CalcKeyHash(ipc.ModShift|ipc.ModRShift, ipc.VK_RSHIFT), true
-	case "lctrl":
+	case keys.KeyLCtrl:
 		// Left Ctrl: includes both generic Ctrl and specific LCtrl
 		return ipc.CalcKeyHash(ipc.ModCtrl|ipc.ModLCtrl, ipc.VK_LCONTROL), true
-	case "rctrl":
+	case keys.KeyRCtrl:
 		// Right Ctrl: includes both generic Ctrl and specific RCtrl
 		return ipc.CalcKeyHash(ipc.ModCtrl|ipc.ModRCtrl, ipc.VK_RCONTROL), true
-	case "capslock":
+	case keys.KeyCapsLock:
 		// CapsLock uses special marker
 		return ipc.CalcKeyHash(ipc.ModCapsLock, ipc.VK_CAPITAL), true
 	default:
@@ -166,20 +171,20 @@ func (c *Compiler) compileToggleModeKey(key string) (uint32, bool) {
 func (c *Compiler) compileSelectKeyGroup(group string) []uint32 {
 	var hashes []uint32
 
-	switch group {
-	case "semicolon_quote":
+	switch keys.PairGroup(group) {
+	case keys.PairSemicolonQuote:
 		// ; and '
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_1)) // ;
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_7)) // '
-	case "comma_period":
+	case keys.PairCommaPeriod:
 		// , and .
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_COMMA))  // ,
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_PERIOD)) // .
-	case "lrshift":
+	case keys.PairLRShift:
 		// Left/Right Shift as select keys (include both generic and specific modifiers)
 		hashes = append(hashes, ipc.CalcKeyHash(ipc.ModShift|ipc.ModLShift, ipc.VK_LSHIFT))
 		hashes = append(hashes, ipc.CalcKeyHash(ipc.ModShift|ipc.ModRShift, ipc.VK_RSHIFT))
-	case "lrctrl":
+	case keys.PairLRCtrl:
 		// Left/Right Ctrl as select keys (include both generic and specific modifiers)
 		hashes = append(hashes, ipc.CalcKeyHash(ipc.ModCtrl|ipc.ModLCtrl, ipc.VK_LCONTROL))
 		hashes = append(hashes, ipc.CalcKeyHash(ipc.ModCtrl|ipc.ModRCtrl, ipc.VK_RCONTROL))
@@ -192,17 +197,17 @@ func (c *Compiler) compileSelectKeyGroup(group string) []uint32 {
 func (c *Compiler) compilePageKeyGroup(group string) []uint32 {
 	var hashes []uint32
 
-	switch group {
-	case "pageupdown":
+	switch keys.PairGroup(group) {
+	case keys.PairPageUpDown:
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_PRIOR)) // PageUp
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_NEXT))  // PageDown
-	case "minus_equal":
+	case keys.PairMinusEqual:
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_MINUS)) // -
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_PLUS))  // =
-	case "brackets":
+	case keys.PairBrackets:
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_4)) // [
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_6)) // ]
-	case "shift_tab":
+	case keys.PairShiftTab:
 		// Shift+Tab for page up, Tab alone for page down
 		hashes = append(hashes, ipc.CalcKeyHash(ipc.ModShift, ipc.VK_TAB)) // Shift+Tab
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_TAB))            // Tab
@@ -215,163 +220,72 @@ func (c *Compiler) compilePageKeyGroup(group string) []uint32 {
 func (c *Compiler) compileHighlightKeyGroup(group string) []uint32 {
 	var hashes []uint32
 
-	switch group {
-	case "tab":
+	switch keys.PairGroup(group) {
+	case keys.PairTab:
 		// Tab for highlight down, Shift+Tab for highlight up
 		hashes = append(hashes, ipc.CalcKeyHash(ipc.ModShift, ipc.VK_TAB)) // Shift+Tab
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_TAB))            // Tab
-		// "arrows" doesn't need compilation - VK_UP/VK_DOWN are CursorKeys handled by C++
+		// PairArrows doesn't need compilation - VK_UP/VK_DOWN are CursorKeys handled by C++
 	}
 
 	return hashes
 }
 
-// getVirtualKeyCode maps a key name to Windows virtual key code
+// keyToVK 把规范化的 keys.Key 映射到 Windows 虚拟键码。
+// 字母 a-z、数字 0-9、F1-F12 通过 init() 批量注册，其余在 var 中显式声明。
+var keyToVK = map[keys.Key]uint32{
+	keys.KeyGrave:     ipc.VK_OEM_3,
+	keys.KeySpace:     ipc.VK_SPACE,
+	keys.KeyPeriod:    ipc.VK_OEM_PERIOD,
+	keys.KeyComma:     ipc.VK_OEM_COMMA,
+	keys.KeySemicolon: ipc.VK_OEM_1,
+	keys.KeyQuote:     ipc.VK_OEM_7,
+	keys.KeyMinus:     ipc.VK_OEM_MINUS,
+	keys.KeyEqual:     ipc.VK_OEM_PLUS,
+	keys.KeyLBracket:  ipc.VK_OEM_4,
+	keys.KeyRBracket:  ipc.VK_OEM_6,
+	keys.KeyBackslash: ipc.VK_OEM_5,
+	keys.KeySlash:     ipc.VK_OEM_2,
+	keys.KeyTab:       ipc.VK_TAB,
+	keys.KeyEnter:     ipc.VK_RETURN,
+	keys.KeyBackspace: ipc.VK_BACK,
+	keys.KeyEscape:    ipc.VK_ESCAPE,
+	keys.KeyPageUp:    ipc.VK_PRIOR,
+	keys.KeyPageDown:  ipc.VK_NEXT,
+}
+
+func init() {
+	// 字母 a-z -> 0x41-0x5A
+	for c := byte('a'); c <= 'z'; c++ {
+		keyToVK[keys.Key(string(c))] = uint32(c-'a') + 0x41
+	}
+	// 数字 0-9 -> 0x30-0x39
+	for c := byte('0'); c <= '9'; c++ {
+		keyToVK[keys.Key(string(c))] = uint32(c-'0') + 0x30
+	}
+	// F1-F12 -> 0x70-0x7B
+	for i := 1; i <= 12; i++ {
+		keyToVK[keys.Key("f"+itoa(i))] = 0x70 + uint32(i-1)
+	}
+}
+
+// itoa 返回 1..12 的十进制字符串（避免引入 strconv 仅为此用途）。
+func itoa(i int) string {
+	if i < 10 {
+		return string(rune('0' + i))
+	}
+	return "1" + string(rune('0'+i-10))
+}
+
+// getVirtualKeyCode 把任意按键名（含别名/大小写）映射到 Windows 虚拟键码。
+// 入口先经 keys.ParseKey 规范化，再查 keyToVK 表。
 func getVirtualKeyCode(keyName string) (uint32, bool) {
-	switch strings.ToLower(keyName) {
-	// Special keys
-	case "`", "~", "grave":
-		return ipc.VK_OEM_3, true
-	case "space":
-		return ipc.VK_SPACE, true
-	case ".", "period":
-		return ipc.VK_OEM_PERIOD, true
-	case ",", "comma":
-		return ipc.VK_OEM_COMMA, true
-	case ";", "semicolon":
-		return ipc.VK_OEM_1, true
-	case "'", "quote":
-		return ipc.VK_OEM_7, true
-	case "-", "minus":
-		return ipc.VK_OEM_MINUS, true
-	case "=", "equal", "plus":
-		return ipc.VK_OEM_PLUS, true
-	case "[", "lbracket":
-		return ipc.VK_OEM_4, true
-	case "]", "rbracket":
-		return ipc.VK_OEM_6, true
-	case "\\", "backslash":
-		return ipc.VK_OEM_5, true
-	case "/", "slash":
-		return ipc.VK_OEM_2, true
-	case "tab":
-		return ipc.VK_TAB, true
-	case "enter", "return":
-		return ipc.VK_RETURN, true
-	case "backspace", "back":
-		return ipc.VK_BACK, true
-	case "escape", "esc":
-		return ipc.VK_ESCAPE, true
-	case "pageup", "prior":
-		return ipc.VK_PRIOR, true
-	case "pagedown", "next":
-		return ipc.VK_NEXT, true
-
-	// Letters A-Z
-	case "a":
-		return 0x41, true
-	case "b":
-		return 0x42, true
-	case "c":
-		return 0x43, true
-	case "d":
-		return 0x44, true
-	case "e":
-		return 0x45, true
-	case "f":
-		return 0x46, true
-	case "g":
-		return 0x47, true
-	case "h":
-		return 0x48, true
-	case "i":
-		return 0x49, true
-	case "j":
-		return 0x4A, true
-	case "k":
-		return 0x4B, true
-	case "l":
-		return 0x4C, true
-	case "m":
-		return 0x4D, true
-	case "n":
-		return 0x4E, true
-	case "o":
-		return 0x4F, true
-	case "p":
-		return 0x50, true
-	case "q":
-		return 0x51, true
-	case "r":
-		return 0x52, true
-	case "s":
-		return 0x53, true
-	case "t":
-		return 0x54, true
-	case "u":
-		return 0x55, true
-	case "v":
-		return 0x56, true
-	case "w":
-		return 0x57, true
-	case "x":
-		return 0x58, true
-	case "y":
-		return 0x59, true
-	case "z":
-		return 0x5A, true
-
-	// Numbers 0-9
-	case "0":
-		return 0x30, true
-	case "1":
-		return 0x31, true
-	case "2":
-		return 0x32, true
-	case "3":
-		return 0x33, true
-	case "4":
-		return 0x34, true
-	case "5":
-		return 0x35, true
-	case "6":
-		return 0x36, true
-	case "7":
-		return 0x37, true
-	case "8":
-		return 0x38, true
-	case "9":
-		return 0x39, true
-
-	// Function keys
-	case "f1":
-		return 0x70, true
-	case "f2":
-		return 0x71, true
-	case "f3":
-		return 0x72, true
-	case "f4":
-		return 0x73, true
-	case "f5":
-		return 0x74, true
-	case "f6":
-		return 0x75, true
-	case "f7":
-		return 0x76, true
-	case "f8":
-		return 0x77, true
-	case "f9":
-		return 0x78, true
-	case "f10":
-		return 0x79, true
-	case "f11":
-		return 0x7A, true
-	case "f12":
-		return 0x7B, true
-
-	default:
+	k, ok := keys.ParseKey(keyName)
+	if !ok {
 		return 0, false
 	}
+	vk, ok := keyToVK[k]
+	return vk, ok
 }
 
 // GetHotkeyDisplayName returns a human-readable name for a key hash

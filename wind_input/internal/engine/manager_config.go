@@ -12,29 +12,31 @@ import (
 )
 
 // UpdateFilterMode 更新所有引擎的过滤模式
-func (m *Manager) UpdateFilterMode(mode string) {
+func (m *Manager) UpdateFilterMode(mode config.FilterMode) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// 引擎内部 Config.FilterMode 仍是 string（旧字段），在此边界统一转换。
+	modeStr := string(mode)
 	for _, eng := range m.engines {
 		switch e := eng.(type) {
 		case *pinyin.Engine:
 			if cfg := e.GetConfig(); cfg != nil {
-				cfg.FilterMode = mode
+				cfg.FilterMode = modeStr
 			}
 		case *codetable.Engine:
 			if cfg := e.GetConfig(); cfg != nil {
-				cfg.FilterMode = mode
+				cfg.FilterMode = modeStr
 			}
 		case *mixed.Engine:
 			if we := e.GetCodetableEngine(); we != nil {
 				if cfg := we.GetConfig(); cfg != nil {
-					cfg.FilterMode = mode
+					cfg.FilterMode = modeStr
 				}
 			}
 			if pe := e.GetPinyinEngine(); pe != nil {
 				if cfg := pe.GetConfig(); cfg != nil {
-					cfg.FilterMode = mode
+					cfg.FilterMode = modeStr
 				}
 			}
 		}

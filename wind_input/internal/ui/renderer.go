@@ -9,6 +9,7 @@ import (
 	"github.com/gogpu/gg"
 	ggtext "github.com/gogpu/gg/text"
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/theme"
 )
 
@@ -28,31 +29,31 @@ type RenderConfig struct {
 	InputBgColor       color.Color
 	InputTextColor     color.Color
 	BorderColor        color.Color
-	HoverBgColor       color.Color    // Background color for hovered candidate
-	SelectedBgColor    color.Color    // Background color for keyboard-selected candidate
-	Layout             string         // "horizontal" or "vertical"
-	HidePreedit        bool           // Hide preedit area when inline_preedit is enabled
-	IndexStyle         string         // "circle" (default) or "text" (plain text index)
-	AccentBarColor     color.Color    // Left accent bar color, nil = no bar
-	HasAccentBar       bool           // Whether to draw accent bar
-	IndexFontWeight    int            // Index number font weight (100-900), 0 = use global weight
-	ItemPaddingLeft    float64        // Left padding of each candidate item (px), 0 = default 8
-	ItemPaddingRight   float64        // Right padding of each candidate item (px), 0 = default 8
-	WindowPaddingX     float64        // Horizontal window padding (px), 0 = default (use Padding)
-	WindowPaddingY     float64        // Vertical window padding (px), 0 = default (use Padding)
-	IndexMarginRight   float64        // Gap between index and candidate text (scaled px)
-	TextMarginRight    float64        // Gap after candidate text (scaled px)
-	CommentMarginLeft  float64        // Gap between candidate text and comment (scaled px)
-	CommentMarginRight float64        // Gap after comment to item right edge (scaled px)
-	VerticalMinWidth   float64        // Vertical layout minimum width (scaled px), 0 = auto
-	VerticalMaxWidth   float64        // Vertical layout maximum width (scaled px), 0 = default 600
-	HorizontalMinWidth float64        // Horizontal layout minimum width (scaled px), 0 = default 200
-	HorizontalMaxWidth float64        // Horizontal layout maximum width (scaled px), 0 = no limit
-	AlwaysShowPager    bool           // Always show page navigation (disable buttons when not navigable)
-	ShowPageNumber     bool           // Show page number text (e.g. "1/3")
-	TextRenderMode     TextRenderMode // "gdi" (Windows native) or "freetype" (original)
-	ModeLabel          string         // Temporary mode label (e.g. "临时拼音", "快捷输入"), empty = no label
-	PreeditMode        string         // "top" (default) or "embedded" (inline before candidates); only effective when HidePreedit=false
+	HoverBgColor       color.Color            // Background color for hovered candidate
+	SelectedBgColor    color.Color            // Background color for keyboard-selected candidate
+	Layout             config.CandidateLayout // "horizontal" or "vertical"
+	HidePreedit        bool                   // Hide preedit area when inline_preedit is enabled
+	IndexStyle         string                 // "circle" (default) or "text" (plain text index)
+	AccentBarColor     color.Color            // Left accent bar color, nil = no bar
+	HasAccentBar       bool                   // Whether to draw accent bar
+	IndexFontWeight    int                    // Index number font weight (100-900), 0 = use global weight
+	ItemPaddingLeft    float64                // Left padding of each candidate item (px), 0 = default 8
+	ItemPaddingRight   float64                // Right padding of each candidate item (px), 0 = default 8
+	WindowPaddingX     float64                // Horizontal window padding (px), 0 = default (use Padding)
+	WindowPaddingY     float64                // Vertical window padding (px), 0 = default (use Padding)
+	IndexMarginRight   float64                // Gap between index and candidate text (scaled px)
+	TextMarginRight    float64                // Gap after candidate text (scaled px)
+	CommentMarginLeft  float64                // Gap between candidate text and comment (scaled px)
+	CommentMarginRight float64                // Gap after comment to item right edge (scaled px)
+	VerticalMinWidth   float64                // Vertical layout minimum width (scaled px), 0 = auto
+	VerticalMaxWidth   float64                // Vertical layout maximum width (scaled px), 0 = default 600
+	HorizontalMinWidth float64                // Horizontal layout minimum width (scaled px), 0 = default 200
+	HorizontalMaxWidth float64                // Horizontal layout maximum width (scaled px), 0 = no limit
+	AlwaysShowPager    bool                   // Always show page navigation (disable buttons when not navigable)
+	ShowPageNumber     bool                   // Show page number text (e.g. "1/3")
+	TextRenderMode     TextRenderMode         // "gdi" (Windows native) or "freetype" (original)
+	ModeLabel          string                 // Temporary mode label (e.g. "临时拼音", "快捷输入"), empty = no label
+	PreeditMode        config.PreeditMode     // "top" (default) or "embedded" (inline before candidates); only effective when HidePreedit=false
 }
 
 // DefaultRenderConfig returns default rendering configuration with DPI scaling
@@ -75,7 +76,7 @@ func DefaultRenderConfig() RenderConfig {
 		InputTextColor:  color.RGBA{100, 100, 100, 255},
 		BorderColor:     color.RGBA{200, 200, 200, 255},
 		HoverBgColor:    color.RGBA{230, 240, 255, 255}, // Light blue for hover
-		Layout:          "horizontal",                   // Default to horizontal layout
+		Layout:          config.LayoutHorizontal,        // Default to horizontal layout
 		HidePreedit:     false,
 		ShowPageNumber:  true,
 	}
@@ -270,8 +271,8 @@ func (r *Renderer) RefreshDPIScale() {
 }
 
 // SetLayout sets the candidate layout mode
-func (r *Renderer) SetLayout(layout string) {
-	if layout == "horizontal" || layout == "vertical" {
+func (r *Renderer) SetLayout(layout config.CandidateLayout) {
+	if layout.Valid() {
 		r.config.Layout = layout
 	}
 }
@@ -282,7 +283,7 @@ func (r *Renderer) SetHidePreedit(hide bool) {
 }
 
 // SetPreeditMode sets the preedit display mode ("top" or "embedded")
-func (r *Renderer) SetPreeditMode(mode string) {
+func (r *Renderer) SetPreeditMode(mode config.PreeditMode) {
 	r.config.PreeditMode = mode
 }
 
@@ -392,7 +393,7 @@ func (r *Renderer) getModeIndicatorColors() (bgColor, textColor color.Color) {
 }
 
 // GetLayout returns the current layout mode
-func (r *Renderer) GetLayout() string {
+func (r *Renderer) GetLayout() config.CandidateLayout {
 	return r.config.Layout
 }
 

@@ -22,7 +22,7 @@ func (m *Manager) ShowStatusIndicator(state StatusState, x, y int) {
 
 	select {
 	case m.cmdCh <- UICommand{
-		Type:        "status",
+		Type:        cmdStatus,
 		StatusState: &state,
 		X:           x,
 		Y:           y,
@@ -38,7 +38,7 @@ func (m *Manager) ShowStatusIndicator(state StatusState, x, y int) {
 // HideStatusIndicator 隐藏状态提示窗口（异步）
 func (m *Manager) HideStatusIndicator() {
 	select {
-	case m.cmdCh <- UICommand{Type: "status_hide"}:
+	case m.cmdCh <- UICommand{Type: cmdStatusHide}:
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
 		}

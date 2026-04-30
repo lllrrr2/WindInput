@@ -11,6 +11,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
+	"github.com/huanfeng/wind_input/pkg/config"
 )
 
 // pinyinModeOps 封装拼音模式中各实现的差异化行为
@@ -412,7 +413,7 @@ func (c *Coordinator) recordPinyinModeHistory(ops *pinyinModeOps, text string) {
 //   - "commit": 上屏当前高亮候选，不输出触发键
 //   - "commit_and_input": 上屏当前高亮候选并附加触发键（即原拼音模式行为）
 func (c *Coordinator) handlePinyinModeOverflowSelectKey(ops *pinyinModeOps, key string) *bridge.KeyEventResult {
-	behavior := "ignore"
+	behavior := config.OverflowIgnore
 	if c.config != nil && c.config.Input.OverflowBehavior.SelectKey != "" {
 		behavior = c.config.Input.OverflowBehavior.SelectKey
 	}
@@ -424,11 +425,11 @@ func (c *Coordinator) handlePinyinModeOverflowSelectKey(ops *pinyinModeOps, key 
 	}
 
 	switch behavior {
-	case "commit":
+	case config.OverflowCommit:
 		return c.selectPinyinModeCandidate(ops, highlightedIdx)
-	case "commit_and_input":
+	case config.OverflowCommitAndInput:
 		return c.selectPinyinModeWithPunct(ops, c.selectedIndex, key)
-	default: // "ignore"
+	default: // OverflowIgnore
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 	}
 }
@@ -605,19 +606,19 @@ func (c *Coordinator) isPinyinSeparatorForBuffer(buffer string, key string, keyC
 		return false
 	}
 
-	separatorMode := "auto"
+	separatorMode := config.PinyinSeparatorAuto
 	if c.config != nil && c.config.Input.PinyinSeparator != "" {
 		separatorMode = c.config.Input.PinyinSeparator
 	}
 
 	switch separatorMode {
-	case "none":
+	case config.PinyinSeparatorNone:
 		return false
-	case "quote":
+	case config.PinyinSeparatorQuote:
 		return key == "'" || uint32(keyCode) == ipc.VK_OEM_7
-	case "backtick":
+	case config.PinyinSeparatorBacktick:
 		return key == "`" || uint32(keyCode) == ipc.VK_OEM_3
-	case "auto":
+	case config.PinyinSeparatorAuto:
 		isQuote := key == "'" || uint32(keyCode) == ipc.VK_OEM_7
 		isBacktick := key == "`" || uint32(keyCode) == ipc.VK_OEM_3
 		if isQuote {

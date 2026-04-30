@@ -10,6 +10,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
+	"github.com/huanfeng/wind_input/pkg/keys"
 )
 
 // ─── 大小写模式 ───
@@ -634,24 +635,25 @@ func (c *Coordinator) showTempEnglishUI() {
 
 // tempEnglishTriggerPrefix 返回临时英文触发键对应的字符
 func (c *Coordinator) tempEnglishTriggerPrefix() string {
-	switch c.tempEnglishTriggerKey {
-	case "backtick":
+	parsed, _ := keys.ParseKey(c.tempEnglishTriggerKey)
+	switch parsed {
+	case keys.KeyGrave:
 		return "`"
-	case "semicolon":
+	case keys.KeySemicolon:
 		return ";"
-	case "quote":
+	case keys.KeyQuote:
 		return "'"
-	case "comma":
+	case keys.KeyComma:
 		return ","
-	case "period":
+	case keys.KeyPeriod:
 		return "."
-	case "slash":
+	case keys.KeySlash:
 		return "/"
-	case "backslash":
+	case keys.KeyBackslash:
 		return "\\"
-	case "open_bracket":
+	case keys.KeyLBracket:
 		return "["
-	case "close_bracket":
+	case keys.KeyRBracket:
 		return "]"
 	default:
 		return ""
@@ -676,25 +678,27 @@ func (c *Coordinator) tempEnglishCompositionResultWithCaret(cursorPos int) *brid
 
 // isTempEnglishTriggerKeyMatch 仅检查按键是否匹配当前临时英文触发键（不检查状态条件）
 func (c *Coordinator) isTempEnglishTriggerKeyMatch(key string, keyCode int) bool {
-	switch c.tempEnglishTriggerKey {
-	case "backtick":
-		return key == "`" || uint32(keyCode) == ipc.VK_OEM_3
-	case "semicolon":
-		return key == ";" || uint32(keyCode) == ipc.VK_OEM_1
-	case "quote":
-		return key == "'" || uint32(keyCode) == ipc.VK_OEM_7
-	case "comma":
-		return key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA
-	case "period":
-		return key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD
-	case "slash":
-		return key == "/" || uint32(keyCode) == ipc.VK_OEM_2
-	case "backslash":
-		return key == "\\" || uint32(keyCode) == ipc.VK_OEM_5
-	case "open_bracket":
-		return key == "[" || uint32(keyCode) == ipc.VK_OEM_4
-	case "close_bracket":
-		return key == "]" || uint32(keyCode) == ipc.VK_OEM_6
+	parsedKey, _ := keys.ParseKey(key)
+	storedKey, _ := keys.ParseKey(c.tempEnglishTriggerKey)
+	switch storedKey {
+	case keys.KeyGrave:
+		return parsedKey == keys.KeyGrave || uint32(keyCode) == ipc.VK_OEM_3
+	case keys.KeySemicolon:
+		return parsedKey == keys.KeySemicolon || uint32(keyCode) == ipc.VK_OEM_1
+	case keys.KeyQuote:
+		return parsedKey == keys.KeyQuote || uint32(keyCode) == ipc.VK_OEM_7
+	case keys.KeyComma:
+		return parsedKey == keys.KeyComma || uint32(keyCode) == ipc.VK_OEM_COMMA
+	case keys.KeyPeriod:
+		return parsedKey == keys.KeyPeriod || uint32(keyCode) == ipc.VK_OEM_PERIOD
+	case keys.KeySlash:
+		return parsedKey == keys.KeySlash || uint32(keyCode) == ipc.VK_OEM_2
+	case keys.KeyBackslash:
+		return parsedKey == keys.KeyBackslash || uint32(keyCode) == ipc.VK_OEM_5
+	case keys.KeyLBracket:
+		return parsedKey == keys.KeyLBracket || uint32(keyCode) == ipc.VK_OEM_4
+	case keys.KeyRBracket:
+		return parsedKey == keys.KeyRBracket || uint32(keyCode) == ipc.VK_OEM_6
 	}
 	return false
 }
@@ -715,42 +719,44 @@ func (c *Coordinator) getTempEnglishTriggerKey(key string, keyCode int) string {
 		return ""
 	}
 
+	parsedKey, _ := keys.ParseKey(key)
 	for _, tk := range triggerKeys {
-		switch tk {
-		case "backtick":
-			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
+		tkKey, _ := keys.ParseKey(tk)
+		switch tkKey {
+		case keys.KeyGrave:
+			if parsedKey == keys.KeyGrave || uint32(keyCode) == ipc.VK_OEM_3 {
 				return tk
 			}
-		case "semicolon":
-			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
+		case keys.KeySemicolon:
+			if parsedKey == keys.KeySemicolon || uint32(keyCode) == ipc.VK_OEM_1 {
 				return tk
 			}
-		case "quote":
-			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+		case keys.KeyQuote:
+			if parsedKey == keys.KeyQuote || uint32(keyCode) == ipc.VK_OEM_7 {
 				return tk
 			}
-		case "comma":
-			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+		case keys.KeyComma:
+			if parsedKey == keys.KeyComma || uint32(keyCode) == ipc.VK_OEM_COMMA {
 				return tk
 			}
-		case "period":
-			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+		case keys.KeyPeriod:
+			if parsedKey == keys.KeyPeriod || uint32(keyCode) == ipc.VK_OEM_PERIOD {
 				return tk
 			}
-		case "slash":
-			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+		case keys.KeySlash:
+			if parsedKey == keys.KeySlash || uint32(keyCode) == ipc.VK_OEM_2 {
 				return tk
 			}
-		case "backslash":
-			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+		case keys.KeyBackslash:
+			if parsedKey == keys.KeyBackslash || uint32(keyCode) == ipc.VK_OEM_5 {
 				return tk
 			}
-		case "open_bracket":
-			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+		case keys.KeyLBracket:
+			if parsedKey == keys.KeyLBracket || uint32(keyCode) == ipc.VK_OEM_4 {
 				return tk
 			}
-		case "close_bracket":
-			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+		case keys.KeyRBracket:
+			if parsedKey == keys.KeyRBracket || uint32(keyCode) == ipc.VK_OEM_6 {
 				return tk
 			}
 		}

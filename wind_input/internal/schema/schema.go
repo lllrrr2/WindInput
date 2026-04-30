@@ -89,13 +89,13 @@ type CodeTableSpec struct {
 
 // PinyinSpec 拼音引擎配置
 type PinyinSpec struct {
-	Scheme          string         `yaml:"scheme"`
+	Scheme          PinyinScheme   `yaml:"scheme"`
 	Shuangpin       *ShuangpinSpec `yaml:"shuangpin,omitempty"`
 	ShowCodeHint    bool           `yaml:"show_code_hint"`
 	UseSmartCompose bool           `yaml:"use_smart_compose"`
 	CandidateOrder  string         `yaml:"candidate_order"`
 	Fuzzy           *FuzzySpec     `yaml:"fuzzy,omitempty"`
-	DictFormat      string         `yaml:"dict_format"` // 词库格式: "dat"(默认) 或 "wdb"
+	DictFormat      DictFormat     `yaml:"dict_format"` // 词库格式: "dat"(默认) 或 "wdb"
 }
 
 // ShuangpinSpec 双拼子配置
@@ -131,7 +131,7 @@ const (
 type DictSpec struct {
 	ID            string      `yaml:"id"`
 	Path          string      `yaml:"path"`
-	Type          string      `yaml:"type"`
+	Type          DictType    `yaml:"type"`
 	Default       bool        `yaml:"default"`
 	Role          DictRole    `yaml:"role,omitempty"`
 	WeightSpec    *WeightSpec `yaml:"weight_spec,omitempty"`     // 权重归一化参数

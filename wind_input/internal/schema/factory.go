@@ -217,7 +217,7 @@ func createPinyinEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager,
 	spec := s.Engine.Pinyin
 	if spec == nil {
 		spec = &PinyinSpec{
-			Scheme:          "full",
+			Scheme:          PinyinSchemeFull,
 			ShowCodeHint:    true,
 			UseSmartCompose: true,
 		}
@@ -281,7 +281,7 @@ func createPinyinEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager,
 	engine := pinyin.NewEngineWithConfig(compositeDict, config, logger)
 
 	// 配置双拼转换器
-	if spec.Scheme == "shuangpin" && spec.Shuangpin != nil {
+	if spec.Scheme == PinyinSchemeShuangpin && spec.Shuangpin != nil {
 		spScheme := shuangpin.Get(spec.Shuangpin.Layout)
 		if spScheme != nil {
 			engine.SetShuangpinConverter(shuangpin.NewConverter(spScheme))
@@ -346,15 +346,15 @@ func createPinyinEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager,
 
 // --- 词库加载辅助函数（从 manager_init.go 迁移） ---
 
-func loadPinyinDict(pinyinDict *dict.PinyinDict, dictPath string, logger *slog.Logger, normalizer *dict.WeightNormalizer, dictFormat string) error {
+func loadPinyinDict(pinyinDict *dict.PinyinDict, dictPath string, logger *slog.Logger, normalizer *dict.WeightNormalizer, dictFormat DictFormat) error {
 	if dictFormat == "" {
-		dictFormat = "dat"
+		dictFormat = DictFormatDAT
 	}
 	dictDir := filepath.Dir(dictPath)
 	srcPaths := dictcache.RimePinyinSourcePaths(dictPath)
 
 	// DAT 模式
-	if dictFormat == "dat" {
+	if dictFormat == DictFormatDAT {
 		wdatInDir := filepath.Join(dictDir, "pinyin.wdat")
 		if !dictcache.NeedsRegenerate(srcPaths, wdatInDir) {
 			if err := pinyinDict.LoadDAT(wdatInDir); err == nil {
@@ -458,11 +458,11 @@ func loadUnigramModel(engine *pinyin.Engine, txtPath string, logger *slog.Logger
 	return fmt.Errorf("Unigram 模型 wdb 不可用，智能组句功能将不可用")
 }
 
-func loadCodetable(engine *codetable.Engine, srcPath, dictType, schemaID string, logger *slog.Logger, normalizer *dict.WeightNormalizer) error {
+func loadCodetable(engine *codetable.Engine, srcPath string, dictType DictType, schemaID string, logger *slog.Logger, normalizer *dict.WeightNormalizer) error {
 	var srcDir string
 	var srcPaths []string
 
-	if dictType == "rime_codetable" {
+	if dictType == DictTypeRimeCodetable {
 		// srcPath 是主词库 .dict.yaml 文件路径，自动发现关联词库
 		srcDir = filepath.Dir(srcPath)
 		srcPaths = dictcache.RimeCodetableSourcePaths(srcPath)
@@ -482,7 +482,7 @@ func loadCodetable(engine *codetable.Engine, srcPath, dictType, schemaID string,
 	wdbCachePath := dictcache.CachePath(schemaID)
 	if len(srcPaths) == 0 || dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
 		var convertErr error
-		if dictType == "rime_codetable" {
+		if dictType == DictTypeRimeCodetable {
 			convertErr = dictcache.ConvertRimeCodetableToWdb(srcPath, wdbCachePath, logger, normalizer)
 		} else {
 			convertErr = dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath, logger)
@@ -497,7 +497,7 @@ func loadCodetable(engine *codetable.Engine, srcPath, dictType, schemaID string,
 		logger.Warn("缓存码表损坏，删除后重新生成", "path", wdbCachePath, "error", err)
 		os.Remove(wdbCachePath)
 		var convertErr error
-		if dictType == "rime_codetable" {
+		if dictType == DictTypeRimeCodetable {
 			convertErr = dictcache.ConvertRimeCodetableToWdb(srcPath, wdbCachePath, logger, normalizer)
 		} else {
 			convertErr = dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath, logger)
@@ -538,15 +538,15 @@ func loadCodetableFromWdb(engine *codetable.Engine, wdbPath string) error {
 }
 
 // LoadCodetableForPinyinEngine 为拼音引擎加载码表反查（导出供热更新使用）
-func LoadCodetableForPinyinEngine(engine *pinyin.Engine, srcPath, dictType, schemaID string, logger *slog.Logger) error {
+func LoadCodetableForPinyinEngine(engine *pinyin.Engine, srcPath string, dictType DictType, schemaID string, logger *slog.Logger) error {
 	return loadCodetableForPinyin(engine, srcPath, dictType, schemaID, logger)
 }
 
-func loadCodetableForPinyin(engine *pinyin.Engine, srcPath, dictType, schemaID string, logger *slog.Logger) error {
+func loadCodetableForPinyin(engine *pinyin.Engine, srcPath string, dictType DictType, schemaID string, logger *slog.Logger) error {
 	var srcDir string
 	var srcPaths []string
 
-	if dictType == "rime_codetable" {
+	if dictType == DictTypeRimeCodetable {
 		srcDir = filepath.Dir(srcPath)
 		srcPaths = dictcache.RimeCodetableSourcePaths(srcPath)
 	} else {
@@ -566,7 +566,7 @@ func loadCodetableForPinyin(engine *pinyin.Engine, srcPath, dictType, schemaID s
 	wdbCachePath := dictcache.CachePath(reverseName)
 	if len(srcPaths) == 0 || dictcache.NeedsRegenerate(srcPaths, wdbCachePath) {
 		var convertErr error
-		if dictType == "rime_codetable" {
+		if dictType == DictTypeRimeCodetable {
 			convertErr = dictcache.ConvertRimeCodetableToWdb(srcPath, wdbCachePath, logger)
 		} else {
 			convertErr = dictcache.ConvertCodeTableToWdb(srcPath, wdbCachePath, logger)
@@ -628,7 +628,7 @@ func preGeneratePinyinWdb(s *Schema, exeDir, dataDir string, logger *slog.Logger
 	var pinyinDictPath string
 	var norm *dict.WeightNormalizer
 	for _, d := range s.Dicts {
-		if d.Type == "rime_pinyin" {
+		if d.Type == DictTypeRimePinyin {
 			pinyinDictPath = resolvePath(exeDir, dataDir, d.Path)
 			if d.WeightSpec != nil {
 				norm = d.WeightSpec.NewWeightNormalizer()
@@ -886,7 +886,7 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 	}
 	if pinyinSpec == nil {
 		pinyinSpec = &PinyinSpec{
-			Scheme:          "full",
+			Scheme:          PinyinSchemeFull,
 			ShowCodeHint:    true,
 			UseSmartCompose: true,
 		}
@@ -925,14 +925,14 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 	pinyinDict := dict.NewPinyinDict(logger)
 	var pinyinDictSpec *DictSpec
 	for i := range s.Dicts {
-		if s.Dicts[i].Type == "rime_pinyin" {
+		if s.Dicts[i].Type == DictTypeRimePinyin {
 			pinyinDictSpec = &s.Dicts[i]
 			break
 		}
 	}
 	if pinyinDictSpec == nil && secondarySchema != nil {
 		for i := range secondarySchema.Dicts {
-			if secondarySchema.Dicts[i].Type == "rime_pinyin" {
+			if secondarySchema.Dicts[i].Type == DictTypeRimePinyin {
 				pinyinDictSpec = &secondarySchema.Dicts[i]
 				break
 			}
@@ -966,7 +966,7 @@ func createMixedEngine(s *Schema, exeDir, dataDir string, dm *dict.DictManager, 
 	pinyinEngine := pinyin.NewEngineWithConfig(pinyinCompositeDict, pinyinConfig, logger)
 
 	// 混输模式下的双拼转换器
-	if pinyinSpec.Scheme == "shuangpin" && pinyinSpec.Shuangpin != nil {
+	if pinyinSpec.Scheme == PinyinSchemeShuangpin && pinyinSpec.Shuangpin != nil {
 		spScheme := shuangpin.Get(pinyinSpec.Shuangpin.Layout)
 		if spScheme != nil {
 			pinyinEngine.SetShuangpinConverter(shuangpin.NewConverter(spScheme))

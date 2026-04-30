@@ -1,7 +1,11 @@
 // config_hotkey.go — 快捷键匹配与验证
 package config
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/huanfeng/wind_input/pkg/keys"
+)
 
 // UpdateSchemaActive 更新活跃方案 ID 到配置文件
 func UpdateSchemaActive(schemaID string) error {
@@ -25,146 +29,99 @@ func (c *Config) IsToggleModeKey(key string) bool {
 	return false
 }
 
-// IsSelectKey2 检查按键是否为第2候选键
-func (c *Config) IsSelectKey2(key string) bool {
-	for _, group := range c.Input.SelectKeyGroups {
-		switch group {
-		case "semicolon_quote":
-			if key == "semicolon" {
-				return true
-			}
-		case "comma_period":
-			if key == "comma" {
-				return true
-			}
-		case "lrshift":
-			if key == "lshift" {
-				return true
-			}
-		case "lrctrl":
-			if key == "lctrl" {
-				return true
-			}
+// matchPairFirst 检查 key 是否为某个 group（若属于已配置的选择/翻页/以词定字等列表）的"前键"。
+func matchPairFirst(groups []string, allowed map[keys.PairGroup]struct{}, key string) bool {
+	k := keys.Key(key)
+	for _, raw := range groups {
+		g := keys.PairGroup(raw)
+		if _, ok := allowed[g]; !ok {
+			continue
+		}
+		if first, _, ok := g.Keys(); ok && first == k {
+			return true
 		}
 	}
 	return false
+}
+
+// matchPairSecond 检查 key 是否为某个 group 的"后键"。
+func matchPairSecond(groups []string, allowed map[keys.PairGroup]struct{}, key string) bool {
+	k := keys.Key(key)
+	for _, raw := range groups {
+		g := keys.PairGroup(raw)
+		if _, ok := allowed[g]; !ok {
+			continue
+		}
+		if _, second, ok := g.Keys(); ok && second == k {
+			return true
+		}
+	}
+	return false
+}
+
+// 各 API 接受的 PairGroup 集合（保持原行为：候选选择不接受 brackets/minus_equal/...
+// 翻页不接受 lrshift/lrctrl/...，与原 switch 列表精确一致）。
+var (
+	selectKeyAllowedGroups = map[keys.PairGroup]struct{}{
+		keys.PairSemicolonQuote: {},
+		keys.PairCommaPeriod:    {},
+		keys.PairLRShift:        {},
+		keys.PairLRCtrl:         {},
+	}
+	pageKeyAllowedGroups = map[keys.PairGroup]struct{}{
+		keys.PairPageUpDown: {},
+		keys.PairMinusEqual: {},
+		keys.PairBrackets:   {},
+		keys.PairShiftTab:   {},
+	}
+	selectCharAllowedGroups = map[keys.PairGroup]struct{}{
+		keys.PairCommaPeriod: {},
+		keys.PairMinusEqual:  {},
+		keys.PairBrackets:    {},
+	}
+)
+
+// IsSelectKey2 检查按键是否为第2候选键
+func (c *Config) IsSelectKey2(key string) bool {
+	return matchPairFirst(c.Input.SelectKeyGroups, selectKeyAllowedGroups, key)
 }
 
 // IsSelectKey3 检查按键是否为第3候选键
 func (c *Config) IsSelectKey3(key string) bool {
-	for _, group := range c.Input.SelectKeyGroups {
-		switch group {
-		case "semicolon_quote":
-			if key == "quote" {
-				return true
-			}
-		case "comma_period":
-			if key == "period" {
-				return true
-			}
-		case "lrshift":
-			if key == "rshift" {
-				return true
-			}
-		case "lrctrl":
-			if key == "rctrl" {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairSecond(c.Input.SelectKeyGroups, selectKeyAllowedGroups, key)
 }
 
 // IsPageUpKey 检查按键是否为向上翻页键
 func (c *Config) IsPageUpKey(key string) bool {
-	for _, pk := range c.Input.PageKeys {
-		switch pk {
-		case "pageupdown":
-			if key == "pageup" {
-				return true
-			}
-		case "minus_equal":
-			if key == "minus" {
-				return true
-			}
-		case "brackets":
-			if key == "lbracket" {
-				return true
-			}
-		case "shift_tab":
-			if key == "shift_tab" {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairFirst(c.Input.PageKeys, pageKeyAllowedGroups, key)
 }
 
 // IsPageDownKey 检查按键是否为向下翻页键
 func (c *Config) IsPageDownKey(key string) bool {
-	for _, pk := range c.Input.PageKeys {
-		switch pk {
-		case "pageupdown":
-			if key == "pagedown" {
-				return true
-			}
-		case "minus_equal":
-			if key == "equal" {
-				return true
-			}
-		case "brackets":
-			if key == "rbracket" {
-				return true
-			}
-		case "shift_tab":
-			if key == "tab" {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairSecond(c.Input.PageKeys, pageKeyAllowedGroups, key)
 }
 
 // IsSelectCharFirstKey 检查按键是否为以词定字第1字按键
 func (c *Config) IsSelectCharFirstKey(key string) bool {
-	for _, group := range c.Input.SelectCharKeys {
-		switch group {
-		case "comma_period":
-			if key == "comma" {
-				return true
-			}
-		case "minus_equal":
-			if key == "minus" {
-				return true
-			}
-		case "brackets":
-			if key == "lbracket" {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairFirst(c.Input.SelectCharKeys, selectCharAllowedGroups, key)
 }
 
 // IsSelectCharSecondKey 检查按键是否为以词定字第2字按键
 func (c *Config) IsSelectCharSecondKey(key string) bool {
-	for _, group := range c.Input.SelectCharKeys {
-		switch group {
-		case "comma_period":
-			if key == "period" {
-				return true
-			}
-		case "minus_equal":
-			if key == "equal" {
-				return true
-			}
-		case "brackets":
-			if key == "rbracket" {
-				return true
-			}
-		}
+	return matchPairSecond(c.Input.SelectCharKeys, selectCharAllowedGroups, key)
+}
+
+// pairGroupRawKeys 返回 PairGroup 的两键字符串名（用于冲突检测里的字符串集合）。
+// 仅当 group 在 allowed 集合内才返回 keys，否则返回 nil。
+func pairGroupRawKeys(g keys.PairGroup, allowed map[keys.PairGroup]struct{}) []string {
+	if _, ok := allowed[g]; !ok {
+		return nil
 	}
-	return false
+	first, second, ok := g.Keys()
+	if !ok {
+		return nil
+	}
+	return []string{string(first), string(second)}
 }
 
 // ValidateHotkeyConflicts 检查快捷键冲突
@@ -181,18 +138,7 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 	}
 
 	for _, group := range c.Input.SelectKeyGroups {
-		var keys []string
-		switch group {
-		case "semicolon_quote":
-			keys = []string{"semicolon", "quote"}
-		case "comma_period":
-			keys = []string{"comma", "period"}
-		case "lrshift":
-			keys = []string{"lshift", "rshift"}
-		case "lrctrl":
-			keys = []string{"lctrl", "rctrl"}
-		}
-		for _, key := range keys {
+		for _, key := range pairGroupRawKeys(keys.PairGroup(group), selectKeyAllowedGroups) {
 			if existing, ok := usedKeys[key]; ok {
 				conflicts = append(conflicts, fmt.Sprintf("按键 %s 同时用于: %s 和 候选选择", key, existing))
 			} else {
@@ -202,18 +148,7 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 	}
 
 	for _, pk := range c.Input.PageKeys {
-		var keys []string
-		switch pk {
-		case "pageupdown":
-			keys = []string{"pageup", "pagedown"}
-		case "minus_equal":
-			keys = []string{"minus", "equal"}
-		case "brackets":
-			keys = []string{"lbracket", "rbracket"}
-		case "shift_tab":
-			keys = []string{"shift_tab", "tab"}
-		}
-		for _, key := range keys {
+		for _, key := range pairGroupRawKeys(keys.PairGroup(pk), pageKeyAllowedGroups) {
 			if existing, ok := usedKeys[key]; ok {
 				conflicts = append(conflicts, fmt.Sprintf("按键 %s 同时用于: %s 和 翻页", key, existing))
 			} else {
@@ -222,13 +157,16 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 		}
 	}
 
+	// HighlightKeys: 仅 "tab" 进入冲突表（"arrows" 不冲突 —— 沿用原逻辑）
 	for _, hk := range c.Input.HighlightKeys {
-		var keys []string
-		switch hk {
-		case "tab":
-			keys = []string{"shift_tab", "tab"}
+		if keys.PairGroup(hk) != keys.PairTab {
+			continue
 		}
-		for _, key := range keys {
+		first, second, ok := keys.PairTab.Keys()
+		if !ok {
+			continue
+		}
+		for _, key := range []string{string(first), string(second)} {
 			if existing, ok := usedKeys[key]; ok {
 				conflicts = append(conflicts, fmt.Sprintf("按键 %s 同时用于: %s 和 移动高亮", key, existing))
 			} else {
@@ -238,16 +176,7 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 	}
 
 	for _, sc := range c.Input.SelectCharKeys {
-		var keys []string
-		switch sc {
-		case "comma_period":
-			keys = []string{"comma", "period"}
-		case "minus_equal":
-			keys = []string{"minus", "equal"}
-		case "brackets":
-			keys = []string{"lbracket", "rbracket"}
-		}
-		for _, key := range keys {
+		for _, key := range pairGroupRawKeys(keys.PairGroup(sc), selectCharAllowedGroups) {
 			if existing, ok := usedKeys[key]; ok {
 				conflicts = append(conflicts, fmt.Sprintf("按键 %s 同时用于: %s 和 以词定字", key, existing))
 			} else {

@@ -145,15 +145,15 @@ type addWordState struct {
 
 // quickInputState 快捷输入模式状态
 type quickInputState struct {
-	quickInputMode              bool   // 是否处于快捷输入模式
-	quickInputTriggerKey        string // 当前使用的触发键类型（如 "semicolon"）
-	quickInputBuffer            string // 触发键后的输入缓冲区（不含触发键本身）
-	quickInputPinyinMode        bool   // 是否处于快捷输入的临时拼音子模式
-	quickInputPinyinBuffer      string // 快捷输入临时拼音缓冲区
-	quickInputPinyinCursorPos   int    // 快捷输入拼音光标位置
-	quickInputPinyinCommitted   string // 快捷输入拼音部分上屏累积文本
-	quickInputPinyinDictSwapped bool   // 是否已交换词库层（仅码表引擎下为 true）
-	savedLayout                 string // 进入快捷输入前的布局（用于退出时恢复）
+	quickInputMode              bool                   // 是否处于快捷输入模式
+	quickInputTriggerKey        string                 // 当前使用的触发键类型（如 "semicolon"）
+	quickInputBuffer            string                 // 触发键后的输入缓冲区（不含触发键本身）
+	quickInputPinyinMode        bool                   // 是否处于快捷输入的临时拼音子模式
+	quickInputPinyinBuffer      string                 // 快捷输入临时拼音缓冲区
+	quickInputPinyinCursorPos   int                    // 快捷输入拼音光标位置
+	quickInputPinyinCommitted   string                 // 快捷输入拼音部分上屏累积文本
+	quickInputPinyinDictSwapped bool                   // 是否已交换词库层（仅码表引擎下为 true）
+	savedLayout                 config.CandidateLayout // 进入快捷输入前的布局（用于退出时恢复）
 }
 
 // Coordinator orchestrates between C++ Bridge, Engine, and native UI
@@ -528,7 +528,7 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		c.uiManager.SetTooltipDelay(cfg.UI.TooltipDelay)
 		// 设置文本渲染模式
 		if cfg.UI.TextRenderMode != "" {
-			c.uiManager.SetTextRenderMode(cfg.UI.TextRenderMode)
+			c.uiManager.SetTextRenderMode(string(cfg.UI.TextRenderMode))
 		}
 		// 设置候选框GDI字体参数
 		if cfg.UI.GDIFontWeight > 0 || cfg.UI.GDIFontScale > 0 {
@@ -557,15 +557,15 @@ func (c *Coordinator) initThemeMode(cfg *config.Config) {
 
 	themeStyle := cfg.UI.ThemeStyle
 	if themeStyle == "" {
-		themeStyle = theme.ThemeStyleSystem
+		themeStyle = config.ThemeStyleSystem
 	}
 
 	// Determine initial dark mode state
 	isDark := false
 	switch themeStyle {
-	case theme.ThemeStyleDark:
+	case config.ThemeStyleDark:
 		isDark = true
-	case theme.ThemeStyleLight:
+	case config.ThemeStyleLight:
 		isDark = false
 	default: // system
 		isDark = theme.IsSystemDarkMode()

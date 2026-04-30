@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/theme"
 	"golang.org/x/sys/windows"
 )
@@ -47,13 +48,13 @@ type UnifiedMenuState struct {
 	FullWidth         bool
 	ChinesePunct      bool
 	ToolbarVisible    bool
-	Schemas           []SchemaMenuItem // Available schemas in order
-	CurrentSchemaID   string           // Current active schema ID
-	CurrentFilterMode string           // Current filter mode: "smart", "general", "gb18030"
+	Schemas           []SchemaMenuItem  // Available schemas in order
+	CurrentSchemaID   string            // Current active schema ID
+	CurrentFilterMode config.FilterMode // Current filter mode
 	Themes            []ThemeMenuItem
-	CurrentThemeID    string // Current theme ID for checked state
-	CurrentThemeStyle string // Current theme style: "system", "light", "dark"
-	Version           string // App version for display in "About" menu item
+	CurrentThemeID    string            // Current theme ID for checked state
+	CurrentThemeStyle config.ThemeStyle // Current theme style
+	Version           string            // App version for display in "About" menu item
 }
 
 func aboutText(version string) string {
@@ -86,12 +87,12 @@ func BuildUnifiedMenuItems(state UnifiedMenuState) []MenuItem {
 	// Build filter mode submenu
 	filterMode := state.CurrentFilterMode
 	if filterMode == "" {
-		filterMode = "smart"
+		filterMode = config.FilterSmart
 	}
 	filterChildren := []MenuItem{
-		{ID: UnifiedMenuFilterModeBase, Text: "智能模式", Checked: filterMode == "smart"},
-		{ID: UnifiedMenuFilterModeBase + 1, Text: "常用字", Checked: filterMode == "general"},
-		{ID: UnifiedMenuFilterModeBase + 2, Text: "全部字符", Checked: filterMode == "gb18030"},
+		{ID: UnifiedMenuFilterModeBase, Text: "智能模式", Checked: filterMode == config.FilterSmart},
+		{ID: UnifiedMenuFilterModeBase + 1, Text: "常用字", Checked: filterMode == config.FilterGeneral},
+		{ID: UnifiedMenuFilterModeBase + 2, Text: "全部字符", Checked: filterMode == config.FilterGB18030},
 	}
 
 	items := []MenuItem{
@@ -116,13 +117,13 @@ func BuildUnifiedMenuItems(state UnifiedMenuState) []MenuItem {
 		// Add separator and theme style options
 		themeStyle := state.CurrentThemeStyle
 		if themeStyle == "" {
-			themeStyle = "system"
+			themeStyle = config.ThemeStyleSystem
 		}
 		themeChildren = append(themeChildren, MenuItem{Separator: true})
 		themeChildren = append(themeChildren,
-			MenuItem{ID: UnifiedMenuThemeStyleBase, Text: "跟随系统", Checked: themeStyle == "system"},
-			MenuItem{ID: UnifiedMenuThemeStyleBase + 1, Text: "亮色", Checked: themeStyle == "light"},
-			MenuItem{ID: UnifiedMenuThemeStyleBase + 2, Text: "暗色", Checked: themeStyle == "dark"},
+			MenuItem{ID: UnifiedMenuThemeStyleBase, Text: "跟随系统", Checked: themeStyle == config.ThemeStyleSystem},
+			MenuItem{ID: UnifiedMenuThemeStyleBase + 1, Text: "亮色", Checked: themeStyle == config.ThemeStyleLight},
+			MenuItem{ID: UnifiedMenuThemeStyleBase + 2, Text: "暗色", Checked: themeStyle == config.ThemeStyleDark},
 		)
 		items = append(items, MenuItem{Text: "主题", Children: themeChildren})
 	}
@@ -163,7 +164,7 @@ func BuildUnifiedMenuItems(state UnifiedMenuState) []MenuItem {
 
 // UICommand represents a command to the UI thread
 type UICommand struct {
-	Type                string // "show", "hide", "mode", "status", "status_hide", "toolbar_show", "toolbar_hide", "toolbar_update", "settings", "hide_menu", "show_unified_menu"
+	Type                managerCommand // 见 events.go 中的 cmd* 常量
 	Candidates          []Candidate
 	Input               string
 	CursorPos           int // Cursor position within Input (display position, for rendering cursor indicator)
@@ -442,7 +443,7 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 	}()
 
 	switch cmd.Type {
-	case "show":
+	case cmdShow:
 		// Check if this show command is from the current input session
 		// If the session has been incremented (by a hide command), ignore stale show commands
 		m.mu.Lock()
@@ -455,37 +456,37 @@ func (m *Manager) processOneCommand(cmd UICommand) {
 		}
 		m.currentInputSession = cmd.InputSession
 		m.doShowCandidates(cmd.Candidates, cmd.Input, cmd.CursorPos, cmd.X, cmd.Y, cmd.CaretHeight, cmd.Page, cmd.TotalPages, cmd.TotalCandidateCount, cmd.CandidatesPerPage, cmd.SelectedIndex)
-	case "hide":
+	case cmdHide:
 		// Update current session to the hide command's session
 		m.currentInputSession = cmd.InputSession
 		m.doHide()
-	case "mode":
+	case cmdMode:
 		m.doShowModeIndicator(cmd.ModeText, cmd.X, cmd.Y)
-	case "status":
+	case cmdStatus:
 		if cmd.StatusState != nil {
 			m.doShowStatus(*cmd.StatusState, cmd.X, cmd.Y)
 		}
-	case "status_hide":
+	case cmdStatusHide:
 		m.doHideStatus()
-	case "toolbar_show":
+	case cmdToolbarShow:
 		m.doShowToolbar(cmd)
-	case "toolbar_hide":
+	case cmdToolbarHide:
 		m.doHideToolbar()
-	case "toolbar_update":
+	case cmdToolbarUpdate:
 		m.doUpdateToolbar(cmd.ToolbarState)
-	case "settings":
+	case cmdSettings:
 		m.doOpenSettings(cmd.SettingsPage)
-	case "hide_menu":
+	case cmdHideMenu:
 		m.doHideCandidateMenu()
-	case "hide_toolbar_menu":
+	case cmdHideToolbarMenu:
 		m.doHideToolbarMenu()
-	case "show_unified_menu":
+	case cmdShowUnifiedMenu:
 		m.doShowUnifiedMenu(cmd)
-	case "dpi_changed":
+	case cmdDPIChanged:
 		m.doDPIChanged()
-	case "register_hotkeys":
+	case cmdRegisterHotkeys:
 		m.globalHotkeys.register(cmd.HotkeyEntries)
-	case "unregister_hotkeys":
+	case cmdUnregisterHotkeys:
 		m.globalHotkeys.unregister()
 	}
 }
@@ -543,7 +544,7 @@ func (m *Manager) SetGlobalHotkeyCallback(cb func(command string)) {
 // Must be called from coordinator; actual registration happens on the UI thread.
 func (m *Manager) RegisterGlobalHotkeys(entries []GlobalHotkeyEntry) {
 	select {
-	case m.cmdCh <- UICommand{Type: "register_hotkeys", HotkeyEntries: entries}:
+	case m.cmdCh <- UICommand{Type: cmdRegisterHotkeys, HotkeyEntries: entries}:
 		SetEvent(m.cmdEvent)
 	default:
 		m.logger.Warn("Command channel full, dropping register_hotkeys")
@@ -553,7 +554,7 @@ func (m *Manager) RegisterGlobalHotkeys(entries []GlobalHotkeyEntry) {
 // UnregisterGlobalHotkeys unregisters all previously registered global hotkeys.
 func (m *Manager) UnregisterGlobalHotkeys() {
 	select {
-	case m.cmdCh <- UICommand{Type: "unregister_hotkeys"}:
+	case m.cmdCh <- UICommand{Type: cmdUnregisterHotkeys}:
 		SetEvent(m.cmdEvent)
 	default:
 		m.logger.Warn("Command channel full, dropping unregister_hotkeys")

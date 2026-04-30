@@ -129,28 +129,28 @@ type StatusIndicatorConfig struct {
 
 // UIConfig contains UI settings
 type UIConfig struct {
-	FontSize                float64 `yaml:"font_size" json:"font_size"`
-	CandidatesPerPage       int     `yaml:"candidates_per_page" json:"candidates_per_page"`
-	FontFamily              string  `yaml:"font_family" json:"font_family"`
-	FontPath                string  `yaml:"font_path" json:"font_path"`
-	InlinePreedit           bool    `yaml:"inline_preedit" json:"inline_preedit"`
-	HideCandidateWindow     bool    `yaml:"hide_candidate_window" json:"hide_candidate_window"`
-	CandidateLayout         string  `yaml:"candidate_layout" json:"candidate_layout"`                   // 候选布局：horizontal 或 vertical
-	StatusIndicatorDuration int     `yaml:"status_indicator_duration" json:"status_indicator_duration"` // 状态提示显示时长（毫秒）
-	StatusIndicatorOffsetX  int     `yaml:"status_indicator_offset_x" json:"status_indicator_offset_x"` // 状态提示 X 偏移量
-	StatusIndicatorOffsetY  int     `yaml:"status_indicator_offset_y" json:"status_indicator_offset_y"` // 状态提示 Y 偏移量
-	Theme                   string  `yaml:"theme" json:"theme"`                                         // 主题名称：default, msime 或自定义主题名
-	ThemeStyle              string  `yaml:"theme_style" json:"theme_style"`                             // 主题风格：system(跟随系统), light(亮色), dark(暗色)
-	TooltipDelay            int     `yaml:"tooltip_delay" json:"tooltip_delay"`                         // 编码提示延迟显示时间（毫秒），0 表示立即显示
+	FontSize                float64         `yaml:"font_size" json:"font_size"`
+	CandidatesPerPage       int             `yaml:"candidates_per_page" json:"candidates_per_page"`
+	FontFamily              string          `yaml:"font_family" json:"font_family"`
+	FontPath                string          `yaml:"font_path" json:"font_path"`
+	InlinePreedit           bool            `yaml:"inline_preedit" json:"inline_preedit"`
+	HideCandidateWindow     bool            `yaml:"hide_candidate_window" json:"hide_candidate_window"`
+	CandidateLayout         CandidateLayout `yaml:"candidate_layout" json:"candidate_layout"`                   // 候选布局：horizontal 或 vertical
+	StatusIndicatorDuration int             `yaml:"status_indicator_duration" json:"status_indicator_duration"` // 状态提示显示时长（毫秒）
+	StatusIndicatorOffsetX  int             `yaml:"status_indicator_offset_x" json:"status_indicator_offset_x"` // 状态提示 X 偏移量
+	StatusIndicatorOffsetY  int             `yaml:"status_indicator_offset_y" json:"status_indicator_offset_y"` // 状态提示 Y 偏移量
+	Theme                   string          `yaml:"theme" json:"theme"`                                         // 主题名称：default, msime 或自定义主题名
+	ThemeStyle              ThemeStyle      `yaml:"theme_style" json:"theme_style"`                             // 主题风格：system(跟随系统), light(亮色), dark(暗色)
+	TooltipDelay            int             `yaml:"tooltip_delay" json:"tooltip_delay"`                         // 编码提示延迟显示时间（毫秒），0 表示立即显示
 
-	PreeditMode string `yaml:"preedit_mode" json:"preedit_mode"` // 编码显示模式："top"（默认，编码在上方独立行）, "embedded"（嵌入候选行前）；仅 InlinePreedit=false 时生效
+	PreeditMode PreeditMode `yaml:"preedit_mode" json:"preedit_mode"` // 编码显示模式："top"（默认，编码在上方独立行）, "embedded"（嵌入候选行前）；仅 InlinePreedit=false 时生效
 
 	// 文本渲染设置
-	TextRenderMode string  `yaml:"text_render_mode,omitempty" json:"text_render_mode,omitempty"` // 文本渲染引擎："directwrite"（默认，DirectWrite渲染）、"gdi"（Windows原生GDI渲染）或 "freetype"（FreeType渲染）
-	GDIFontWeight  int     `yaml:"gdi_font_weight,omitempty" json:"gdi_font_weight,omitempty"`   // 候选框GDI字体粗细：100~900，默认500(Medium)
-	GDIFontScale   float64 `yaml:"gdi_font_scale,omitempty" json:"gdi_font_scale,omitempty"`     // GDI字体缩放：0.5~2.0，默认1.0，值越大文字越大
-	MenuFontWeight int     `yaml:"menu_font_weight,omitempty" json:"menu_font_weight,omitempty"` // 菜单GDI字体粗细：100~900，默认600(SemiBold)
-	MenuFontSize   float64 `yaml:"menu_font_size,omitempty" json:"menu_font_size,omitempty"`     // 菜单字体大小：默认12.0（DPI缩放前基础值）
+	TextRenderMode FontEngine `yaml:"text_render_mode,omitempty" json:"text_render_mode,omitempty"` // 文本渲染引擎："directwrite"（默认，DirectWrite渲染）、"gdi"（Windows原生GDI渲染）或 "freetype"（FreeType渲染）
+	GDIFontWeight  int        `yaml:"gdi_font_weight,omitempty" json:"gdi_font_weight,omitempty"`   // 候选框GDI字体粗细：100~900，默认500(Medium)
+	GDIFontScale   float64    `yaml:"gdi_font_scale,omitempty" json:"gdi_font_scale,omitempty"`     // GDI字体缩放：0.5~2.0，默认1.0，值越大文字越大
+	MenuFontWeight int        `yaml:"menu_font_weight,omitempty" json:"menu_font_weight,omitempty"` // 菜单GDI字体粗细：100~900，默认600(SemiBold)
+	MenuFontSize   float64    `yaml:"menu_font_size,omitempty" json:"menu_font_size,omitempty"`     // 菜单字体大小：默认12.0（DPI缩放前基础值）
 
 	StatusIndicator StatusIndicatorConfig `yaml:"status_indicator" json:"status_indicator"` // 状态提示配置
 }
@@ -163,17 +163,17 @@ type ToolbarConfig struct {
 // InputConfig contains input behavior settings
 type InputConfig struct {
 	PunctFollowMode      bool                   `yaml:"punct_follow_mode" json:"punct_follow_mode"`
-	FilterMode           string                 `yaml:"filter_mode" json:"filter_mode"` // 候选过滤模式: "smart"(智能), "general"(仅常用字), "gb18030"(不限制)
+	FilterMode           FilterMode             `yaml:"filter_mode" json:"filter_mode"` // 候选过滤模式: "smart"(智能), "general"(仅常用字), "gb18030"(不限制)
 	SelectKeyGroups      []string               `yaml:"select_key_groups" json:"select_key_groups"`
 	PageKeys             []string               `yaml:"page_keys" json:"page_keys"`
 	HighlightKeys        []string               `yaml:"highlight_keys" json:"highlight_keys"`                   // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
 	SelectCharKeys       []string               `yaml:"select_char_keys" json:"select_char_keys"`               // 以词定字按键: "comma_period"(,.), "minus_equal"(-=), "brackets"([])
 	SmartPunctAfterDigit bool                   `yaml:"smart_punct_after_digit" json:"smart_punct_after_digit"` // 数字后标点智能转换（默认 true）
 	SmartPunctList       string                 `yaml:"smart_punct_list" json:"smart_punct_list"`               // 数字后保持英文的标点字符，如 ".,:"
-	EnterBehavior        string                 `yaml:"enter_behavior" json:"enter_behavior"`                   // 回车键行为: "commit"(上屏编码), "clear"(清空编码)
-	SpaceOnEmptyBehavior string                 `yaml:"space_on_empty_behavior" json:"space_on_empty_behavior"` // 空码时空格键行为: "commit"(上屏编码), "clear"(清空编码)
+	EnterBehavior        EnterBehavior          `yaml:"enter_behavior" json:"enter_behavior"`                   // 回车键行为: "commit"(上屏编码), "clear"(清空编码)
+	SpaceOnEmptyBehavior SpaceOnEmptyBehavior   `yaml:"space_on_empty_behavior" json:"space_on_empty_behavior"` // 空码时空格键行为: "commit"(上屏编码), "clear"(清空编码)
 	NumpadBehavior       string                 `yaml:"numpad_behavior" json:"numpad_behavior"`                 // 数字小键盘功能: "direct"(直接输入数字,默认) | "follow_main"(同主键盘区数字)
-	PinyinSeparator      string                 `yaml:"pinyin_separator" json:"pinyin_separator"`               // 拼音分隔符: "auto", "quote", "backtick", "none"
+	PinyinSeparator      PinyinSeparatorMode    `yaml:"pinyin_separator" json:"pinyin_separator"`               // 拼音分隔符: "auto", "quote", "backtick", "none"
 	ShiftTempEnglish     ShiftTempEnglishConfig `yaml:"shift_temp_english" json:"shift_temp_english"`
 	CapsLockBehavior     CapsLockBehaviorConfig `yaml:"capslock_behavior" json:"capslock_behavior"`
 	TempPinyin           TempPinyinConfig       `yaml:"temp_pinyin" json:"temp_pinyin"`
@@ -186,11 +186,11 @@ type InputConfig struct {
 // OverflowBehaviorConfig 候选按键无效时的处理策略
 type OverflowBehaviorConfig struct {
 	// 数字键无效时: "ignore"(不起作用) | "commit"(顶字上屏) | "commit_and_input"(顶字上屏并输入数字)
-	NumberKey string `yaml:"number_key" json:"number_key"`
+	NumberKey OverflowBehavior `yaml:"number_key" json:"number_key"`
 	// 二三候选键无效时: "ignore"(不起作用) | "commit"(顶字上屏) | "commit_and_input"(顶字上屏并输入编码)
-	SelectKey string `yaml:"select_key" json:"select_key"`
+	SelectKey OverflowBehavior `yaml:"select_key" json:"select_key"`
 	// 以词定字键无效时: "ignore"(不起作用) | "commit"(顶字上屏) | "commit_and_input"(顶字上屏并输入编码)
-	SelectCharKey string `yaml:"select_char_key" json:"select_char_key"`
+	SelectCharKey OverflowBehavior `yaml:"select_char_key" json:"select_char_key"`
 }
 
 // QuickInputConfig 快捷输入配置
@@ -290,15 +290,15 @@ func DefaultConfig() *Config {
 			FontFamily:              "",
 			FontPath:                "",
 			InlinePreedit:           true,
-			PreeditMode:             "top",
-			CandidateLayout:         "horizontal",
+			PreeditMode:             PreeditTop,
+			CandidateLayout:         LayoutHorizontal,
 			StatusIndicatorDuration: 800,
 			StatusIndicatorOffsetX:  0,
 			StatusIndicatorOffsetY:  0,
 			TooltipDelay:            200,
 			Theme:                   "default",
-			ThemeStyle:              "system",
-			TextRenderMode:          "directwrite",
+			ThemeStyle:              ThemeStyleSystem,
+			TextRenderMode:          FontEngineDirectWrite,
 			GDIFontWeight:           500,
 			GDIFontScale:            1.0,
 			MenuFontWeight:          500,
@@ -325,15 +325,15 @@ func DefaultConfig() *Config {
 		Input: InputConfig{
 			SmartPunctAfterDigit: true,
 			SmartPunctList:       ".,:",
-			EnterBehavior:        "commit",
-			SpaceOnEmptyBehavior: "commit",
+			EnterBehavior:        EnterCommit,
+			SpaceOnEmptyBehavior: SpaceOnEmptyCommit,
 			PunctFollowMode:      false,
-			FilterMode:           "smart",
+			FilterMode:           FilterSmart,
 			SelectKeyGroups:      []string{"semicolon_quote"},
 			PageKeys:             []string{"pageupdown", "minus_equal"},
 			HighlightKeys:        []string{"arrows"},
 			SelectCharKeys:       []string{},
-			PinyinSeparator:      "auto",
+			PinyinSeparator:      PinyinSeparatorAuto,
 			ShiftTempEnglish: ShiftTempEnglishConfig{
 				Enabled:               true,
 				ShowEnglishCandidates: true,
@@ -359,9 +359,9 @@ func DefaultConfig() *Config {
 				DecimalPlaces: 6,
 			},
 			OverflowBehavior: OverflowBehaviorConfig{
-				NumberKey:     "ignore",
-				SelectKey:     "ignore",
-				SelectCharKey: "ignore",
+				NumberKey:     OverflowIgnore,
+				SelectKey:     OverflowIgnore,
+				SelectCharKey: OverflowIgnore,
 			},
 		},
 		Advanced: AdvancedConfig{
@@ -442,14 +442,14 @@ func applyConfigFallbacks(cfg *Config) {
 	}
 
 	// 迁移旧的 theme:"dark" 配置到新格式
-	if cfg.UI.Theme == "dark" {
+	if cfg.UI.Theme == string(ThemeStyleDark) {
 		cfg.UI.Theme = "default"
-		cfg.UI.ThemeStyle = "dark"
+		cfg.UI.ThemeStyle = ThemeStyleDark
 	}
 
 	// ThemeStyle 兜底
 	if cfg.UI.ThemeStyle == "" {
-		cfg.UI.ThemeStyle = "system"
+		cfg.UI.ThemeStyle = ThemeStyleSystem
 	}
 
 	// 迁移旧的快捷输入配置（enabled+trigger_key → trigger_keys）

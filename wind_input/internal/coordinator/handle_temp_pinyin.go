@@ -7,6 +7,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/internal/schema"
 	"github.com/huanfeng/wind_input/internal/store"
+	"github.com/huanfeng/wind_input/pkg/keys"
 )
 
 // getTempPinyinTriggerKey 检查按键是否应触发临时拼音模式，返回匹配的触发键类型，空串表示不触发
@@ -27,51 +28,53 @@ func (c *Coordinator) getTempPinyinTriggerKey(key string, keyCode int) string {
 		return ""
 	}
 
+	parsedKey, _ := keys.ParseKey(key)
 	for _, tk := range c.config.Input.TempPinyin.TriggerKeys {
-		switch tk {
-		case "backtick":
-			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
-				return "backtick"
+		tkKey, _ := keys.ParseKey(tk)
+		switch tkKey {
+		case keys.KeyGrave:
+			if parsedKey == keys.KeyGrave || uint32(keyCode) == ipc.VK_OEM_3 {
+				return tk
 			}
-		case "semicolon":
+		case keys.KeySemicolon:
 			// 仅在输入缓冲区为空且无候选时触发
 			// 有候选时 semicolon 仍用于二三候选选择
-			if (key == ";" || uint32(keyCode) == ipc.VK_OEM_1) && len(c.candidates) == 0 {
-				return "semicolon"
+			if (parsedKey == keys.KeySemicolon || uint32(keyCode) == ipc.VK_OEM_1) && len(c.candidates) == 0 {
+				return tk
 			}
-		case "quote":
-			if (key == "'" || uint32(keyCode) == ipc.VK_OEM_7) && len(c.candidates) == 0 {
-				return "quote"
+		case keys.KeyQuote:
+			if (parsedKey == keys.KeyQuote || uint32(keyCode) == ipc.VK_OEM_7) && len(c.candidates) == 0 {
+				return tk
 			}
-		case "comma":
-			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
-				return "comma"
+		case keys.KeyComma:
+			if parsedKey == keys.KeyComma || uint32(keyCode) == ipc.VK_OEM_COMMA {
+				return tk
 			}
-		case "period":
-			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
-				return "period"
+		case keys.KeyPeriod:
+			if parsedKey == keys.KeyPeriod || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+				return tk
 			}
-		case "slash":
-			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
-				return "slash"
+		case keys.KeySlash:
+			if parsedKey == keys.KeySlash || uint32(keyCode) == ipc.VK_OEM_2 {
+				return tk
 			}
-		case "backslash":
-			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
-				return "backslash"
+		case keys.KeyBackslash:
+			if parsedKey == keys.KeyBackslash || uint32(keyCode) == ipc.VK_OEM_5 {
+				return tk
 			}
-		case "open_bracket":
-			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
-				return "open_bracket"
+		case keys.KeyLBracket:
+			if parsedKey == keys.KeyLBracket || uint32(keyCode) == ipc.VK_OEM_4 {
+				return tk
 			}
-		case "close_bracket":
-			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
-				return "close_bracket"
+		case keys.KeyRBracket:
+			if parsedKey == keys.KeyRBracket || uint32(keyCode) == ipc.VK_OEM_6 {
+				return tk
 			}
-		case "z":
+		case keys.KeyZ:
 			// z 键触发：仅在无候选时触发，z 同时作为拼音首字母
 			// 当 z 键重复上屏也启用时，z 先进入正常输入流程显示重复候选，
 			// 后续字母键再切入临时拼音（兼容模式）
-			if key == "z" && len(c.candidates) == 0 {
+			if parsedKey == keys.KeyZ && len(c.candidates) == 0 {
 				if c.engineMgr != nil && c.engineMgr.IsZKeyRepeatEnabled() {
 					// 有历史记录可重复时，让 z 走正常输入流程显示重复候选
 					if c.inputHistory != nil {
@@ -94,46 +97,48 @@ func (c *Coordinator) isTempPinyinTriggerKeyMatch(key string, keyCode int) bool 
 	if c.config == nil {
 		return false
 	}
+	parsedKey, _ := keys.ParseKey(key)
 	for _, tk := range c.config.Input.TempPinyin.TriggerKeys {
-		switch tk {
-		case "backtick":
-			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
+		tkKey, _ := keys.ParseKey(tk)
+		switch tkKey {
+		case keys.KeyGrave:
+			if parsedKey == keys.KeyGrave || uint32(keyCode) == ipc.VK_OEM_3 {
 				return true
 			}
-		case "semicolon":
-			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
+		case keys.KeySemicolon:
+			if parsedKey == keys.KeySemicolon || uint32(keyCode) == ipc.VK_OEM_1 {
 				return true
 			}
-		case "quote":
-			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+		case keys.KeyQuote:
+			if parsedKey == keys.KeyQuote || uint32(keyCode) == ipc.VK_OEM_7 {
 				return true
 			}
-		case "comma":
-			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+		case keys.KeyComma:
+			if parsedKey == keys.KeyComma || uint32(keyCode) == ipc.VK_OEM_COMMA {
 				return true
 			}
-		case "period":
-			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+		case keys.KeyPeriod:
+			if parsedKey == keys.KeyPeriod || uint32(keyCode) == ipc.VK_OEM_PERIOD {
 				return true
 			}
-		case "slash":
-			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+		case keys.KeySlash:
+			if parsedKey == keys.KeySlash || uint32(keyCode) == ipc.VK_OEM_2 {
 				return true
 			}
-		case "backslash":
-			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+		case keys.KeyBackslash:
+			if parsedKey == keys.KeyBackslash || uint32(keyCode) == ipc.VK_OEM_5 {
 				return true
 			}
-		case "open_bracket":
-			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+		case keys.KeyLBracket:
+			if parsedKey == keys.KeyLBracket || uint32(keyCode) == ipc.VK_OEM_4 {
 				return true
 			}
-		case "close_bracket":
-			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+		case keys.KeyRBracket:
+			if parsedKey == keys.KeyRBracket || uint32(keyCode) == ipc.VK_OEM_6 {
 				return true
 			}
-		case "z":
-			if key == "z" {
+		case keys.KeyZ:
+			if parsedKey == keys.KeyZ {
 				return true
 			}
 		}
@@ -174,26 +179,27 @@ func (c *Coordinator) enterTempPinyinMode(triggerKey string) *bridge.KeyEventRes
 
 // tempPinyinPrefix 返回临时拼音模式的前缀显示字符（使用实际触发键字符）
 func (c *Coordinator) tempPinyinPrefix() string {
-	switch c.tempPinyinTriggerKey {
-	case "backtick":
+	parsed, _ := keys.ParseKey(c.tempPinyinTriggerKey)
+	switch parsed {
+	case keys.KeyGrave:
 		return "`"
-	case "semicolon":
+	case keys.KeySemicolon:
 		return ";"
-	case "quote":
+	case keys.KeyQuote:
 		return "'"
-	case "comma":
+	case keys.KeyComma:
 		return ","
-	case "period":
+	case keys.KeyPeriod:
 		return "."
-	case "slash":
+	case keys.KeySlash:
 		return "/"
-	case "backslash":
+	case keys.KeyBackslash:
 		return "\\"
-	case "open_bracket":
+	case keys.KeyLBracket:
 		return "["
-	case "close_bracket":
+	case keys.KeyRBracket:
 		return "]"
-	case "z":
+	case keys.KeyZ:
 		return "z"
 	default:
 		return "`"

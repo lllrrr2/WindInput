@@ -7,6 +7,7 @@ import (
 	"github.com/huanfeng/wind_input/internal/bridge"
 	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
+	"github.com/huanfeng/wind_input/pkg/config"
 )
 
 // maxInputBufferLen 输入缓冲区最大长度（字节），超过此长度拒绝新输入
@@ -430,7 +431,7 @@ func (c *Coordinator) handleEnter() *bridge.KeyEventResult {
 	// Commit all confirmed segments + raw input as text
 	if len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 {
 		// 检查回车键行为配置：clear 模式下清空编码
-		if c.config != nil && c.config.Input.EnterBehavior == "clear" {
+		if c.config != nil && c.config.Input.EnterBehavior == config.EnterClear {
 			c.clearState()
 			c.hideUI()
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
@@ -500,7 +501,7 @@ func (c *Coordinator) handleSpace() *bridge.KeyEventResult {
 		}
 	} else if len(c.inputBuffer) > 0 || len(c.confirmedSegments) > 0 {
 		// No candidates (空码), check space_on_empty_behavior config
-		if c.config != nil && c.config.Input.SpaceOnEmptyBehavior == "clear" {
+		if c.config != nil && c.config.Input.SpaceOnEmptyBehavior == config.SpaceOnEmptyClear {
 			c.clearState()
 			c.hideUI()
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
@@ -622,7 +623,7 @@ func (c *Coordinator) handleOverflowNumberKey(num int) *bridge.KeyEventResult {
 		return nil
 	}
 
-	behavior := "ignore"
+	behavior := config.OverflowIgnore
 	if c.config != nil && c.config.Input.OverflowBehavior.NumberKey != "" {
 		behavior = c.config.Input.OverflowBehavior.NumberKey
 	}
@@ -633,11 +634,11 @@ func (c *Coordinator) handleOverflowNumberKey(num int) *bridge.KeyEventResult {
 	}
 
 	switch behavior {
-	case "commit":
+	case config.OverflowCommit:
 		// 候选上屏：上屏当前高亮候选
 		return c.selectCandidate(highlightedIndex)
 
-	case "commit_and_input":
+	case config.OverflowCommitAndInput:
 		// 顶码上屏：上屏当前高亮候选，然后数字字符直接输出
 		result := c.selectCandidate(highlightedIndex)
 		if result != nil {
@@ -649,7 +650,7 @@ func (c *Coordinator) handleOverflowNumberKey(num int) *bridge.KeyEventResult {
 		}
 		return result
 
-	default: // "ignore"
+	default: // OverflowIgnore
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 	}
 }
@@ -711,7 +712,7 @@ func (c *Coordinator) handleOverflowSelectKey(triggerKey string) *bridge.KeyEven
 		return nil
 	}
 
-	behavior := "ignore"
+	behavior := config.OverflowIgnore
 	if c.config != nil && c.config.Input.OverflowBehavior.SelectKey != "" {
 		behavior = c.config.Input.OverflowBehavior.SelectKey
 	}
@@ -719,12 +720,12 @@ func (c *Coordinator) handleOverflowSelectKey(triggerKey string) *bridge.KeyEven
 	// 无候选时（空码）
 	if len(c.candidates) == 0 {
 		switch behavior {
-		case "commit":
+		case config.OverflowCommit:
 			// 候选上屏：无候选可上屏，清空缓冲区
 			c.clearState()
 			c.hideUI()
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
-		case "commit_and_input":
+		case config.OverflowCommitAndInput:
 			// 顶码上屏：清空缓冲区，按键字符按正常流程继续处理
 			c.clearState()
 			c.hideUI()
@@ -739,7 +740,7 @@ func (c *Coordinator) handleOverflowSelectKey(triggerKey string) *bridge.KeyEven
 				}
 			}
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
-		default: // "ignore"
+		default: // OverflowIgnore
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 		}
 	}
@@ -750,10 +751,10 @@ func (c *Coordinator) handleOverflowSelectKey(triggerKey string) *bridge.KeyEven
 	}
 
 	switch behavior {
-	case "commit":
+	case config.OverflowCommit:
 		// 候选上屏：上屏当前高亮候选
 		return c.selectCandidate(highlightedIndex)
-	case "commit_and_input":
+	case config.OverflowCommitAndInput:
 		// 顶码上屏：上屏当前高亮候选，然后按键字符按正常流程处理
 		result := c.selectCandidate(highlightedIndex)
 		if result != nil && len(triggerKey) == 1 {
@@ -768,17 +769,17 @@ func (c *Coordinator) handleOverflowSelectKey(triggerKey string) *bridge.KeyEven
 			}
 		}
 		return result
-	default: // "ignore"
+	default: // OverflowIgnore
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 	}
 }
 
 // overflowSelectCharBehavior 返回以词定字键无效时的策略
-func (c *Coordinator) overflowSelectCharBehavior() string {
+func (c *Coordinator) overflowSelectCharBehavior() config.OverflowBehavior {
 	if c.config != nil && c.config.Input.OverflowBehavior.SelectCharKey != "" {
 		return c.config.Input.OverflowBehavior.SelectCharKey
 	}
-	return "ignore"
+	return config.OverflowIgnore
 }
 
 // handleSelectCharWithOverflow 以词定字的完整处理流程，包含 overflow 策略
@@ -803,12 +804,12 @@ func (c *Coordinator) handleSelectCharWithOverflow(charIndex int, key string, pr
 	// 无候选时（空码）
 	if len(c.candidates) == 0 {
 		switch behavior {
-		case "commit":
+		case config.OverflowCommit:
 			// 候选上屏：无候选可上屏，清空缓冲区
 			c.clearState()
 			c.hideUI()
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
-		case "commit_and_input":
+		case config.OverflowCommitAndInput:
 			// 顶码上屏：清空缓冲区，按键字符按正常流程继续处理
 			c.clearState()
 			c.hideUI()
@@ -823,7 +824,7 @@ func (c *Coordinator) handleSelectCharWithOverflow(charIndex int, key string, pr
 				}
 			}
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeClearComposition}
-		default: // "ignore"
+		default: // OverflowIgnore
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 		}
 	}
@@ -834,10 +835,10 @@ func (c *Coordinator) handleSelectCharWithOverflow(charIndex int, key string, pr
 	}
 
 	switch behavior {
-	case "commit":
+	case config.OverflowCommit:
 		// 候选上屏：上屏当前高亮候选
 		return c.selectCandidate(highlightedIndex)
-	case "commit_and_input":
+	case config.OverflowCommitAndInput:
 		// 顶码上屏：上屏当前高亮候选，然后按键字符按正常流程处理
 		commitResult := c.selectCandidate(highlightedIndex)
 		if commitResult != nil && len(key) == 1 {
@@ -852,7 +853,7 @@ func (c *Coordinator) handleSelectCharWithOverflow(charIndex int, key string, pr
 			}
 		}
 		return commitResult
-	default: // "ignore"
+	default: // OverflowIgnore
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 	}
 }

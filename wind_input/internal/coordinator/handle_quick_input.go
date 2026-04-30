@@ -7,6 +7,8 @@ import (
 	"github.com/huanfeng/wind_input/internal/store"
 	"github.com/huanfeng/wind_input/internal/transform"
 	"github.com/huanfeng/wind_input/internal/ui"
+	"github.com/huanfeng/wind_input/pkg/config"
+	"github.com/huanfeng/wind_input/pkg/keys"
 )
 
 // isQuickInputTriggerKey 仅检查按键是否匹配快捷输入触发键（不检查状态条件）
@@ -14,42 +16,44 @@ func (c *Coordinator) isQuickInputTriggerKey(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
+	parsedKey, _ := keys.ParseKey(key)
 	for _, tk := range c.config.Input.QuickInput.TriggerKeys {
-		switch tk {
-		case "semicolon":
-			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
+		tkKey, _ := keys.ParseKey(tk)
+		switch tkKey {
+		case keys.KeySemicolon:
+			if parsedKey == keys.KeySemicolon || uint32(keyCode) == ipc.VK_OEM_1 {
 				return true
 			}
-		case "backtick":
-			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
+		case keys.KeyGrave:
+			if parsedKey == keys.KeyGrave || uint32(keyCode) == ipc.VK_OEM_3 {
 				return true
 			}
-		case "quote":
-			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+		case keys.KeyQuote:
+			if parsedKey == keys.KeyQuote || uint32(keyCode) == ipc.VK_OEM_7 {
 				return true
 			}
-		case "comma":
-			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+		case keys.KeyComma:
+			if parsedKey == keys.KeyComma || uint32(keyCode) == ipc.VK_OEM_COMMA {
 				return true
 			}
-		case "period":
-			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+		case keys.KeyPeriod:
+			if parsedKey == keys.KeyPeriod || uint32(keyCode) == ipc.VK_OEM_PERIOD {
 				return true
 			}
-		case "slash":
-			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+		case keys.KeySlash:
+			if parsedKey == keys.KeySlash || uint32(keyCode) == ipc.VK_OEM_2 {
 				return true
 			}
-		case "backslash":
-			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+		case keys.KeyBackslash:
+			if parsedKey == keys.KeyBackslash || uint32(keyCode) == ipc.VK_OEM_5 {
 				return true
 			}
-		case "open_bracket":
-			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+		case keys.KeyLBracket:
+			if parsedKey == keys.KeyLBracket || uint32(keyCode) == ipc.VK_OEM_4 {
 				return true
 			}
-		case "close_bracket":
-			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+		case keys.KeyRBracket:
+			if parsedKey == keys.KeyRBracket || uint32(keyCode) == ipc.VK_OEM_6 {
 				return true
 			}
 		}
@@ -66,42 +70,44 @@ func (c *Coordinator) getQuickInputTriggerKey(key string, keyCode int) string {
 	if len(c.inputBuffer) > 0 || len(c.candidates) > 0 {
 		return ""
 	}
+	parsedKey, _ := keys.ParseKey(key)
 	for _, tk := range c.config.Input.QuickInput.TriggerKeys {
-		switch tk {
-		case "semicolon":
-			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
+		tkKey, _ := keys.ParseKey(tk)
+		switch tkKey {
+		case keys.KeySemicolon:
+			if parsedKey == keys.KeySemicolon || uint32(keyCode) == ipc.VK_OEM_1 {
 				return tk
 			}
-		case "backtick":
-			if key == "`" || uint32(keyCode) == ipc.VK_OEM_3 {
+		case keys.KeyGrave:
+			if parsedKey == keys.KeyGrave || uint32(keyCode) == ipc.VK_OEM_3 {
 				return tk
 			}
-		case "quote":
-			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
+		case keys.KeyQuote:
+			if parsedKey == keys.KeyQuote || uint32(keyCode) == ipc.VK_OEM_7 {
 				return tk
 			}
-		case "comma":
-			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
+		case keys.KeyComma:
+			if parsedKey == keys.KeyComma || uint32(keyCode) == ipc.VK_OEM_COMMA {
 				return tk
 			}
-		case "period":
-			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
+		case keys.KeyPeriod:
+			if parsedKey == keys.KeyPeriod || uint32(keyCode) == ipc.VK_OEM_PERIOD {
 				return tk
 			}
-		case "slash":
-			if key == "/" || uint32(keyCode) == ipc.VK_OEM_2 {
+		case keys.KeySlash:
+			if parsedKey == keys.KeySlash || uint32(keyCode) == ipc.VK_OEM_2 {
 				return tk
 			}
-		case "backslash":
-			if key == "\\" || uint32(keyCode) == ipc.VK_OEM_5 {
+		case keys.KeyBackslash:
+			if parsedKey == keys.KeyBackslash || uint32(keyCode) == ipc.VK_OEM_5 {
 				return tk
 			}
-		case "open_bracket":
-			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
+		case keys.KeyLBracket:
+			if parsedKey == keys.KeyLBracket || uint32(keyCode) == ipc.VK_OEM_4 {
 				return tk
 			}
-		case "close_bracket":
-			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
+		case keys.KeyRBracket:
+			if parsedKey == keys.KeyRBracket || uint32(keyCode) == ipc.VK_OEM_6 {
 				return tk
 			}
 		}
@@ -111,22 +117,23 @@ func (c *Coordinator) getQuickInputTriggerKey(key string, keyCode int) string {
 
 // quickInputPrefix 返回当前触发键对应的字符
 func (c *Coordinator) quickInputPrefix() string {
-	switch c.quickInputTriggerKey {
-	case "backtick":
+	parsed, _ := keys.ParseKey(c.quickInputTriggerKey)
+	switch parsed {
+	case keys.KeyGrave:
 		return "`"
-	case "quote":
+	case keys.KeyQuote:
 		return "'"
-	case "comma":
+	case keys.KeyComma:
 		return ","
-	case "period":
+	case keys.KeyPeriod:
 		return "."
-	case "slash":
+	case keys.KeySlash:
 		return "/"
-	case "backslash":
+	case keys.KeyBackslash:
 		return "\\"
-	case "open_bracket":
+	case keys.KeyLBracket:
 		return "["
-	case "close_bracket":
+	case keys.KeyRBracket:
 		return "]"
 	default:
 		return ";"
@@ -143,7 +150,7 @@ func (c *Coordinator) enterQuickInputMode(triggerKey string) *bridge.KeyEventRes
 	if c.config != nil && c.config.Input.QuickInput.ForceVertical {
 		c.savedLayout = c.config.UI.CandidateLayout
 		if c.uiManager != nil {
-			c.uiManager.SetCandidateLayout("vertical")
+			c.uiManager.SetCandidateLayout(config.LayoutVertical)
 		}
 	}
 

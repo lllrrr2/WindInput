@@ -47,7 +47,7 @@ func (c *Coordinator) saveThemeConfig(themeName string) {
 }
 
 // saveThemeStyleConfig saves the theme style to config
-func (c *Coordinator) saveThemeStyleConfig(themeStyle string) {
+func (c *Coordinator) saveThemeStyleConfig(themeStyle config.ThemeStyle) {
 	go func() {
 		cfg, err := config.Load()
 		if err != nil {
@@ -65,7 +65,7 @@ func (c *Coordinator) saveThemeStyleConfig(themeStyle string) {
 }
 
 // saveFilterModeConfig saves the filter mode to config
-func (c *Coordinator) saveFilterModeConfig(filterMode string) {
+func (c *Coordinator) saveFilterModeConfig(filterMode config.FilterMode) {
 	go func() {
 		cfg, err := config.Load()
 		if err != nil {

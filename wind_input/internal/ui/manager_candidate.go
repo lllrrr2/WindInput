@@ -1,5 +1,7 @@
 package ui
 
+import "github.com/huanfeng/wind_input/pkg/config"
+
 // ShowCandidates shows candidates at the given caret position (async, non-blocking)
 // The position will be automatically adjusted to stay within screen bounds.
 // Parameters:
@@ -33,7 +35,7 @@ func (m *Manager) ShowCandidates(candidates []Candidate, input string, cursorPos
 	// Send command to UI thread (non-blocking due to buffered channel)
 	select {
 	case m.cmdCh <- UICommand{
-		Type:                "show",
+		Type:                cmdShow,
 		Candidates:          candidates,
 		Input:               input,
 		CursorPos:           cursorPos,
@@ -159,7 +161,7 @@ func (m *Manager) doShowCandidates(candidates []Candidate, input string, cursorP
 		// Adjust position to stay within screen bounds
 		// Determine layout from renderer config
 		layout := LayoutVertical
-		if m.renderer != nil && m.renderer.GetLayout() == "horizontal" {
+		if m.renderer != nil && m.renderer.GetLayout() == config.LayoutHorizontal {
 			layout = LayoutHorizontal
 		}
 		var showAbove bool
@@ -254,7 +256,7 @@ func (m *Manager) Hide() {
 	// because the window visibility check is not thread-safe and there might
 	// be pending show commands in the channel
 	select {
-	case m.cmdCh <- UICommand{Type: "hide", InputSession: newSession}:
+	case m.cmdCh <- UICommand{Type: cmdHide, InputSession: newSession}:
 		// Signal the event to wake up the message loop
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
@@ -321,7 +323,7 @@ func (m *Manager) RefreshCandidates() {
 	// Re-queue a show command with current data
 	select {
 	case m.cmdCh <- UICommand{
-		Type:                "show",
+		Type:                cmdShow,
 		Candidates:          candidates,
 		Input:               input,
 		CursorPos:           cursorPos,
@@ -354,7 +356,7 @@ func (m *Manager) NotifyDPIChanged() {
 	m.mu.Unlock()
 
 	select {
-	case m.cmdCh <- UICommand{Type: "dpi_changed"}:
+	case m.cmdCh <- UICommand{Type: cmdDPIChanged}:
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
 		}
@@ -416,7 +418,7 @@ func (m *Manager) HideCandidateMenu() {
 
 	// Send command to UI thread (don't call HideMenu directly - it has Win32 calls)
 	select {
-	case m.cmdCh <- UICommand{Type: "hide_menu"}:
+	case m.cmdCh <- UICommand{Type: cmdHideMenu}:
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
 		}

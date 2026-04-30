@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/huanfeng/wind_input/pkg/buildvariant"
+	"github.com/huanfeng/wind_input/pkg/config"
 )
 
 // UpdateConfig 更新 UI 配置（热更新）
@@ -59,7 +60,7 @@ func (m *Manager) SetTooltipDelay(delay int) {
 }
 
 // SetCandidateLayout 设置候选框布局模式
-func (m *Manager) SetCandidateLayout(layout string) {
+func (m *Manager) SetCandidateLayout(layout config.CandidateLayout) {
 	if m.renderer != nil {
 		m.renderer.SetLayout(layout)
 		m.logger.Info("Candidate layout updated", "layout", layout)
@@ -157,7 +158,7 @@ func (m *Manager) SetHidePreedit(hide bool) {
 }
 
 // SetPreeditMode 设置编码显示模式（"top" 或 "embedded"）
-func (m *Manager) SetPreeditMode(mode string) {
+func (m *Manager) SetPreeditMode(mode config.PreeditMode) {
 	if m.renderer != nil {
 		m.renderer.SetPreeditMode(mode)
 	}
@@ -178,7 +179,7 @@ func (m *Manager) OpenSettingsWithPage(page string) {
 	m.mu.Unlock()
 
 	select {
-	case m.cmdCh <- UICommand{Type: "settings", SettingsPage: page}:
+	case m.cmdCh <- UICommand{Type: cmdSettings, SettingsPage: page}:
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
 		}

@@ -11,7 +11,7 @@ func (m *Manager) SetToolbarVisible(visible bool) {
 
 	if !visible {
 		select {
-		case m.cmdCh <- UICommand{Type: "toolbar_hide"}:
+		case m.cmdCh <- UICommand{Type: cmdToolbarHide}:
 			if m.cmdEvent != 0 {
 				SetEvent(m.cmdEvent)
 			}
@@ -33,7 +33,7 @@ func (m *Manager) ShowToolbarWithState(x, y int, state ToolbarState) {
 
 	select {
 	case m.cmdCh <- UICommand{
-		Type:         "toolbar_show",
+		Type:         cmdToolbarShow,
 		ToolbarX:     x,
 		ToolbarY:     y,
 		ToolbarState: &state,
@@ -56,7 +56,7 @@ func (m *Manager) UpdateToolbarState(state ToolbarState) {
 	m.mu.Unlock()
 
 	select {
-	case m.cmdCh <- UICommand{Type: "toolbar_update", ToolbarState: &state}:
+	case m.cmdCh <- UICommand{Type: cmdToolbarUpdate, ToolbarState: &state}:
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
 		}
@@ -162,7 +162,7 @@ func (m *Manager) HideToolbarMenu() {
 
 	// Send command to UI thread (don't call HideMenu directly - it has Win32 calls)
 	select {
-	case m.cmdCh <- UICommand{Type: "hide_toolbar_menu"}:
+	case m.cmdCh <- UICommand{Type: cmdHideToolbarMenu}:
 		if m.cmdEvent != 0 {
 			SetEvent(m.cmdEvent)
 		}
@@ -197,7 +197,7 @@ func (m *Manager) ShowUnifiedMenu(screenX, screenY, flipRefY int, state UnifiedM
 
 	select {
 	case m.cmdCh <- UICommand{
-		Type:         "show_unified_menu",
+		Type:         cmdShowUnifiedMenu,
 		X:            screenX,
 		Y:            screenY,
 		FlipRefY:     flipRefY,

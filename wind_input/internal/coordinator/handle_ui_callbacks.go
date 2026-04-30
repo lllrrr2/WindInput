@@ -696,11 +696,11 @@ func (c *Coordinator) handleShowUnifiedMenu(screenX, screenY, flipRefY int) {
 	}
 
 	// Get current theme style from config
-	currentThemeStyle := "system"
+	currentThemeStyle := config.ThemeStyleSystem
 	if c.config != nil && c.config.UI.ThemeStyle != "" {
 		currentThemeStyle = c.config.UI.ThemeStyle
 	}
-	currentFilterMode := "smart"
+	currentFilterMode := config.FilterSmart
 	if c.config != nil && c.config.Input.FilterMode != "" {
 		currentFilterMode = c.config.Input.FilterMode
 	}
@@ -756,7 +756,7 @@ func (c *Coordinator) handleUnifiedMenuAction(id int) {
 	case id >= ui.UnifiedMenuThemeStyleBase && id < ui.UnifiedMenuThemeStyleBase+10:
 		// Theme style selection (system/light/dark)
 		styleIndex := id - ui.UnifiedMenuThemeStyleBase
-		styles := []string{"system", "light", "dark"}
+		styles := []config.ThemeStyle{config.ThemeStyleSystem, config.ThemeStyleLight, config.ThemeStyleDark}
 		if styleIndex >= 0 && styleIndex < len(styles) {
 			newStyle := styles[styleIndex]
 			c.logger.Info("Theme style selected from unified menu", "style", newStyle)
@@ -774,7 +774,7 @@ func (c *Coordinator) handleUnifiedMenuAction(id int) {
 	case id >= ui.UnifiedMenuFilterModeBase && id < ui.UnifiedMenuFilterModeBase+10:
 		// Filter mode selection
 		modeIndex := id - ui.UnifiedMenuFilterModeBase
-		modes := []string{"smart", "general", "gb18030"}
+		modes := []config.FilterMode{config.FilterSmart, config.FilterGeneral, config.FilterGB18030}
 		if modeIndex >= 0 && modeIndex < len(modes) {
 			newMode := modes[modeIndex]
 			c.logger.Info("Filter mode selected from unified menu", "mode", newMode)

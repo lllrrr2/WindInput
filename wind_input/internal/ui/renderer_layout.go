@@ -5,6 +5,7 @@ import (
 	"image"
 
 	"github.com/gogpu/gg"
+	"github.com/huanfeng/wind_input/pkg/config"
 )
 
 // RenderCandidates renders candidates to an image
@@ -15,7 +16,7 @@ func (r *Renderer) RenderCandidates(candidates []Candidate, input string, cursor
 	r.refreshDPIIfNeeded()
 	cfg := r.config
 
-	if cfg.Layout == "horizontal" {
+	if cfg.Layout == config.LayoutHorizontal {
 		return r.renderHorizontalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn, selectedIndex)
 	}
 	return r.renderVerticalCandidates(candidates, input, cursorPos, page, totalPages, hoverIndex, hoverPageBtn, selectedIndex)
@@ -664,7 +665,7 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 		modeLabelWidth = td.MeasureString(cfg.ModeLabel, cfg.IndexFontSize) + 12*scale
 	}
 	// embedded 模式：编码嵌入候选行前，不显示独立编码行
-	isEmbedded := cfg.PreeditMode == "embedded" && !cfg.HidePreedit
+	isEmbedded := cfg.PreeditMode == config.PreeditEmbedded && !cfg.HidePreedit
 	inputWidth := 0.0
 	inputHeight := 0.0
 	if !cfg.HidePreedit && !isEmbedded && input != "" {

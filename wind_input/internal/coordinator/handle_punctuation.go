@@ -12,6 +12,73 @@ import (
 	"github.com/huanfeng/wind_input/internal/engine/pinyin"
 	"github.com/huanfeng/wind_input/internal/ipc"
 	"github.com/huanfeng/wind_input/internal/transform"
+	"github.com/huanfeng/wind_input/pkg/config"
+	"github.com/huanfeng/wind_input/pkg/keys"
+)
+
+// pairGroupVK 把 PairGroup 映射到一对 (firstVK, secondVK, firstChar, secondChar)。
+// firstChar/secondChar 是该按键的"标点字符"形式（用于 key 字符串匹配，例如 ";"），
+// 仅对字符可表示的键有意义；修饰键（LShift/RShift/LCtrl/RCtrl）的 char 为空字符串
+// —— 此时只通过 VK 比对。
+type pairVKEntry struct {
+	firstVK    uint32
+	secondVK   uint32
+	firstChar  string
+	secondChar string
+}
+
+var pairGroupVK = map[keys.PairGroup]pairVKEntry{
+	keys.PairSemicolonQuote: {ipc.VK_OEM_1, ipc.VK_OEM_7, ";", "'"},
+	keys.PairCommaPeriod:    {ipc.VK_OEM_COMMA, ipc.VK_OEM_PERIOD, ",", "."},
+	keys.PairLRShift:        {ipc.VK_LSHIFT, ipc.VK_RSHIFT, "", ""},
+	keys.PairLRCtrl:         {ipc.VK_LCONTROL, ipc.VK_RCONTROL, "", ""},
+	keys.PairMinusEqual:     {ipc.VK_OEM_MINUS, ipc.VK_OEM_PLUS, "-", "="},
+	keys.PairBrackets:       {ipc.VK_OEM_4, ipc.VK_OEM_6, "[", "]"},
+}
+
+// matchPairVK 在配置 groups 列表内查找：当前按键 (key, keyCode) 是否匹配某个 group 的
+// 第 idx 个键（idx=0 第一键，idx=1 第二键），且该 group 必须存在于 allowed 集合。
+func matchPairVK(groups []string, allowed map[keys.PairGroup]struct{}, idx int, key string, keyCode int) bool {
+	vk := uint32(keyCode)
+	for _, raw := range groups {
+		g := keys.PairGroup(raw)
+		if _, ok := allowed[g]; !ok {
+			continue
+		}
+		entry, ok := pairGroupVK[g]
+		if !ok {
+			continue
+		}
+		var wantVK uint32
+		var wantChar string
+		if idx == 0 {
+			wantVK, wantChar = entry.firstVK, entry.firstChar
+		} else {
+			wantVK, wantChar = entry.secondVK, entry.secondChar
+		}
+		if vk == wantVK {
+			return true
+		}
+		if wantChar != "" && key == wantChar {
+			return true
+		}
+	}
+	return false
+}
+
+// 各 API 接受的 PairGroup 集合 —— 与 pkg/config 一侧保持一致语义。
+var (
+	selectKeyAllowedGroups = map[keys.PairGroup]struct{}{
+		keys.PairSemicolonQuote: {},
+		keys.PairCommaPeriod:    {},
+		keys.PairLRShift:        {},
+		keys.PairLRCtrl:         {},
+	}
+	selectCharAllowedGroups = map[keys.PairGroup]struct{}{
+		keys.PairCommaPeriod: {},
+		keys.PairMinusEqual:  {},
+		keys.PairBrackets:    {},
+	}
 )
 
 // isSelectKey2 checks if the key is configured as the 2nd candidate selection key
@@ -19,29 +86,7 @@ func (c *Coordinator) isSelectKey2(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
-
-	// 根据选择键组配置检查
-	for _, group := range c.config.Input.SelectKeyGroups {
-		switch group {
-		case "semicolon_quote":
-			if key == ";" || uint32(keyCode) == ipc.VK_OEM_1 {
-				return true
-			}
-		case "comma_period":
-			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
-				return true
-			}
-		case "lrshift":
-			if uint32(keyCode) == ipc.VK_LSHIFT {
-				return true
-			}
-		case "lrctrl":
-			if uint32(keyCode) == ipc.VK_LCONTROL {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairVK(c.config.Input.SelectKeyGroups, selectKeyAllowedGroups, 0, key, keyCode)
 }
 
 // isSelectKey3 checks if the key is configured as the 3rd candidate selection key
@@ -49,29 +94,7 @@ func (c *Coordinator) isSelectKey3(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
-
-	// 根据选择键组配置检查
-	for _, group := range c.config.Input.SelectKeyGroups {
-		switch group {
-		case "semicolon_quote":
-			if key == "'" || uint32(keyCode) == ipc.VK_OEM_7 {
-				return true
-			}
-		case "comma_period":
-			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
-				return true
-			}
-		case "lrshift":
-			if uint32(keyCode) == ipc.VK_RSHIFT {
-				return true
-			}
-		case "lrctrl":
-			if uint32(keyCode) == ipc.VK_RCONTROL {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairVK(c.config.Input.SelectKeyGroups, selectKeyAllowedGroups, 1, key, keyCode)
 }
 
 // isSelectCharFirstKey checks if the key is configured as "select first char from word" key
@@ -79,23 +102,7 @@ func (c *Coordinator) isSelectCharFirstKey(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
-	for _, group := range c.config.Input.SelectCharKeys {
-		switch group {
-		case "comma_period":
-			if key == "," || uint32(keyCode) == ipc.VK_OEM_COMMA {
-				return true
-			}
-		case "minus_equal":
-			if key == "-" || uint32(keyCode) == ipc.VK_OEM_MINUS {
-				return true
-			}
-		case "brackets":
-			if key == "[" || uint32(keyCode) == ipc.VK_OEM_4 {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairVK(c.config.Input.SelectCharKeys, selectCharAllowedGroups, 0, key, keyCode)
 }
 
 // isSelectCharSecondKey checks if the key is configured as "select second char from word" key
@@ -103,23 +110,7 @@ func (c *Coordinator) isSelectCharSecondKey(key string, keyCode int) bool {
 	if c.config == nil {
 		return false
 	}
-	for _, group := range c.config.Input.SelectCharKeys {
-		switch group {
-		case "comma_period":
-			if key == "." || uint32(keyCode) == ipc.VK_OEM_PERIOD {
-				return true
-			}
-		case "minus_equal":
-			if key == "=" || uint32(keyCode) == ipc.VK_OEM_PLUS {
-				return true
-			}
-		case "brackets":
-			if key == "]" || uint32(keyCode) == ipc.VK_OEM_6 {
-				return true
-			}
-		}
-	}
-	return false
+	return matchPairVK(c.config.Input.SelectCharKeys, selectCharAllowedGroups, 1, key, keyCode)
 }
 
 // isPunctuation checks if a character is a punctuation/symbol that should be
@@ -441,19 +432,29 @@ func (c *Coordinator) getToggleModeKey(keyCode int) string {
 	return ""
 }
 
-// isHighlightUpKey checks if the key is configured as a highlight up key
-func (c *Coordinator) isHighlightUpKey(keyCode uint32, modifiers uint32) bool {
-	if c.config == nil {
-		return false
-	}
-	for _, hk := range c.config.Input.HighlightKeys {
-		switch hk {
-		case "arrows":
-			if keyCode == ipc.VK_UP {
+// highlightKeyMatch 判断 (keyCode, modifiers) 是否匹配某个 HighlightKeys group 的方向。
+// idx=0 上移高亮，idx=1 下移高亮。
+//
+// arrows 分支语义：上方向键=上移，下方向键=下移，与 Shift 无关。
+// tab 分支语义：Shift+Tab=上移，Tab=下移（与翻页 shift_tab 类似但用于高亮场景）。
+func highlightKeyMatch(groups []string, idx int, keyCode uint32, hasShift bool) bool {
+	for _, hk := range groups {
+		switch keys.PairGroup(hk) {
+		case keys.PairArrows:
+			if idx == 0 && keyCode == ipc.VK_UP {
 				return true
 			}
-		case "tab":
-			if keyCode == ipc.VK_TAB && modifiers&ModShift != 0 {
+			if idx == 1 && keyCode == ipc.VK_DOWN {
+				return true
+			}
+		case keys.PairTab:
+			if keyCode != ipc.VK_TAB {
+				continue
+			}
+			if idx == 0 && hasShift {
+				return true
+			}
+			if idx == 1 && !hasShift {
 				return true
 			}
 		}
@@ -461,24 +462,20 @@ func (c *Coordinator) isHighlightUpKey(keyCode uint32, modifiers uint32) bool {
 	return false
 }
 
+// isHighlightUpKey checks if the key is configured as a highlight up key
+func (c *Coordinator) isHighlightUpKey(keyCode uint32, modifiers uint32) bool {
+	if c.config == nil {
+		return false
+	}
+	return highlightKeyMatch(c.config.Input.HighlightKeys, 0, keyCode, modifiers&ModShift != 0)
+}
+
 // isHighlightDownKey checks if the key is configured as a highlight down key
 func (c *Coordinator) isHighlightDownKey(keyCode uint32, modifiers uint32) bool {
 	if c.config == nil {
 		return false
 	}
-	for _, hk := range c.config.Input.HighlightKeys {
-		switch hk {
-		case "arrows":
-			if keyCode == ipc.VK_DOWN {
-				return true
-			}
-		case "tab":
-			if keyCode == ipc.VK_TAB && modifiers&ModShift == 0 {
-				return true
-			}
-		}
-	}
-	return false
+	return highlightKeyMatch(c.config.Input.HighlightKeys, 1, keyCode, modifiers&ModShift != 0)
 }
 
 // isQuickInputPageUpKey 快捷输入模式专用翻页上键判断。
@@ -501,34 +498,53 @@ func (c *Coordinator) isQuickInputPageDownKey(key string, keyCode int, modifiers
 	return c.isPageDownKey(key, keyCode, modifiers)
 }
 
-// isPageUpKey checks if the key is configured as a page up key
-func (c *Coordinator) isPageUpKey(key string, keyCode int, modifiers uint32) bool {
-	if c.config == nil {
-		// 默认支持 PageUp 和 - 键（Shift+- 应输出 _ 而非翻页）
-		return key == "page_up" || uint32(keyCode) == ipc.VK_PRIOR || (uint32(keyCode) == ipc.VK_OEM_MINUS && modifiers&ModShift == 0)
-	}
-
-	hasShift := modifiers&ModShift != 0
-
-	for _, pk := range c.config.Input.PageKeys {
-		switch pk {
-		case "pageupdown":
-			if key == "page_up" || uint32(keyCode) == ipc.VK_PRIOR {
+// pageKeyMatch 判断 (key, keyCode, modifiers) 是否匹配某个翻页 group 的指定方向。
+// idx=0 表示"上一页"键，idx=1 表示"下一页"键。
+//
+// 注意翻页键有 Shift 门控的特殊语义：
+//   - minus_equal/brackets 在 Shift 按下时不触发翻页（因为 Shift+- = _, Shift+[ = { 等）
+//   - shift_tab 中"上一页"恰好是 Shift+Tab（Shift 必须按下），"下一页"是 Tab（Shift 必须未按下）
+//   - pageupdown 不依赖 Shift
+func pageKeyMatch(groups []string, idx int, key string, keyCode int, hasShift bool) bool {
+	vk := uint32(keyCode)
+	for _, pk := range groups {
+		switch keys.PairGroup(pk) {
+		case keys.PairPageUpDown:
+			parsedKey, _ := keys.ParseKey(key)
+			if idx == 0 && (parsedKey == keys.KeyPageUp || vk == ipc.VK_PRIOR) {
 				return true
 			}
-		case "minus_equal":
-			// Shift+- 应输出 _ 而非翻页
-			if !hasShift && uint32(keyCode) == ipc.VK_OEM_MINUS {
+			if idx == 1 && (parsedKey == keys.KeyPageDown || vk == ipc.VK_NEXT) {
 				return true
 			}
-		case "brackets":
-			// Shift+[ 应输出 { 而非翻页
-			if !hasShift && uint32(keyCode) == ipc.VK_OEM_4 {
+		case keys.PairMinusEqual:
+			if hasShift {
+				continue
+			}
+			if idx == 0 && vk == ipc.VK_OEM_MINUS {
 				return true
 			}
-		case "shift_tab":
-			// Shift+Tab = page up
-			if uint32(keyCode) == ipc.VK_TAB && hasShift {
+			if idx == 1 && vk == ipc.VK_OEM_PLUS {
+				return true
+			}
+		case keys.PairBrackets:
+			if hasShift {
+				continue
+			}
+			if idx == 0 && vk == ipc.VK_OEM_4 {
+				return true
+			}
+			if idx == 1 && vk == ipc.VK_OEM_6 {
+				return true
+			}
+		case keys.PairShiftTab:
+			if vk != ipc.VK_TAB {
+				continue
+			}
+			if idx == 0 && hasShift {
+				return true
+			}
+			if idx == 1 && !hasShift {
 				return true
 			}
 		}
@@ -536,39 +552,24 @@ func (c *Coordinator) isPageUpKey(key string, keyCode int, modifiers uint32) boo
 	return false
 }
 
+// isPageUpKey checks if the key is configured as a page up key
+func (c *Coordinator) isPageUpKey(key string, keyCode int, modifiers uint32) bool {
+	if c.config == nil {
+		// 默认支持 PageUp 和 - 键（Shift+- 应输出 _ 而非翻页）
+		parsedKey, _ := keys.ParseKey(key)
+		return parsedKey == keys.KeyPageUp || uint32(keyCode) == ipc.VK_PRIOR || (uint32(keyCode) == ipc.VK_OEM_MINUS && modifiers&ModShift == 0)
+	}
+	return pageKeyMatch(c.config.Input.PageKeys, 0, key, keyCode, modifiers&ModShift != 0)
+}
+
 // isPageDownKey checks if the key is configured as a page down key
 func (c *Coordinator) isPageDownKey(key string, keyCode int, modifiers uint32) bool {
 	if c.config == nil {
 		// 默认支持 PageDown 和 = 键
-		return key == "page_down" || uint32(keyCode) == ipc.VK_NEXT || (uint32(keyCode) == ipc.VK_OEM_PLUS && modifiers&ModShift == 0)
+		parsedKey, _ := keys.ParseKey(key)
+		return parsedKey == keys.KeyPageDown || uint32(keyCode) == ipc.VK_NEXT || (uint32(keyCode) == ipc.VK_OEM_PLUS && modifiers&ModShift == 0)
 	}
-
-	hasShift := modifiers&ModShift != 0
-
-	for _, pk := range c.config.Input.PageKeys {
-		switch pk {
-		case "pageupdown":
-			if key == "page_down" || uint32(keyCode) == ipc.VK_NEXT {
-				return true
-			}
-		case "minus_equal":
-			// Shift+= 应输出 + 而非翻页
-			if !hasShift && uint32(keyCode) == ipc.VK_OEM_PLUS {
-				return true
-			}
-		case "brackets":
-			// Shift+] 应输出 } 而非翻页
-			if !hasShift && uint32(keyCode) == ipc.VK_OEM_6 {
-				return true
-			}
-		case "shift_tab":
-			// Tab without Shift = page down
-			if uint32(keyCode) == ipc.VK_TAB && !hasShift {
-				return true
-			}
-		}
-	}
-	return false
+	return pageKeyMatch(c.config.Input.PageKeys, 1, key, keyCode, modifiers&ModShift != 0)
 }
 
 // isPinyinSeparator 判断按键是否应作为拼音分隔符处理
@@ -585,19 +586,19 @@ func (c *Coordinator) isPinyinSeparator(key string, keyCode int) bool {
 		return false
 	}
 
-	separatorMode := "auto"
+	separatorMode := config.PinyinSeparatorAuto
 	if c.config != nil && c.config.Input.PinyinSeparator != "" {
 		separatorMode = c.config.Input.PinyinSeparator
 	}
 
 	switch separatorMode {
-	case "none":
+	case config.PinyinSeparatorNone:
 		return false
-	case "quote":
+	case config.PinyinSeparatorQuote:
 		return key == "'" || uint32(keyCode) == ipc.VK_OEM_7
-	case "backtick":
+	case config.PinyinSeparatorBacktick:
 		return key == "`" || uint32(keyCode) == ipc.VK_OEM_3
-	case "auto":
+	case config.PinyinSeparatorAuto:
 		// ' 未被配置为选择键时用 '，否则回退到 `
 		isQuote := key == "'" || uint32(keyCode) == ipc.VK_OEM_7
 		isBacktick := key == "`" || uint32(keyCode) == ipc.VK_OEM_3
@@ -677,12 +678,12 @@ func (c *Coordinator) matchHotkey(hotkeyStr string, hasCtrl, hasShift, hasAlt bo
 		// Generic parser: split by "+" and resolve modifiers + key
 		parts := strings.Split(strings.ToLower(hotkeyStr), "+")
 		for i, part := range parts {
-			switch part {
-			case "ctrl":
+			switch keys.Modifier(part) {
+			case keys.ModCtrl:
 				needCtrl = true
-			case "shift":
+			case keys.ModShift:
 				needShift = true
-			case "alt":
+			case keys.ModAlt:
 				needAlt = true
 			default:
 				// Last non-modifier part is the key name
@@ -709,68 +710,51 @@ func (c *Coordinator) matchHotkey(hotkeyStr string, hasCtrl, hasShift, hasAlt bo
 
 // resolveVKFromKeyName converts a lowercase key name string to a Windows virtual key code.
 // Returns 0 if the name is not recognized.
+// vkByKeyHP 把规范化 keys.Key 映射到 Windows 虚拟键码（handle_punctuation 子集）。
+var vkByKeyHP = map[keys.Key]int{
+	keys.KeyGrave:     int(ipc.VK_OEM_3),
+	keys.KeySpace:     int(ipc.VK_SPACE),
+	keys.KeyPeriod:    int(ipc.VK_OEM_PERIOD),
+	keys.KeyComma:     int(ipc.VK_OEM_COMMA),
+	keys.KeySemicolon: int(ipc.VK_OEM_1),
+	keys.KeyQuote:     int(ipc.VK_OEM_7),
+	keys.KeySlash:     int(ipc.VK_OEM_2),
+	keys.KeyBackslash: int(ipc.VK_OEM_5),
+	keys.KeyLBracket:  int(ipc.VK_OEM_4),
+	keys.KeyRBracket:  int(ipc.VK_OEM_6),
+	keys.KeyMinus:     int(ipc.VK_OEM_MINUS),
+	keys.KeyEqual:     int(ipc.VK_OEM_PLUS),
+	keys.KeyTab:       0x09,
+	keys.KeyEscape:    0x1B,
+}
+
+func init() {
+	// 字母 a-z -> 0x41-0x5A
+	for c := byte('a'); c <= 'z'; c++ {
+		vkByKeyHP[keys.Key(string(c))] = int(c-'a') + 0x41
+	}
+	// 数字 0-9 -> 0x30-0x39
+	for c := byte('0'); c <= '9'; c++ {
+		vkByKeyHP[keys.Key(string(c))] = int(c-'0') + 0x30
+	}
+	// F1-F12 -> 0x70-0x7B
+	fNames := []keys.Key{
+		keys.KeyF1, keys.KeyF2, keys.KeyF3, keys.KeyF4, keys.KeyF5, keys.KeyF6,
+		keys.KeyF7, keys.KeyF8, keys.KeyF9, keys.KeyF10, keys.KeyF11, keys.KeyF12,
+	}
+	for i, k := range fNames {
+		vkByKeyHP[k] = 0x70 + i
+	}
+}
+
+// resolveVKFromKeyName 把任意按键名（含别名/大小写）解析为 Windows 虚拟键码。
+// 入口先经 keys.ParseKey 规范化，再查 vkByKeyHP 表；未识别返回 0。
 func resolveVKFromKeyName(name string) int {
-	// Single letter a-z → 0x41-0x5A
-	if len(name) == 1 {
-		ch := name[0]
-		if ch >= 'a' && ch <= 'z' {
-			return int(ch-'a') + 0x41
-		}
-		// Digit 0-9 → 0x30-0x39
-		if ch >= '0' && ch <= '9' {
-			return int(ch-'0') + 0x30
-		}
+	k, ok := keys.ParseKey(name)
+	if !ok {
+		return 0
 	}
-
-	// F1-F12 → 0x70-0x7B
-	if len(name) >= 2 && name[0] == 'f' {
-		rest := name[1:]
-		num := 0
-		valid := true
-		for _, c := range rest {
-			if c < '0' || c > '9' {
-				valid = false
-				break
-			}
-			num = num*10 + int(c-'0')
-		}
-		if valid && num >= 1 && num <= 12 {
-			return 0x70 + num - 1
-		}
-	}
-
-	// Special keys
-	switch name {
-	case "`":
-		return int(ipc.VK_OEM_3)
-	case "space":
-		return int(ipc.VK_SPACE)
-	case ".":
-		return int(ipc.VK_OEM_PERIOD)
-	case ",":
-		return int(ipc.VK_OEM_COMMA)
-	case ";":
-		return int(ipc.VK_OEM_1)
-	case "'":
-		return int(ipc.VK_OEM_7)
-	case "/":
-		return int(ipc.VK_OEM_2)
-	case "\\":
-		return int(ipc.VK_OEM_5)
-	case "[":
-		return int(ipc.VK_OEM_4)
-	case "]":
-		return int(ipc.VK_OEM_6)
-	case "-":
-		return int(ipc.VK_OEM_MINUS)
-	case "=", "equal":
-		return int(ipc.VK_OEM_PLUS)
-	case "tab":
-		return 0x09
-	case "escape", "esc":
-		return 0x1B
-	}
-	return 0
+	return vkByKeyHP[k]
 }
 
 // updatePairedQuotes 根据中文配对表更新 PunctuationConverter 的引号配对状态

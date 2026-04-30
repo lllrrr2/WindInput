@@ -79,7 +79,7 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 		c.uiManager.SetTooltipDelay(uiConfig.TooltipDelay)
 		// 设置文本渲染模式
 		if uiConfig.TextRenderMode != "" {
-			c.uiManager.SetTextRenderMode(uiConfig.TextRenderMode)
+			c.uiManager.SetTextRenderMode(string(uiConfig.TextRenderMode))
 		}
 		// 设置候选框GDI字体参数
 		if uiConfig.GDIFontWeight > 0 || uiConfig.GDIFontScale > 0 {
@@ -259,15 +259,15 @@ func (c *Coordinator) UpdateStartupConfig(startupConfig *config.StartupConfig) {
 func (c *Coordinator) updateThemeStyle(uiConfig *config.UIConfig) {
 	themeStyle := uiConfig.ThemeStyle
 	if themeStyle == "" {
-		themeStyle = theme.ThemeStyleSystem
+		themeStyle = config.ThemeStyleSystem
 	}
 
 	// Determine dark mode
 	isDark := false
 	switch themeStyle {
-	case theme.ThemeStyleDark:
+	case config.ThemeStyleDark:
 		isDark = true
-	case theme.ThemeStyleLight:
+	case config.ThemeStyleLight:
 		isDark = false
 	default: // system
 		isDark = theme.IsSystemDarkMode()

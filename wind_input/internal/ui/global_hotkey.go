@@ -3,6 +3,8 @@ package ui
 import (
 	"log/slog"
 	"strings"
+
+	"github.com/huanfeng/wind_input/pkg/keys"
 )
 
 var (
@@ -61,12 +63,12 @@ func ParseHotkeyString(s string, id int, command string) (GlobalHotkeyEntry, boo
 		// Generic parser: split by "+" and resolve modifiers + key
 		parts := strings.Split(strings.ToLower(s), "+")
 		for i, part := range parts {
-			switch part {
-			case "ctrl":
+			switch keys.Modifier(part) {
+			case keys.ModCtrl:
 				mods |= hotkeyModControl
-			case "shift":
+			case keys.ModShift:
 				mods |= hotkeyModShift
-			case "alt":
+			case keys.ModAlt:
 				mods |= hotkeyModAlt
 			default:
 				if i == len(parts)-1 {
@@ -82,70 +84,51 @@ func ParseHotkeyString(s string, id int, command string) (GlobalHotkeyEntry, boo
 	return GlobalHotkeyEntry{ID: id, Modifiers: mods, VK: vk, Command: command}, true
 }
 
-// resolveVK converts a lowercase key name string to a Windows virtual key code (uint32).
+// vkByKey 把规范化 keys.Key 映射到 Windows 虚拟键码（仅本文件 RegisterHotKey 用到的子集）。
+var vkByKey = map[keys.Key]uint32{
+	keys.KeyGrave:     0xC0, // VK_OEM_3
+	keys.KeySpace:     0x20, // VK_SPACE
+	keys.KeyPeriod:    0xBE, // VK_OEM_PERIOD
+	keys.KeyComma:     0xBC, // VK_OEM_COMMA
+	keys.KeySemicolon: 0xBA, // VK_OEM_1
+	keys.KeyQuote:     0xDE, // VK_OEM_7
+	keys.KeySlash:     0xBF, // VK_OEM_2
+	keys.KeyBackslash: 0xDC, // VK_OEM_5
+	keys.KeyLBracket:  0xDB, // VK_OEM_4
+	keys.KeyRBracket:  0xDD, // VK_OEM_6
+	keys.KeyMinus:     0xBD, // VK_OEM_MINUS
+	keys.KeyEqual:     0xBB, // VK_OEM_PLUS
+	keys.KeyTab:       0x09,
+	keys.KeyEscape:    0x1B,
+}
+
+func init() {
+	// 字母 a-z -> 0x41-0x5A
+	for c := byte('a'); c <= 'z'; c++ {
+		vkByKey[keys.Key(string(c))] = uint32(c-'a') + 0x41
+	}
+	// 数字 0-9 -> 0x30-0x39
+	for c := byte('0'); c <= '9'; c++ {
+		vkByKey[keys.Key(string(c))] = uint32(c-'0') + 0x30
+	}
+	// F1-F12 -> 0x70-0x7B
+	fNames := []keys.Key{
+		keys.KeyF1, keys.KeyF2, keys.KeyF3, keys.KeyF4, keys.KeyF5, keys.KeyF6,
+		keys.KeyF7, keys.KeyF8, keys.KeyF9, keys.KeyF10, keys.KeyF11, keys.KeyF12,
+	}
+	for i, k := range fNames {
+		vkByKey[k] = 0x70 + uint32(i)
+	}
+}
+
+// resolveVK converts a key name string (any alias / case) to a Windows virtual key code.
 // Returns 0 if the name is not recognized.
 func resolveVK(name string) uint32 {
-	// Single letter a-z → 0x41-0x5A
-	if len(name) == 1 {
-		ch := name[0]
-		if ch >= 'a' && ch <= 'z' {
-			return uint32(ch-'a') + 0x41
-		}
-		// Digit 0-9 → 0x30-0x39
-		if ch >= '0' && ch <= '9' {
-			return uint32(ch-'0') + 0x30
-		}
+	k, ok := keys.ParseKey(name)
+	if !ok {
+		return 0
 	}
-
-	// F1-F12 → 0x70-0x7B
-	if len(name) >= 2 && name[0] == 'f' {
-		rest := name[1:]
-		num := uint32(0)
-		valid := true
-		for _, c := range rest {
-			if c < '0' || c > '9' {
-				valid = false
-				break
-			}
-			num = num*10 + uint32(c-'0')
-		}
-		if valid && num >= 1 && num <= 12 {
-			return 0x70 + num - 1
-		}
-	}
-
-	// Special keys
-	switch name {
-	case "`":
-		return 0xC0 // VK_OEM_3
-	case "space":
-		return 0x20 // VK_SPACE
-	case ".":
-		return 0xBE // VK_OEM_PERIOD
-	case ",":
-		return 0xBC // VK_OEM_COMMA
-	case ";":
-		return 0xBA // VK_OEM_1
-	case "'":
-		return 0xDE // VK_OEM_7
-	case "/":
-		return 0xBF // VK_OEM_2
-	case "\\":
-		return 0xDC // VK_OEM_5
-	case "[":
-		return 0xDB // VK_OEM_4
-	case "]":
-		return 0xDD // VK_OEM_6
-	case "-":
-		return 0xBD // VK_OEM_MINUS
-	case "=":
-		return 0xBB // VK_OEM_PLUS
-	case "tab":
-		return 0x09
-	case "escape", "esc":
-		return 0x1B
-	}
-	return 0
+	return vkByKey[k]
 }
 
 // globalHotkeyState tracks registered hotkeys on the UI thread
