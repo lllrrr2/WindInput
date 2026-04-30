@@ -4,7 +4,7 @@ schema:
   icon_label: "五"
   version: "1.0"
   author: "内置"
-  description: "五笔86版输入方案"
+  description: "五笔86版输入方案（基于rime-wubi86-jidian增加词频生成）"
 
 engine:
   type: codetable
@@ -29,12 +29,6 @@ dictionaries:
     path: "wubi86/wubi86_jidian.dict.yaml"
     type: rime_codetable
     default: true
-    weight_as_order: true
-    weight_spec:
-      median: 10
-      max: 890
-      min: 5
-      mode: linear
 
 learning:
   auto_learn:
