@@ -295,6 +295,7 @@ func ConvertUnigramToWdb(txtPath, wdbPath string, logger *slog.Logger) error {
 	var total float64
 
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {

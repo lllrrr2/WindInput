@@ -82,12 +82,12 @@ const UnigramVersion uint32 = 1
 
 // UnigramFileHeader unigram.wdb 文件头 (24 bytes)
 type UnigramFileHeader struct {
-	Magic    [4]byte // "WUNI"
-	Version  uint32  // 1
-	KeyCount uint32
-	IndexOff uint32 // KeyIndex 区偏移
-	StrOff   uint32 // StringPool 区偏移
-	Reserved uint32
+	Magic       [4]byte // "WUNI"
+	Version     uint32  // 1
+	KeyCount    uint32
+	IndexOff    uint32 // KeyIndex 区偏移
+	StrOff      uint32 // StringPool 区偏移
+	MinFreqMark uint32 // 生成时使用的 min-freq 阈值（整数化），用于运行时校验 wdb 是否需要重建
 }
 
 const UnigramFileHeaderSize = 24

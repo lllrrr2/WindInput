@@ -43,6 +43,7 @@ func OpenUnigram(path string) (*UnigramReader, error) {
 	r.header.KeyCount = byteOrder.Uint32(data[8:12])
 	r.header.IndexOff = byteOrder.Uint32(data[12:16])
 	r.header.StrOff = byteOrder.Uint32(data[16:20])
+	r.header.MinFreqMark = byteOrder.Uint32(data[20:24])
 
 	if err := r.header.Validate(); err != nil {
 		mf.Close()
@@ -77,6 +78,11 @@ func (r *UnigramReader) Close() error {
 // Size 返回词汇量
 func (r *UnigramReader) Size() int {
 	return int(r.header.KeyCount)
+}
+
+// MinFreqMark 返回 wdb 生成时的 min-freq 标记，运行时用于判断是否需要重建
+func (r *UnigramReader) MinFreqMark() uint32 {
+	return r.header.MinFreqMark
 }
 
 // LogProb 获取词语的对数概率

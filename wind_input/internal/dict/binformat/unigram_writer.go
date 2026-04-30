@@ -15,12 +15,18 @@ type UnigramEntry struct {
 
 // UnigramWriter unigram 二进制格式写入器
 type UnigramWriter struct {
-	entries []UnigramEntry
+	entries     []UnigramEntry
+	minFreqMark uint32
 }
 
 // NewUnigramWriter 创建 unigram 写入器
 func NewUnigramWriter() *UnigramWriter {
 	return &UnigramWriter{}
+}
+
+// SetMinFreqMark 设置 min-freq 标记，写入 wdb header（用于运行时缓存失效判断）
+func (w *UnigramWriter) SetMinFreqMark(mark uint32) {
+	w.minFreqMark = mark
 }
 
 // Add 添加一个词语及其对数概率
@@ -69,11 +75,12 @@ func (w *UnigramWriter) Write(out io.Writer) error {
 
 	// 写入 Header
 	header := UnigramFileHeader{
-		Magic:    UnigramMagic,
-		Version:  UnigramVersion,
-		KeyCount: keyCount,
-		IndexOff: indexOff,
-		StrOff:   strOff,
+		Magic:       UnigramMagic,
+		Version:     UnigramVersion,
+		KeyCount:    keyCount,
+		IndexOff:    indexOff,
+		StrOff:      strOff,
+		MinFreqMark: w.minFreqMark,
 	}
 	var hBuf [UnigramFileHeaderSize]byte
 	copy(hBuf[0:4], header.Magic[:])
@@ -81,7 +88,7 @@ func (w *UnigramWriter) Write(out io.Writer) error {
 	byteOrder.PutUint32(hBuf[8:12], header.KeyCount)
 	byteOrder.PutUint32(hBuf[12:16], header.IndexOff)
 	byteOrder.PutUint32(hBuf[16:20], header.StrOff)
-	byteOrder.PutUint32(hBuf[20:24], header.Reserved)
+	byteOrder.PutUint32(hBuf[20:24], header.MinFreqMark)
 	if _, err := out.Write(hBuf[:]); err != nil {
 		return fmt.Errorf("写入 unigram 文件头失败: %w", err)
 	}
