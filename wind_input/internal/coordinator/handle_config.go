@@ -79,7 +79,7 @@ func (c *Coordinator) UpdateUIConfig(uiConfig *config.UIConfig) {
 		c.uiManager.SetTooltipDelay(uiConfig.TooltipDelay)
 		// 设置文本渲染模式
 		if uiConfig.TextRenderMode != "" {
-			c.uiManager.SetTextRenderMode(string(uiConfig.TextRenderMode))
+			c.uiManager.SetTextRenderMode(uiConfig.TextRenderMode)
 		}
 		// 设置候选框GDI字体参数
 		if uiConfig.GDIFontWeight > 0 || uiConfig.GDIFontScale > 0 {
@@ -284,7 +284,7 @@ func (c *Coordinator) updateThemeStyle(uiConfig *config.UIConfig) {
 	}
 
 	// Start/stop watcher based on style
-	if themeStyle == theme.ThemeStyleSystem {
+	if themeStyle == config.ThemeStyleSystem {
 		c.startDarkModeWatcher()
 	} else {
 		c.stopDarkModeWatcher()

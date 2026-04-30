@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/huanfeng/wind_input/pkg/keys"
 )
 
 // Config represents the application configuration
@@ -164,10 +166,10 @@ type ToolbarConfig struct {
 type InputConfig struct {
 	PunctFollowMode      bool                   `yaml:"punct_follow_mode" json:"punct_follow_mode"`
 	FilterMode           FilterMode             `yaml:"filter_mode" json:"filter_mode"` // 候选过滤模式: "smart"(智能), "general"(仅常用字), "gb18030"(不限制)
-	SelectKeyGroups      []string               `yaml:"select_key_groups" json:"select_key_groups"`
-	PageKeys             []string               `yaml:"page_keys" json:"page_keys"`
-	HighlightKeys        []string               `yaml:"highlight_keys" json:"highlight_keys"`                   // 移动高亮候选项: "arrows"(上/下方向键), "tab"(Tab/Shift+Tab)
-	SelectCharKeys       []string               `yaml:"select_char_keys" json:"select_char_keys"`               // 以词定字按键: "comma_period"(,.), "minus_equal"(-=), "brackets"([])
+	SelectKeyGroups      []keys.PairGroup       `yaml:"select_key_groups" json:"select_key_groups"`
+	PageKeys             []keys.PairGroup       `yaml:"page_keys" json:"page_keys"`
+	HighlightKeys        []keys.PairGroup       `yaml:"highlight_keys" json:"highlight_keys"`                   // 移动高亮候选项: PairArrows / PairTab
+	SelectCharKeys       []keys.PairGroup       `yaml:"select_char_keys" json:"select_char_keys"`               // 以词定字按键: PairCommaPeriod / PairMinusEqual / PairBrackets
 	SmartPunctAfterDigit bool                   `yaml:"smart_punct_after_digit" json:"smart_punct_after_digit"` // 数字后标点智能转换（默认 true）
 	SmartPunctList       string                 `yaml:"smart_punct_list" json:"smart_punct_list"`               // 数字后保持英文的标点字符，如 ".,:"
 	EnterBehavior        EnterBehavior          `yaml:"enter_behavior" json:"enter_behavior"`                   // 回车键行为: "commit"(上屏编码), "clear"(清空编码)
@@ -329,10 +331,10 @@ func DefaultConfig() *Config {
 			SpaceOnEmptyBehavior: SpaceOnEmptyCommit,
 			PunctFollowMode:      false,
 			FilterMode:           FilterSmart,
-			SelectKeyGroups:      []string{"semicolon_quote"},
-			PageKeys:             []string{"pageupdown", "minus_equal"},
-			HighlightKeys:        []string{"arrows"},
-			SelectCharKeys:       []string{},
+			SelectKeyGroups:      []keys.PairGroup{keys.PairSemicolonQuote},
+			PageKeys:             []keys.PairGroup{keys.PairPageUpDown, keys.PairMinusEqual},
+			HighlightKeys:        []keys.PairGroup{keys.PairArrows},
+			SelectCharKeys:       []keys.PairGroup{},
 			PinyinSeparator:      PinyinSeparatorAuto,
 			ShiftTempEnglish: ShiftTempEnglishConfig{
 				Enabled:               true,

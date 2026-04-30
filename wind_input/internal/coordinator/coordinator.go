@@ -528,7 +528,7 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		c.uiManager.SetTooltipDelay(cfg.UI.TooltipDelay)
 		// 设置文本渲染模式
 		if cfg.UI.TextRenderMode != "" {
-			c.uiManager.SetTextRenderMode(string(cfg.UI.TextRenderMode))
+			c.uiManager.SetTextRenderMode(cfg.UI.TextRenderMode)
 		}
 		// 设置候选框GDI字体参数
 		if cfg.UI.GDIFontWeight > 0 || cfg.UI.GDIFontScale > 0 {
@@ -582,7 +582,7 @@ func (c *Coordinator) initThemeMode(cfg *config.Config) {
 	c.uiManager.LoadTheme(themeName)
 
 	// Start system theme watcher if following system mode
-	if themeStyle == theme.ThemeStyleSystem {
+	if themeStyle == config.ThemeStyleSystem {
 		c.startDarkModeWatcher()
 	}
 }

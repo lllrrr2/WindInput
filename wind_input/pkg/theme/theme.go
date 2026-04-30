@@ -5,12 +5,8 @@ import (
 	"image/color"
 )
 
-// ThemeStyle constants for theme appearance mode
-const (
-	ThemeStyleSystem = "system" // Follow system dark/light mode
-	ThemeStyleLight  = "light"  // Always light
-	ThemeStyleDark   = "dark"   // Always dark
-)
+// 注意：主题风格常量（system/light/dark）唯一权威定义在 pkg/config（ThemeStyle 类型）。
+// 本包不再重复声明，调用方请直接使用 config.ThemeStyleSystem / ThemeStyleLight / ThemeStyleDark。
 
 // ThemeMeta contains theme metadata
 type ThemeMeta struct {

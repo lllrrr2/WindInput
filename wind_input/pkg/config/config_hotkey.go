@@ -30,10 +30,9 @@ func (c *Config) IsToggleModeKey(key string) bool {
 }
 
 // matchPairFirst 检查 key 是否为某个 group（若属于已配置的选择/翻页/以词定字等列表）的"前键"。
-func matchPairFirst(groups []string, allowed map[keys.PairGroup]struct{}, key string) bool {
+func matchPairFirst(groups []keys.PairGroup, allowed map[keys.PairGroup]struct{}, key string) bool {
 	k := keys.Key(key)
-	for _, raw := range groups {
-		g := keys.PairGroup(raw)
+	for _, g := range groups {
 		if _, ok := allowed[g]; !ok {
 			continue
 		}
@@ -45,10 +44,9 @@ func matchPairFirst(groups []string, allowed map[keys.PairGroup]struct{}, key st
 }
 
 // matchPairSecond 检查 key 是否为某个 group 的"后键"。
-func matchPairSecond(groups []string, allowed map[keys.PairGroup]struct{}, key string) bool {
+func matchPairSecond(groups []keys.PairGroup, allowed map[keys.PairGroup]struct{}, key string) bool {
 	k := keys.Key(key)
-	for _, raw := range groups {
-		g := keys.PairGroup(raw)
+	for _, g := range groups {
 		if _, ok := allowed[g]; !ok {
 			continue
 		}
@@ -138,7 +136,7 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 	}
 
 	for _, group := range c.Input.SelectKeyGroups {
-		for _, key := range pairGroupRawKeys(keys.PairGroup(group), selectKeyAllowedGroups) {
+		for _, key := range pairGroupRawKeys(group, selectKeyAllowedGroups) {
 			if existing, ok := usedKeys[key]; ok {
 				conflicts = append(conflicts, fmt.Sprintf("按键 %s 同时用于: %s 和 候选选择", key, existing))
 			} else {
@@ -148,7 +146,7 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 	}
 
 	for _, pk := range c.Input.PageKeys {
-		for _, key := range pairGroupRawKeys(keys.PairGroup(pk), pageKeyAllowedGroups) {
+		for _, key := range pairGroupRawKeys(pk, pageKeyAllowedGroups) {
 			if existing, ok := usedKeys[key]; ok {
 				conflicts = append(conflicts, fmt.Sprintf("按键 %s 同时用于: %s 和 翻页", key, existing))
 			} else {
@@ -157,9 +155,9 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 		}
 	}
 
-	// HighlightKeys: 仅 "tab" 进入冲突表（"arrows" 不冲突 —— 沿用原逻辑）
+	// HighlightKeys: 仅 PairTab 进入冲突表（PairArrows 不冲突 —— 沿用原逻辑）
 	for _, hk := range c.Input.HighlightKeys {
-		if keys.PairGroup(hk) != keys.PairTab {
+		if hk != keys.PairTab {
 			continue
 		}
 		first, second, ok := keys.PairTab.Keys()
@@ -176,7 +174,7 @@ func (c *Config) ValidateHotkeyConflicts() []string {
 	}
 
 	for _, sc := range c.Input.SelectCharKeys {
-		for _, key := range pairGroupRawKeys(keys.PairGroup(sc), selectCharAllowedGroups) {
+		for _, key := range pairGroupRawKeys(sc, selectCharAllowedGroups) {
 			if existing, ok := usedKeys[key]; ok {
 				conflicts = append(conflicts, fmt.Sprintf("按键 %s 同时用于: %s 和 以词定字", key, existing))
 			} else {

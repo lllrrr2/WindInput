@@ -17,8 +17,13 @@ const (
 	PairMinusEqual     PairGroup = "minus_equal"
 	PairBrackets       PairGroup = "brackets"
 	PairShiftTab       PairGroup = "shift_tab"
-	PairTab            PairGroup = "tab"    // 实际配对 [KeyShiftTab, KeyTab]，与 PairShiftTab 同义但用于 HighlightKeys
-	PairArrows         PairGroup = "arrows" // 4 个键（上/下方向键），不在 pairGroupKeys 表内
+	// PairShiftTab 与 PairTab 是同义双胞胎：两者均映射到相同按键对 [KeyShiftTab, KeyTab]。
+	// 历史原因：YAML 配置中 "shift_tab" 与 "tab" 两种写法都被接受，分别用于翻页键与
+	// 移动高亮（HighlightKeys）等不同语义场景。
+	// 重要：修改 pairGroupKeys 表中任一条（PairShiftTab/PairTab）时，必须同步另一条，
+	// 否则会出现两者行为不一致的 drift。
+	PairTab    PairGroup = "tab"    // 同义双胞胎：与 PairShiftTab 共享 [KeyShiftTab, KeyTab]，详见上方注释
+	PairArrows PairGroup = "arrows" // 4 个键（上/下方向键），不在 pairGroupKeys 表内
 )
 
 // pairGroupKeys 把 PairGroup 映射到组成它的两个 Key（前一个=上一页/选择上, 后一个=下一页/选择下）。

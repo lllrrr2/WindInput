@@ -168,10 +168,10 @@ func (c *Compiler) compileToggleModeKey(key string) (uint32, bool) {
 }
 
 // compileSelectKeyGroup compiles a select key group to KeyHash list
-func (c *Compiler) compileSelectKeyGroup(group string) []uint32 {
+func (c *Compiler) compileSelectKeyGroup(group keys.PairGroup) []uint32 {
 	var hashes []uint32
 
-	switch keys.PairGroup(group) {
+	switch group {
 	case keys.PairSemicolonQuote:
 		// ; and '
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_OEM_1)) // ;
@@ -194,10 +194,10 @@ func (c *Compiler) compileSelectKeyGroup(group string) []uint32 {
 }
 
 // compilePageKeyGroup compiles a page key group to KeyHash list
-func (c *Compiler) compilePageKeyGroup(group string) []uint32 {
+func (c *Compiler) compilePageKeyGroup(group keys.PairGroup) []uint32 {
 	var hashes []uint32
 
-	switch keys.PairGroup(group) {
+	switch group {
 	case keys.PairPageUpDown:
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_PRIOR)) // PageUp
 		hashes = append(hashes, ipc.CalcKeyHash(0, ipc.VK_NEXT))  // PageDown
@@ -217,10 +217,10 @@ func (c *Compiler) compilePageKeyGroup(group string) []uint32 {
 }
 
 // compileHighlightKeyGroup compiles a highlight key group to KeyHash list
-func (c *Compiler) compileHighlightKeyGroup(group string) []uint32 {
+func (c *Compiler) compileHighlightKeyGroup(group keys.PairGroup) []uint32 {
 	var hashes []uint32
 
-	switch keys.PairGroup(group) {
+	switch group {
 	case keys.PairTab:
 		// Tab for highlight down, Shift+Tab for highlight up
 		hashes = append(hashes, ipc.CalcKeyHash(ipc.ModShift, ipc.VK_TAB)) // Shift+Tab

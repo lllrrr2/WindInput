@@ -119,13 +119,14 @@ func (m *Manager) SetMenuFontSize(size float64) {
 	m.logger.Info("Menu font size updated", "size", size)
 }
 
-// SetTextRenderMode 设置文本渲染模式（"gdi"、"freetype" 或 "directwrite"）
-func (m *Manager) SetTextRenderMode(mode string) {
+// SetTextRenderMode 设置文本渲染模式（FontEngineGDI / FontEngineFreetype / FontEngineDirectWrite）
+// Manager 是 facade，接受 config 层的 FontEngine 类型，内部映射到 ui 包的 TextRenderMode。
+func (m *Manager) SetTextRenderMode(mode config.FontEngine) {
 	renderMode := TextRenderModeGDI
 	switch mode {
-	case "freetype":
+	case config.FontEngineFreetype:
 		renderMode = TextRenderModeFreetype
-	case "directwrite":
+	case config.FontEngineDirectWrite:
 		renderMode = TextRenderModeDirectWrite
 	}
 	if m.renderer != nil {

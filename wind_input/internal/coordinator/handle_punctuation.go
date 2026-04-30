@@ -38,10 +38,9 @@ var pairGroupVK = map[keys.PairGroup]pairVKEntry{
 
 // matchPairVK 在配置 groups 列表内查找：当前按键 (key, keyCode) 是否匹配某个 group 的
 // 第 idx 个键（idx=0 第一键，idx=1 第二键），且该 group 必须存在于 allowed 集合。
-func matchPairVK(groups []string, allowed map[keys.PairGroup]struct{}, idx int, key string, keyCode int) bool {
+func matchPairVK(groups []keys.PairGroup, allowed map[keys.PairGroup]struct{}, idx int, key string, keyCode int) bool {
 	vk := uint32(keyCode)
-	for _, raw := range groups {
-		g := keys.PairGroup(raw)
+	for _, g := range groups {
 		if _, ok := allowed[g]; !ok {
 			continue
 		}
@@ -437,9 +436,9 @@ func (c *Coordinator) getToggleModeKey(keyCode int) string {
 //
 // arrows 分支语义：上方向键=上移，下方向键=下移，与 Shift 无关。
 // tab 分支语义：Shift+Tab=上移，Tab=下移（与翻页 shift_tab 类似但用于高亮场景）。
-func highlightKeyMatch(groups []string, idx int, keyCode uint32, hasShift bool) bool {
+func highlightKeyMatch(groups []keys.PairGroup, idx int, keyCode uint32, hasShift bool) bool {
 	for _, hk := range groups {
-		switch keys.PairGroup(hk) {
+		switch hk {
 		case keys.PairArrows:
 			if idx == 0 && keyCode == ipc.VK_UP {
 				return true
@@ -505,10 +504,10 @@ func (c *Coordinator) isQuickInputPageDownKey(key string, keyCode int, modifiers
 //   - minus_equal/brackets 在 Shift 按下时不触发翻页（因为 Shift+- = _, Shift+[ = { 等）
 //   - shift_tab 中"上一页"恰好是 Shift+Tab（Shift 必须按下），"下一页"是 Tab（Shift 必须未按下）
 //   - pageupdown 不依赖 Shift
-func pageKeyMatch(groups []string, idx int, key string, keyCode int, hasShift bool) bool {
+func pageKeyMatch(groups []keys.PairGroup, idx int, key string, keyCode int, hasShift bool) bool {
 	vk := uint32(keyCode)
 	for _, pk := range groups {
-		switch keys.PairGroup(pk) {
+		switch pk {
 		case keys.PairPageUpDown:
 			parsedKey, _ := keys.ParseKey(key)
 			if idx == 0 && (parsedKey == keys.KeyPageUp || vk == ipc.VK_PRIOR) {
