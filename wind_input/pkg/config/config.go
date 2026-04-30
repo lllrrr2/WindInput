@@ -427,13 +427,13 @@ func LoadFrom(path string) (*Config, error) {
 	}
 
 	// 兜底校验
-	applyConfigFallbacks(cfg)
+	ApplyConfigFallbacks(cfg)
 
 	return cfg, nil
 }
 
-// applyConfigFallbacks 对关键字段进行兜底处理
-func applyConfigFallbacks(cfg *Config) {
+// ApplyConfigFallbacks 对关键字段进行兜底处理
+func ApplyConfigFallbacks(cfg *Config) {
 	// 如果 available 为空，使用默认值
 	if len(cfg.Schema.Available) == 0 {
 		cfg.Schema.Available = []string{"wubi86", "pinyin"}
@@ -558,7 +558,7 @@ func SystemDefaultConfig() *Config {
 		}
 	}
 
-	applyConfigFallbacks(cfg)
+	ApplyConfigFallbacks(cfg)
 	return cfg
 }
 

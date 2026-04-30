@@ -63,9 +63,7 @@ type FileChangeStatus struct {
 func (a *App) CheckAllFilesModified() (*FileChangeStatus, error) {
 	status := &FileChangeStatus{}
 
-	if changed, _ := a.CheckConfigModified(); changed {
-		status.ConfigChanged = true
-	}
+	// 配置变更通过 RPC 事件推送，不再轮询文件
 	if changed, _ := a.CheckPhrasesModified(); changed {
 		status.PhrasesChanged = true
 	}
@@ -138,10 +136,13 @@ func (a *App) GetAvailableThemes() ([]ThemeInfo, error) {
 
 	// 获取当前配置的主题
 	currentTheme := "default"
-	if a.configEditor != nil {
-		cfg := a.configEditor.GetConfig()
-		if cfg != nil && cfg.UI.Theme != "" {
-			currentTheme = cfg.UI.Theme
+	if a.rpcClient != nil {
+		if reply, err := a.rpcClient.ConfigGet([]string{"ui.theme"}); err == nil {
+			if val, ok := reply.Values["ui.theme"]; ok {
+				if s, ok := val.(string); ok && s != "" {
+					currentTheme = s
+				}
+			}
 		}
 	}
 

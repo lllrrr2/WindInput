@@ -15,6 +15,7 @@ import (
 	"github.com/Microsoft/go-winio"
 	"github.com/huanfeng/wind_input/internal/dict"
 	"github.com/huanfeng/wind_input/internal/store"
+	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/rpcapi"
 )
 
@@ -42,6 +43,9 @@ type Server struct {
 	paused bool // 服务暂停状态
 
 	statCollector *store.StatCollector
+
+	cfg       *config.Config         // 活配置指针，与 ReloadHandler 共享
+	schemaMgr SchemaOverrideResetter // 用于 ResetSchemaOverride 的 Layer 2 文件操作
 }
 
 // StatusProvider 系统状态提供者接口
@@ -56,6 +60,14 @@ type StatusProvider interface {
 // ConfigReloader 配置重载接口（由 coordinator.ReloadHandler 实现）
 type ConfigReloader interface {
 	ReloadConfig() error
+	// ApplyConfigUpdate 增量应用配置变更，返回是否需要重启生效
+	ApplyConfigUpdate(oldCfg, newCfg *config.Config, changedSections map[string]bool) (requiresRestart bool, err error)
+}
+
+// SchemaOverrideResetter 用于 Config.ResetSchemaOverride 的 Layer 2 文件操作
+type SchemaOverrideResetter interface {
+	GetBuiltinSchemaPath(schemaID string) (string, bool)
+	GetUserSchemaPath(schemaID string) (string, bool)
 }
 
 // BatchEncoder 批量反向编码接口（由 engine.Manager 通过适配器实现）
@@ -102,6 +114,20 @@ func (s *Server) SetStatCollector(sc *store.StatCollector) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.statCollector = sc
+}
+
+// SetConfig 设置活配置指针（与 ReloadHandler 共享同一块内存）
+func (s *Server) SetConfig(cfg *config.Config) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cfg = cfg
+}
+
+// SetSchemaOverrideResetter 设置 schema 文件路径查询接口
+func (s *Server) SetSchemaOverrideResetter(r SchemaOverrideResetter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.schemaMgr = r
 }
 
 // Start 启动 IPC 服务
@@ -180,6 +206,26 @@ func (s *Server) Start() error {
 	RegisterMethod(s.router, "Phrase.Remove", phraseSvc.Remove)
 	RegisterMethod(s.router, "Phrase.ResetDefaults", phraseSvc.ResetDefaults)
 	RegisterMethod(s.router, "Phrase.BatchAdd", phraseSvc.BatchAdd)
+
+	// 注册 Config 方法
+	configSvc := &ConfigService{
+		cfg:            s.cfg,
+		configReloader: s.configReloader,
+		broadcaster:    s.broadcaster,
+		schemaMgr:      s.schemaMgr,
+		logger:         s.logger,
+	}
+	RegisterMethod(s.router, "Config.GetAll", configSvc.GetAll)
+	RegisterMethod(s.router, "Config.Get", configSvc.Get)
+	RegisterMethod(s.router, "Config.Set", configSvc.Set)
+	RegisterMethod(s.router, "Config.SetAll", configSvc.SetAll)
+	RegisterMethod(s.router, "Config.GetDefaults", configSvc.GetDefaults)
+	RegisterMethod(s.router, "Config.Reset", configSvc.Reset)
+	RegisterMethod(s.router, "Config.GetSchemaOverride", configSvc.GetSchemaOverride)
+	RegisterMethod(s.router, "Config.SetSchemaOverride", configSvc.SetSchemaOverride)
+	RegisterMethod(s.router, "Config.DeleteSchemaOverride", configSvc.DeleteSchemaOverride)
+	RegisterMethod(s.router, "Config.ResetSchemaOverride", configSvc.ResetSchemaOverride)
+	RegisterMethod(s.router, "Config.SetActiveSchema", configSvc.SetActiveSchema)
 
 	// 创建命名管道监听器
 	// SDDL: 允许 SYSTEM(SY)、管理员(BA)和所有已认证用户(AU)完全访问
@@ -342,7 +388,8 @@ func isTimeoutError(err error) bool {
 // isSystemMethod 检查是否为系统管理方法（暂停状态下允许调用）
 func isSystemMethod(method string) bool {
 	switch method {
-	case "System.Ping", "System.GetStatus", "System.Resume", "System.Pause", "System.Shutdown":
+	case "System.Ping", "System.GetStatus", "System.Resume", "System.Pause", "System.Shutdown",
+		"Config.GetAll", "Config.Get", "Config.GetDefaults":
 		return true
 	}
 	return false

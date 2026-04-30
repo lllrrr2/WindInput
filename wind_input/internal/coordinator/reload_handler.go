@@ -34,59 +34,81 @@ func NewReloadHandler(coord *Coordinator, cfg *config.Config, schemaMgr *schema.
 
 // ReloadConfig 重载配置（处理 config.yaml 变更和 schema 文件变更）
 func (h *ReloadHandler) ReloadConfig() error {
+	oldCfg := *h.cfg
 	newCfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-
-	// 主码表 / 主拼音方案变更也要同步到 EngineManager（影响反查/临时拼音）
-	if newCfg.Schema.PrimaryCodetable != h.cfg.Schema.PrimaryCodetable ||
-		newCfg.Schema.PrimaryPinyin != h.cfg.Schema.PrimaryPinyin {
-		h.engineMgr.SetPrimarySchemas(newCfg.Schema.PrimaryCodetable, newCfg.Schema.PrimaryPinyin)
+	allSections := map[string]bool{
+		"startup": true, "schema": true, "hotkeys": true, "ui": true,
+		"toolbar": true, "input": true, "advanced": true, "stats": true,
 	}
+	_, err = h.ApplyConfigUpdate(&oldCfg, newCfg, allSections)
+	if err == nil {
+		h.logger.Info("Config reloaded successfully",
+			"schema", newCfg.Schema.Active,
+			"toggleModeKeys", newCfg.Hotkeys.ToggleModeKeys)
+	}
+	return err
+}
 
-	// 检查活跃方案是否切换
-	oldSchemaID := h.cfg.Schema.Active
-	newSchemaID := newCfg.Schema.Active
-	if newSchemaID != "" && newSchemaID != oldSchemaID {
-		h.logger.Info("Schema changed via config reload", "from", oldSchemaID, "to", newSchemaID)
-		if err := h.engineMgr.SwitchSchema(newSchemaID); err != nil {
+// ApplyConfigUpdate 增量应用配置变更，返回是否需要重启生效
+func (h *ReloadHandler) ApplyConfigUpdate(oldCfg, newCfg *config.Config, changedSections map[string]bool) (bool, error) {
+	// schema.active 变更：切换方案
+	if changedSections["schema"] && newCfg.Schema.Active != oldCfg.Schema.Active {
+		h.logger.Info("Schema changed via config update", "from", oldCfg.Schema.Active, "to", newCfg.Schema.Active)
+		if err := h.engineMgr.SwitchSchema(newCfg.Schema.Active); err != nil {
 			h.logger.Error("Failed to switch schema", "error", err)
 		} else {
-			h.schemaMgr.SetActive(newSchemaID)
-			s := h.schemaMgr.GetSchema(newSchemaID)
+			h.schemaMgr.SetActive(newCfg.Schema.Active)
+			s := h.schemaMgr.GetSchema(newCfg.Schema.Active)
 			if s != nil && h.dictMgr != nil {
-				h.dictMgr.SwitchSchemaFull(newSchemaID, s.DataSchemaID(),
+				h.dictMgr.SwitchSchemaFull(newCfg.Schema.Active, s.DataSchemaID(),
 					s.Learning.TempMaxEntries, s.Learning.TempPromoteCount)
 			}
 		}
 	}
 
-	// 重新加载活跃方案的 schema 文件，应用引擎选项热更新
-	h.reloadActiveSchemaConfig()
+	// 主码表/主拼音变更
+	if changedSections["schema"] {
+		if newCfg.Schema.PrimaryCodetable != oldCfg.Schema.PrimaryCodetable ||
+			newCfg.Schema.PrimaryPinyin != oldCfg.Schema.PrimaryPinyin {
+			h.engineMgr.SetPrimarySchemas(newCfg.Schema.PrimaryCodetable, newCfg.Schema.PrimaryPinyin)
+		}
+		// 重新加载 schema 文件，应用引擎选项热更新
+		h.reloadActiveSchemaConfig()
+	}
 
-	// 更新协调器的全局配置
+	// 按 section 精准热更新
 	if h.coord != nil {
-		h.coord.UpdateHotkeyConfig(&newCfg.Hotkeys)
-		h.coord.UpdateStartupConfig(&newCfg.Startup)
-		h.coord.UpdateUIConfig(&newCfg.UI)
-		h.coord.UpdateToolbarConfig(&newCfg.Toolbar)
-		h.coord.UpdateInputConfig(&newCfg.Input)
-		h.coord.UpdateStatsConfig(&newCfg.Stats)
+		if changedSections["hotkeys"] {
+			h.coord.UpdateHotkeyConfig(&newCfg.Hotkeys)
+		}
+		if changedSections["startup"] {
+			h.coord.UpdateStartupConfig(&newCfg.Startup)
+		}
+		if changedSections["ui"] {
+			h.coord.UpdateUIConfig(&newCfg.UI)
+		}
+		if changedSections["toolbar"] {
+			h.coord.UpdateToolbarConfig(&newCfg.Toolbar)
+		}
+		if changedSections["input"] {
+			h.coord.UpdateInputConfig(&newCfg.Input)
+			if newCfg.Input.FilterMode != "" {
+				h.engineMgr.UpdateFilterMode(newCfg.Input.FilterMode)
+			}
+		}
+		if changedSections["stats"] {
+			h.coord.UpdateStatsConfig(&newCfg.Stats)
+		}
 	}
 
-	// 从全局配置更新候选过滤模式
-	if newCfg.Input.FilterMode != "" {
-		h.engineMgr.UpdateFilterMode(newCfg.Input.FilterMode)
-	}
-
-	// 更新保存的配置引用
+	// 替换活配置
 	*h.cfg = *newCfg
 
-	h.logger.Info("Config reloaded successfully",
-		"schema", newCfg.Schema.Active,
-		"toggleModeKeys", newCfg.Hotkeys.ToggleModeKeys)
-	return nil
+	// advanced 变更需重启
+	return changedSections["advanced"], nil
 }
 
 // reloadActiveSchemaConfig 从 schema 文件重新加载引擎选项并热更新

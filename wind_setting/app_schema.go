@@ -133,14 +133,14 @@ type SchemaConfigFreq struct {
 
 // SchemaConfigLearning 学习策略配置
 type SchemaConfigLearning struct {
-	AutoLearn        *SchemaConfigAutoLearn `yaml:"auto_learn,omitempty" json:"auto_learn,omitempty"`
-	Freq             *SchemaConfigFreq      `yaml:"freq,omitempty" json:"freq,omitempty"`
-	ProtectTopN      int                    `yaml:"protect_top_n,omitempty" json:"protect_top_n,omitempty"`
-	UnigramPath      string                 `yaml:"unigram_path,omitempty" json:"unigram_path,omitempty"`
-	TempMaxEntries   int                    `yaml:"temp_max_entries,omitempty" json:"temp_max_entries,omitempty"`
+	AutoLearn      *SchemaConfigAutoLearn `yaml:"auto_learn,omitempty" json:"auto_learn,omitempty"`
+	Freq           *SchemaConfigFreq      `yaml:"freq,omitempty" json:"freq,omitempty"`
+	ProtectTopN    int                    `yaml:"protect_top_n,omitempty" json:"protect_top_n,omitempty"`
+	UnigramPath    string                 `yaml:"unigram_path,omitempty" json:"unigram_path,omitempty"`
+	TempMaxEntries int                    `yaml:"temp_max_entries,omitempty" json:"temp_max_entries,omitempty"`
 	// 不带 omitempty：0 表示"永不晋升"是有效值，必须能被序列化进 override 文件，
 	// 否则前端选 0 与未设置无法区分（diff 算法会丢弃 0 值，导致 override 不写入）。
-	TempPromoteCount int                    `yaml:"temp_promote_count" json:"temp_promote_count"`
+	TempPromoteCount int `yaml:"temp_promote_count" json:"temp_promote_count"`
 }
 
 // SchemaConfig 完整方案配置（YAML 结构，前端可直接编辑）
@@ -274,12 +274,14 @@ func (a *App) GetSchemaConfig(schemaID string) (*SchemaConfig, error) {
 		return nil, err
 	}
 
-	// Layer 3: 叠加用户覆盖配置 (schema_overrides.yaml)
-	override, overrideErr := config.GetSchemaOverride(schemaID)
-	if overrideErr == nil && override != nil {
-		overrideData, marshalErr := yaml.Marshal(override)
-		if marshalErr == nil {
-			yaml.Unmarshal(overrideData, cfg)
+	// Layer 3: 叠加用户覆盖配置（通过 RPC 获取，由 wind_input 统一管理）
+	if a.rpcClient != nil {
+		override, overrideErr := a.rpcClient.ConfigGetSchemaOverride(schemaID)
+		if overrideErr == nil && override != nil && len(override.Data) > 0 {
+			overrideData, marshalErr := yaml.Marshal(override.Data)
+			if marshalErr == nil {
+				yaml.Unmarshal(overrideData, cfg)
+			}
 		}
 	}
 
@@ -306,60 +308,35 @@ func (a *App) SaveSchemaConfig(schemaID string, cfg *SchemaConfig) error {
 	delete(diff, "dictionaries")
 	delete(diff, "encoder")
 
-	// 如果没有差异，删除已有的覆盖配置
-	if len(diff) == 0 {
-		config.DeleteSchemaOverride(schemaID)
-	} else {
-		if err := config.SetSchemaOverride(schemaID, diff); err != nil {
-			return fmt.Errorf("保存方案覆盖配置失败: %w", err)
-		}
-	}
-
-	// 通知 wind_input 服务重新加载配置
+	// 如果没有差异，删除已有的覆盖配置；否则通过 RPC 写入覆盖层
 	if a.rpcClient != nil {
-		a.rpcClient.SystemNotifyReload("schema")
+		if len(diff) == 0 {
+			a.rpcClient.ConfigDeleteSchemaOverride(schemaID)
+		} else {
+			if err := a.rpcClient.ConfigSetSchemaOverride(schemaID, diff); err != nil {
+				return fmt.Errorf("保存方案覆盖配置失败: %w", err)
+			}
+		}
 	}
 
 	return nil
 }
 
 // ResetSchemaConfig 恢复方案默认配置（删除用户覆盖）
-// 对于有内置基础的方案，同时删除用户 diff 文件（Layer 2），使其完全回到内置默认值。
-// 对于纯用户方案（无内置基础），仅删除覆盖层（Layer 3）。
+// wind_input 内部处理 Layer 3 + Layer 2 的清理与热重载，无需 wind_setting 操作文件。
 func (a *App) ResetSchemaConfig(schemaID string) error {
-	// 删除 Layer 3 覆盖
-	if err := config.DeleteSchemaOverride(schemaID); err != nil {
-		return fmt.Errorf("重置方案配置失败: %w", err)
+	if a.rpcClient == nil {
+		return fmt.Errorf("RPC client not initialized")
 	}
-
-	// 对有内置基础的方案，删除 Layer 2 用户 diff 文件
-	if _, builtinErr := findBuiltinSchemaFile(schemaID); builtinErr == nil {
-		if userPath, userErr := findUserSchemaFile(schemaID); userErr == nil {
-			os.Remove(userPath)
-		}
-	}
-
-	// 通知 wind_input 服务重新加载配置
-	if a.rpcClient != nil {
-		a.rpcClient.SystemNotifyReload("schema")
-	}
-
-	return nil
+	return a.rpcClient.ConfigResetSchemaOverride(schemaID)
 }
 
-// SwitchActiveSchema 切换活跃方案
+// SwitchActiveSchema 切换活跃方案（原子修改 config.yaml + 热更新，由 wind_input 统一处理）
 func (a *App) SwitchActiveSchema(schemaID string) error {
-	// 更新 config.yaml 的 schema.active
-	if err := config.UpdateSchemaActive(schemaID); err != nil {
-		return fmt.Errorf("更新活跃方案失败: %w", err)
+	if a.rpcClient == nil {
+		return fmt.Errorf("RPC client not initialized")
 	}
-
-	// 通知 wind_input 服务
-	if a.rpcClient != nil {
-		a.rpcClient.SystemNotifyReload("config")
-	}
-
-	return nil
+	return a.rpcClient.ConfigSetActiveSchema(schemaID)
 }
 
 // --- 内部辅助函数 ---
@@ -619,14 +596,20 @@ func (a *App) GetReferencedSchemaIDs() ([]string, error) {
 		return nil, err
 	}
 
-	// 获取当前 available 列表
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, err
-	}
+	// 获取当前 available 列表（通过 RPC 避免直接读取文件）
 	availableSet := make(map[string]bool)
-	for _, id := range cfg.Schema.Available {
-		availableSet[id] = true
+	if a.rpcClient != nil {
+		if reply, rpcErr := a.rpcClient.ConfigGet([]string{"schema.available"}); rpcErr == nil {
+			if val, ok := reply.Values["schema.available"]; ok {
+				if arr, ok := val.([]interface{}); ok {
+					for _, v := range arr {
+						if s, ok := v.(string); ok {
+							availableSet[s] = true
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// 找出被已启用方案引用但自身不在 available 中的方案
@@ -1007,8 +990,10 @@ func (a *App) DeleteSchema(schemaID string) error {
 		}
 	}
 
-	// 清理方案覆盖配置
-	config.DeleteSchemaOverride(schemaID)
+	// 清理方案覆盖配置（通过 RPC，wind_input 统一管理 schema_overrides.yaml）
+	if a.rpcClient != nil {
+		a.rpcClient.ConfigDeleteSchemaOverride(schemaID)
+	}
 
 	return nil
 }

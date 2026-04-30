@@ -3,6 +3,8 @@ package schema
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/huanfeng/wind_input/pkg/config"
@@ -138,4 +140,24 @@ func (sm *SchemaManager) GetExeDir() string {
 // GetDataDir 获取用户数据目录
 func (sm *SchemaManager) GetDataDir() string {
 	return sm.dataDir
+}
+
+// GetBuiltinSchemaPath 返回内置方案文件路径（exeDir/schemas/<id>.schema.yaml），
+// 第二个返回值表示文件是否存在
+func (sm *SchemaManager) GetBuiltinSchemaPath(schemaID string) (string, bool) {
+	p := filepath.Join(sm.exeDir, "schemas", schemaID+schemaFileSuffix)
+	if _, err := os.Stat(p); err == nil {
+		return p, true
+	}
+	return p, false
+}
+
+// GetUserSchemaPath 返回用户方案文件路径（dataDir/schemas/<id>.schema.yaml），
+// 第二个返回值表示文件是否存在
+func (sm *SchemaManager) GetUserSchemaPath(schemaID string) (string, bool) {
+	p := filepath.Join(sm.dataDir, "schemas", schemaID+schemaFileSuffix)
+	if _, err := os.Stat(p); err == nil {
+		return p, true
+	}
+	return p, false
 }

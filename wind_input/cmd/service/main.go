@@ -429,6 +429,8 @@ func main() {
 	// 启动 RPC 服务端（统一 IPC 通道，供设置端使用）
 	rpcServer := imrpc.NewServer(logger, dictManager, dictManager.GetStore())
 	rpcServer.SetConfigReloader(coordinator.NewReloadHandler(coord, cfg, schemaMgr, engineMgr, dictManager, logger))
+	rpcServer.SetConfig(cfg)
+	rpcServer.SetSchemaOverrideResetter(schemaMgr)
 	rpcServer.SetStatusProvider(&statusAdapter{coord: coord, dm: dictManager})
 	rpcServer.SetBatchEncoder(&batchEncoderAdapter{engineMgr: engineMgr})
 	if sc := coord.GetStatCollector(); sc != nil {

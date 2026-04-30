@@ -9,18 +9,16 @@ import (
 
 // saveToolbarConfig saves the toolbar configuration to file
 func (c *Coordinator) saveToolbarConfig() {
-	// Capture value while we hold the lock
+	// 调用者持有锁，安全读取
 	visible := c.toolbarVisible
 
 	go func() {
-		cfg, err := config.Load()
-		if err != nil {
-			cfg = config.DefaultConfig()
-		}
+		c.mu.Lock()
+		c.config.Toolbar.Visible = visible
+		cfgCopy := *c.config
+		c.mu.Unlock()
 
-		cfg.Toolbar.Visible = visible
-
-		if err := config.Save(cfg); err != nil {
+		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save toolbar config", "error", err)
 		} else {
 			c.logger.Debug("Toolbar config saved")
@@ -31,14 +29,12 @@ func (c *Coordinator) saveToolbarConfig() {
 // saveThemeConfig saves the theme name to config
 func (c *Coordinator) saveThemeConfig(themeName string) {
 	go func() {
-		cfg, err := config.Load()
-		if err != nil {
-			cfg = config.DefaultConfig()
-		}
+		c.mu.Lock()
+		c.config.UI.Theme = themeName
+		cfgCopy := *c.config
+		c.mu.Unlock()
 
-		cfg.UI.Theme = themeName
-
-		if err := config.Save(cfg); err != nil {
+		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save theme config", "error", err)
 		} else {
 			c.logger.Debug("Theme config saved", "theme", themeName)
@@ -49,14 +45,12 @@ func (c *Coordinator) saveThemeConfig(themeName string) {
 // saveThemeStyleConfig saves the theme style to config
 func (c *Coordinator) saveThemeStyleConfig(themeStyle config.ThemeStyle) {
 	go func() {
-		cfg, err := config.Load()
-		if err != nil {
-			cfg = config.DefaultConfig()
-		}
+		c.mu.Lock()
+		c.config.UI.ThemeStyle = themeStyle
+		cfgCopy := *c.config
+		c.mu.Unlock()
 
-		cfg.UI.ThemeStyle = themeStyle
-
-		if err := config.Save(cfg); err != nil {
+		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save theme style config", "error", err)
 		} else {
 			c.logger.Debug("Theme style config saved", "themeStyle", themeStyle)
@@ -67,14 +61,12 @@ func (c *Coordinator) saveThemeStyleConfig(themeStyle config.ThemeStyle) {
 // saveFilterModeConfig saves the filter mode to config
 func (c *Coordinator) saveFilterModeConfig(filterMode config.FilterMode) {
 	go func() {
-		cfg, err := config.Load()
-		if err != nil {
-			cfg = config.DefaultConfig()
-		}
+		c.mu.Lock()
+		c.config.Input.FilterMode = filterMode
+		cfgCopy := *c.config
+		c.mu.Unlock()
 
-		cfg.Input.FilterMode = filterMode
-
-		if err := config.Save(cfg); err != nil {
+		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save filter mode config", "error", err)
 		} else {
 			c.logger.Debug("Filter mode config saved", "filterMode", filterMode)
@@ -146,18 +138,16 @@ func (c *Coordinator) applyStatusIndicatorConfig() {
 
 // saveStatusIndicatorConfig 异步保存状态提示配置到文件
 func (c *Coordinator) saveStatusIndicatorConfig() {
-	// 在持有锁时捕获当前值
+	// 调用者持有锁，安全读取
 	siCfg := c.config.UI.StatusIndicator
 
 	go func() {
-		cfg, err := config.Load()
-		if err != nil {
-			cfg = config.DefaultConfig()
-		}
+		c.mu.Lock()
+		c.config.UI.StatusIndicator = siCfg
+		cfgCopy := *c.config
+		c.mu.Unlock()
 
-		cfg.UI.StatusIndicator = siCfg
-
-		if err := config.Save(cfg); err != nil {
+		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save status indicator config", "error", err)
 		} else {
 			c.logger.Debug("Status indicator config saved")

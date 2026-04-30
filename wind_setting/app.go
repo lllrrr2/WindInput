@@ -8,9 +8,6 @@ import (
 	"github.com/huanfeng/wind_input/pkg/rpcapi"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
-	"wind_setting/internal/editor"
-	"wind_setting/internal/filesync"
 )
 
 // App struct
@@ -23,14 +20,8 @@ type App struct {
 	// 加词对话框参数
 	addWordParams AddWordParams
 
-	// 编辑器
-	configEditor *editor.ConfigEditor
-
 	// RPC 客户端（所有 IPC 操作统一走 RPC）
 	rpcClient *rpcapi.Client
-
-	// 文件监控
-	fileWatcher *filesync.FileWatcher
 }
 
 // NewApp creates a new App application struct
@@ -71,30 +62,12 @@ func (a *App) startup(ctx context.Context) {
 	// 启动 IPC 监听，接收其他实例的页面切换请求
 	startIPCListener(ctx)
 
-	// 初始化编辑器
-	var err error
-
-	a.configEditor, err = editor.NewConfigEditor()
-	if err == nil {
-		a.configEditor.Load()
-	}
-
-	// 初始化文件监控
-	a.fileWatcher = filesync.NewFileWatcher()
-	if a.configEditor != nil {
-		a.fileWatcher.Watch(a.configEditor.GetFilePath())
-	}
-
 	// 启动事件监听
 	go a.startEventListener()
 }
 
 // shutdown is called when the app is closing
-func (a *App) shutdown(ctx context.Context) {
-	if a.fileWatcher != nil {
-		a.fileWatcher.Stop()
-	}
-}
+func (a *App) shutdown(ctx context.Context) {}
 
 // startEventListener 启动事件监听，将 RPC 事件转发为 Wails 前端事件
 func (a *App) startEventListener() {
@@ -105,11 +78,20 @@ func (a *App) startEventListener() {
 	go func() {
 		for {
 			err := a.rpcClient.SubscribeEvents(ctx, func(msg rpcapi.EventMessage) {
-				wailsRuntime.EventsEmit(a.ctx, "dict-event", map[string]string{
-					"type":      msg.Type,
-					"schema_id": msg.SchemaID,
-					"action":    msg.Action,
-				})
+				switch msg.Type {
+				case "config":
+					// 配置变更事件：通知前端刷新配置显示
+					wailsRuntime.EventsEmit(a.ctx, "config-event", map[string]string{
+						"type":   msg.Type,
+						"action": msg.Action,
+					})
+				default:
+					wailsRuntime.EventsEmit(a.ctx, "dict-event", map[string]string{
+						"type":      msg.Type,
+						"schema_id": msg.SchemaID,
+						"action":    msg.Action,
+					})
+				}
 			})
 			if err != nil {
 				select {

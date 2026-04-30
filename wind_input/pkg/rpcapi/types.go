@@ -526,3 +526,71 @@ type StatsPruneReply struct {
 	Count  int    `json:"count"`
 	Before string `json:"before"`
 }
+
+// ── Config 服务类型 ──
+
+type ConfigGetAllReply struct {
+	Config []byte `json:"config"` // JSON-encoded config.Config
+}
+
+type ConfigGetArgs struct {
+	Keys []string `json:"keys"`
+}
+
+type ConfigGetReply struct {
+	Values map[string]any `json:"values"`
+}
+
+type ConfigSetItem struct {
+	Key   string `json:"key"`
+	Value any    `json:"value"`
+}
+
+type ConfigSetArgs struct {
+	Items []ConfigSetItem `json:"items"`
+}
+
+type ConfigSetReply struct {
+	Applied         []string `json:"applied"`
+	RequiresRestart bool     `json:"requires_restart"`
+}
+
+type ConfigSetAllArgs struct {
+	Config []byte `json:"config"` // JSON-encoded config.Config
+}
+
+type ConfigSetAllReply struct {
+	Applied         []string `json:"applied"`
+	RequiresRestart bool     `json:"requires_restart"`
+}
+
+type ConfigGetDefaultsReply struct {
+	Config []byte `json:"config"` // JSON-encoded config.Config
+}
+
+type ConfigResetArgs struct {
+	Keys []string `json:"keys"`
+}
+
+type ConfigResetReply struct {
+	Reset []string `json:"reset"`
+}
+
+// ── Schema Override 类型 ──
+
+type SchemaOverrideArgs struct {
+	SchemaID string `json:"schema_id"`
+}
+
+type SchemaOverrideReply struct {
+	Data map[string]any `json:"data,omitempty"`
+}
+
+type SchemaOverrideSetArgs struct {
+	SchemaID string         `json:"schema_id"`
+	Data     map[string]any `json:"data"`
+}
+
+type SetActiveSchemaArgs struct {
+	SchemaID string `json:"schema_id"`
+}

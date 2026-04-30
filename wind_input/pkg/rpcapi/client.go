@@ -492,6 +492,77 @@ func (c *Client) StatsPrune(days int) (*StatsPruneReply, error) {
 	return &reply, err
 }
 
+// ── Config 方法 ──
+
+// ConfigGetAll 获取完整配置（JSON 序列化）
+func (c *Client) ConfigGetAll() (*ConfigGetAllReply, error) {
+	var reply ConfigGetAllReply
+	err := c.call("Config.GetAll", &Empty{}, &reply)
+	return &reply, err
+}
+
+// ConfigGet 按 key 列表批量获取配置项
+func (c *Client) ConfigGet(keys []string) (*ConfigGetReply, error) {
+	var reply ConfigGetReply
+	err := c.call("Config.Get", &ConfigGetArgs{Keys: keys}, &reply)
+	return &reply, err
+}
+
+// ConfigSet 设置配置项（校验+持久化+热更新）
+func (c *Client) ConfigSet(items []ConfigSetItem) (*ConfigSetReply, error) {
+	var reply ConfigSetReply
+	err := c.call("Config.Set", &ConfigSetArgs{Items: items}, &reply)
+	return &reply, err
+}
+
+// ConfigSetAll 覆盖全量配置（内部 diff 后精准热更新）
+func (c *Client) ConfigSetAll(configJSON []byte) (*ConfigSetAllReply, error) {
+	var reply ConfigSetAllReply
+	err := c.call("Config.SetAll", &ConfigSetAllArgs{Config: configJSON}, &reply)
+	return &reply, err
+}
+
+// ConfigGetDefaults 获取系统默认配置
+func (c *Client) ConfigGetDefaults() (*ConfigGetDefaultsReply, error) {
+	var reply ConfigGetDefaultsReply
+	err := c.call("Config.GetDefaults", &Empty{}, &reply)
+	return &reply, err
+}
+
+// ConfigReset 重置指定 key 为默认值
+func (c *Client) ConfigReset(keys []string) (*ConfigResetReply, error) {
+	var reply ConfigResetReply
+	err := c.call("Config.Reset", &ConfigResetArgs{Keys: keys}, &reply)
+	return &reply, err
+}
+
+// ConfigGetSchemaOverride 获取方案覆盖配置
+func (c *Client) ConfigGetSchemaOverride(schemaID string) (*SchemaOverrideReply, error) {
+	var reply SchemaOverrideReply
+	err := c.call("Config.GetSchemaOverride", &SchemaOverrideArgs{SchemaID: schemaID}, &reply)
+	return &reply, err
+}
+
+// ConfigSetSchemaOverride 设置方案覆盖配置
+func (c *Client) ConfigSetSchemaOverride(schemaID string, data map[string]any) error {
+	return c.call("Config.SetSchemaOverride", &SchemaOverrideSetArgs{SchemaID: schemaID, Data: data}, &Empty{})
+}
+
+// ConfigDeleteSchemaOverride 只删除 Layer 3 override
+func (c *Client) ConfigDeleteSchemaOverride(schemaID string) error {
+	return c.call("Config.DeleteSchemaOverride", &SchemaOverrideArgs{SchemaID: schemaID}, &Empty{})
+}
+
+// ConfigResetSchemaOverride 删除 Layer 3 override + Layer 2 用户 schema diff 文件（如有内置方案）
+func (c *Client) ConfigResetSchemaOverride(schemaID string) error {
+	return c.call("Config.ResetSchemaOverride", &SchemaOverrideArgs{SchemaID: schemaID}, &Empty{})
+}
+
+// ConfigSetActiveSchema 切换活跃方案（原子修改+热更新）
+func (c *Client) ConfigSetActiveSchema(schemaID string) error {
+	return c.call("Config.SetActiveSchema", &SetActiveSchemaArgs{SchemaID: schemaID}, &Empty{})
+}
+
 // ── Event 方法 ──
 
 // SubscribeEvents connects to the event pipe and calls handler for each event.

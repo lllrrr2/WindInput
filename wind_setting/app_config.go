@@ -1,64 +1,70 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/huanfeng/wind_input/pkg/config"
 )
 
-// ========== 配置管理 ==========
+// SaveConfigResult 保存配置的结果（RequiresRestart=true 表示 advanced 变更需重启生效）
+type SaveConfigResult struct {
+	RequiresRestart bool `json:"requires_restart"`
+}
 
 // GetConfig 获取配置
 func (a *App) GetConfig() (*config.Config, error) {
-	if a.configEditor == nil {
-		return nil, fmt.Errorf("config editor not initialized")
+	if a.rpcClient == nil {
+		return nil, fmt.Errorf("RPC client not initialized")
 	}
-
-	cfg := a.configEditor.GetConfig()
-	if cfg == nil {
-		return nil, fmt.Errorf("config not loaded")
+	reply, err := a.rpcClient.ConfigGetAll()
+	if err != nil {
+		return nil, err
 	}
-
-	return cfg, nil
+	var cfg config.Config
+	if err := json.Unmarshal(reply.Config, &cfg); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	return &cfg, nil
 }
 
-// SaveConfig 保存配置
-func (a *App) SaveConfig(cfg *config.Config) error {
-	if a.configEditor == nil {
-		return fmt.Errorf("config editor not initialized")
+// SaveConfig 保存配置，返回是否需要重启
+func (a *App) SaveConfig(cfg *config.Config) (*SaveConfigResult, error) {
+	if a.rpcClient == nil {
+		return nil, fmt.Errorf("RPC client not initialized")
 	}
-
-	a.configEditor.SetConfig(cfg)
-	if err := a.configEditor.Save(); err != nil {
-		return err
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
 	}
-
-	// 更新文件监控状态
-	a.fileWatcher.UpdateState(a.configEditor.GetFilePath())
-
-	// 通知主程序重载
-	go a.NotifyReload("config")
-
-	return nil
+	reply, err := a.rpcClient.ConfigSetAll(data)
+	if err != nil {
+		return nil, err
+	}
+	return &SaveConfigResult{RequiresRestart: reply.RequiresRestart}, nil
 }
 
-// CheckConfigModified 检查配置是否被外部修改
-func (a *App) CheckConfigModified() (bool, error) {
-	if a.configEditor == nil {
-		return false, nil
-	}
-	return a.configEditor.HasChanged()
-}
-
-// GetDefaultConfig 获取系统默认配置（代码默认值 + data/config.yaml 合并结果）
+// GetDefaultConfig 获取系统默认配置
 func (a *App) GetDefaultConfig() (*config.Config, error) {
-	return config.SystemDefaultConfig(), nil
+	if a.rpcClient == nil {
+		return nil, fmt.Errorf("RPC client not initialized")
+	}
+	reply, err := a.rpcClient.ConfigGetDefaults()
+	if err != nil {
+		return nil, err
+	}
+	var cfg config.Config
+	if err := json.Unmarshal(reply.Config, &cfg); err != nil {
+		return nil, fmt.Errorf("unmarshal defaults: %w", err)
+	}
+	return &cfg, nil
 }
 
-// ReloadConfig 重新加载配置（丢弃本地修改）
+// ReloadConfig 重新加载配置（从服务端重新获取，验证连接可用）
 func (a *App) ReloadConfig() error {
-	if a.configEditor == nil {
-		return fmt.Errorf("config editor not initialized")
+	if a.rpcClient == nil {
+		return fmt.Errorf("RPC client not initialized")
 	}
-	return a.configEditor.Reload()
+	_, err := a.rpcClient.ConfigGetAll()
+	return err
 }
