@@ -48,6 +48,13 @@ func (b *EventBroadcaster) Unsubscribe(id int) {
 	b.logger.Debug("event subscriber removed", "id", id, "total", len(b.subscribers))
 }
 
+// HasSubscribers 返回当前是否有活跃订阅者（用于节流短路）。
+func (b *EventBroadcaster) HasSubscribers() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return len(b.subscribers) > 0
+}
+
 // Broadcast sends an event to all subscribers (non-blocking).
 func (b *EventBroadcaster) Broadcast(msg rpcapi.EventMessage) {
 	b.mu.RLock()

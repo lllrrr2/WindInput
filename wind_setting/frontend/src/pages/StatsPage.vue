@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, onUnmounted, computed } from "vue";
 import * as wailsApi from "../api/wails";
 import type { StatsSummary, DailyStatItem, StatsConfig } from "../api/wails";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
 import { provideToast } from "../composables/useToast";
 import { useConfirm } from "../composables/useConfirm";
 
-defineProps<{
+const props = defineProps<{
   isWailsEnv: boolean;
 }>();
 
@@ -327,6 +327,22 @@ async function loadData() {
   }
 }
 
+// 静默刷新统计数字和热力图，不触发 loading 状态，供事件驱动的自动更新使用
+async function refreshStats() {
+  try {
+    const s = await wailsApi.getStatsSummary();
+    summary.value = s;
+
+    const today = new Date();
+    const from = new Date(today);
+    from.setDate(from.getDate() - 180);
+    const days = await wailsApi.getDailyStats(dateKey(from), dateKey(today));
+    heatmapData.value = days || [];
+  } catch (e) {
+    console.error("刷新统计数据失败", e);
+  }
+}
+
 async function saveConfig() {
   try {
     const cfg = {
@@ -379,7 +395,16 @@ async function handleClearOldStats() {
   }
 }
 
-onMounted(loadData);
+onMounted(() => {
+  loadData();
+  if (props.isWailsEnv) {
+    wailsApi.onStatsEvent(() => refreshStats());
+  }
+});
+
+onUnmounted(() => {
+  wailsApi.offStatsEvent();
+});
 </script>
 
 <template>

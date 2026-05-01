@@ -73,6 +73,8 @@
 |------|---------|---------|
 | `WailsEvent.Config` | `config-event` | `WailsEventConfig` |
 | `WailsEvent.Dict` | `dict-event` | `WailsEventDict` |
+| `WailsEvent.Stats` | `stats-event` | `WailsEventStats` |
+| `WailsEvent.System` | `system-event` | `WailsEventSystem` |
 
 ## For AI Agents
 

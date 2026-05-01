@@ -16,6 +16,7 @@ type StatsService struct {
 	logger        *slog.Logger
 	statCollector *store.StatCollector
 	server        *Server
+	broadcaster   *EventBroadcaster
 }
 
 // GetSummary 获取统计概览
@@ -333,6 +334,9 @@ func (s *StatsService) Clear(args *rpcapi.Empty, reply *rpcapi.Empty) error {
 	if s.statCollector != nil {
 		s.statCollector.Reset()
 	}
+	if s.broadcaster != nil {
+		s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeStats, Action: rpcapi.EventActionClear})
+	}
 	return nil
 }
 
@@ -360,5 +364,8 @@ func (s *StatsService) Prune(args *rpcapi.StatsPruneArgs, reply *rpcapi.StatsPru
 
 	reply.Count = count
 	reply.Before = before
+	if s.broadcaster != nil {
+		s.broadcaster.Broadcast(rpcapi.EventMessage{Type: rpcapi.EventTypeStats, Action: rpcapi.EventActionUpdated})
+	}
 	return nil
 }

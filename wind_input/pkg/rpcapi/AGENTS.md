@@ -16,6 +16,24 @@ JSON-RPC 协议的请求/响应类型定义及帧协议实现。供 `internal/rp
 
 ## For AI Agents
 
+### EventType / EventAction / WailsEvent 枚举（SSOT）
+
+所有事件枚举在 `types.go` 定义，前端 `enums.ts` 的 `WailsEvent` 是镜像，两边必须同步。
+
+| EventType | 含义 | WailsEvent（前端） |
+|-----------|------|--------------------|
+| `config` | 配置变更 | `WailsEvent.Config` / `config-event` |
+| `userdict` / `temp` / `shadow` / `freq` / `phrase` | 词库类变更 | `WailsEvent.Dict` / `dict-event` |
+| `stats` | 统计数据变化（节流心跳 5s + 手动 Clear/Prune 立即推送） | `WailsEvent.Stats` / `stats-event` |
+| `system` | 服务状态变化（Pause/Resume） | `WailsEvent.System` / `system-event` |
+
+| EventAction | 含义 |
+|-------------|------|
+| `add` `remove` `update` `clear` `reset` | 标准 CRUD |
+| `batch_put` `batch_add` `batch_set` | 批量操作 |
+| `updated` | 聚合"有数据更新"信令（stats 心跳） |
+| `paused` `resumed` | 服务暂停/恢复 |
+
 ### Working In This Directory
 - **管道名称**：`\\.\pipe\wind_input{Suffix}_rpc`（Suffix 通过 `buildvariant.Suffix()` 获取，用于多版本共存）
 - **事件管道**：`\\.\pipe\wind_input{Suffix}_events`（用于推送变化事件）

@@ -66,6 +66,16 @@ export interface DictEvent {
   action: string;
 }
 
+export interface StatsEvent {
+  type: string;
+  action: string;
+}
+
+export interface SystemEvent {
+  type: string;
+  action: string;
+}
+
 // ===== Schema API =====
 
 export async function getAvailableSchemas(): Promise<SchemaInfo[]> {
@@ -333,6 +343,22 @@ export function onDictEvent(callback: (event: DictEvent) => void): void {
 
 export function offDictEvent(): void {
   (window as any).runtime.EventsOff(WailsEvent.Dict);
+}
+
+export function onStatsEvent(callback: (event: StatsEvent) => void): void {
+  (window as any).runtime.EventsOn(WailsEvent.Stats, callback);
+}
+
+export function offStatsEvent(): void {
+  (window as any).runtime.EventsOff(WailsEvent.Stats);
+}
+
+export function onSystemEvent(callback: (event: SystemEvent) => void): void {
+  (window as any).runtime.EventsOn(WailsEvent.System, callback);
+}
+
+export function offSystemEvent(): void {
+  (window as any).runtime.EventsOff(WailsEvent.System);
 }
 
 // 用户词库管理

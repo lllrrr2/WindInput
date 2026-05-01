@@ -191,5 +191,7 @@ export type ShiftBehaviorValue =
 export const WailsEvent = {
   Config: "config-event",
   Dict: "dict-event",
+  Stats: "stats-event",
+  System: "system-event",
 } as const;
 export type WailsEventValue = (typeof WailsEvent)[keyof typeof WailsEvent];

@@ -22,12 +22,15 @@ const (
 	EventTypeShadow   EventType = "shadow"
 	EventTypeFreq     EventType = "freq"
 	EventTypePhrase   EventType = "phrase"
+	EventTypeStats    EventType = "stats"
+	EventTypeSystem   EventType = "system"
 )
 
 // Valid 校验 EventType 是否为已知值
 func (t EventType) Valid() bool {
 	switch t {
-	case EventTypeConfig, EventTypeUserDict, EventTypeTemp, EventTypeShadow, EventTypeFreq, EventTypePhrase:
+	case EventTypeConfig, EventTypeUserDict, EventTypeTemp, EventTypeShadow, EventTypeFreq, EventTypePhrase,
+		EventTypeStats, EventTypeSystem:
 		return true
 	}
 	return false
@@ -45,13 +48,17 @@ const (
 	EventActionBatchPut EventAction = "batch_put"
 	EventActionBatchAdd EventAction = "batch_add"
 	EventActionBatchSet EventAction = "batch_set"
+	EventActionUpdated  EventAction = "updated"
+	EventActionPaused   EventAction = "paused"
+	EventActionResumed  EventAction = "resumed"
 )
 
 // Valid 校验 EventAction 是否为已知值
 func (a EventAction) Valid() bool {
 	switch a {
 	case EventActionAdd, EventActionRemove, EventActionUpdate, EventActionClear,
-		EventActionReset, EventActionBatchPut, EventActionBatchAdd, EventActionBatchSet:
+		EventActionReset, EventActionBatchPut, EventActionBatchAdd, EventActionBatchSet,
+		EventActionUpdated, EventActionPaused, EventActionResumed:
 		return true
 	}
 	return false
@@ -69,6 +76,8 @@ type EventMessage struct {
 const (
 	WailsEventConfig = "config-event"
 	WailsEventDict   = "dict-event"
+	WailsEventStats  = "stats-event"
+	WailsEventSystem = "system-event"
 )
 
 // ── Config Section ──
@@ -671,4 +680,27 @@ type SchemaOverrideSetArgs struct {
 
 type SetActiveSchemaArgs struct {
 	SchemaID string `json:"schema_id"`
+}
+
+// ── Perf（性能采样）类型 ──
+
+// SystemDumpPerfArgs 主动导出按键链路性能样本到 JSONL 文件。
+// Path 留空时由服务端选择默认路径（一般为日志目录下 perf_<timestamp>.jsonl）。
+// Clear=true 表示导出后清空内存缓冲。
+type SystemDumpPerfArgs struct {
+	Path  string `json:"path,omitempty"`
+	Clear bool   `json:"clear,omitempty"`
+}
+
+type SystemDumpPerfReply struct {
+	Path    string `json:"path"`
+	Count   int    `json:"count"`
+	Summary string `json:"summary"` // 单行可读统计摘要
+}
+
+// SystemPerfStatsReply 不落盘，直接返回当前的统计摘要。
+type SystemPerfStatsReply struct {
+	Count    int    `json:"count"`
+	Capacity int    `json:"capacity"`
+	Summary  string `json:"summary"`
 }

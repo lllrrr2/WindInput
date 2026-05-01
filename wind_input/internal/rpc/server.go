@@ -195,9 +195,11 @@ func (s *Server) Start() error {
 	RegisterMethod(s.router, "System.Pause", systemSvc.Pause)
 	RegisterMethod(s.router, "System.Resume", systemSvc.Resume)
 	RegisterMethod(s.router, "System.Shutdown", systemSvc.Shutdown)
+	RegisterMethod(s.router, "System.DumpPerf", systemSvc.DumpPerf)
+	RegisterMethod(s.router, "System.GetPerfStats", systemSvc.GetPerfStats)
 
 	// 注册 Stats 方法
-	statsSvc := &StatsService{store: s.store, logger: s.logger, statCollector: s.statCollector, server: s}
+	statsSvc := &StatsService{store: s.store, logger: s.logger, statCollector: s.statCollector, server: s, broadcaster: s.broadcaster}
 	RegisterMethod(s.router, "Stats.GetSummary", statsSvc.GetSummary)
 	RegisterMethod(s.router, "Stats.GetDaily", statsSvc.GetDaily)
 	RegisterMethod(s.router, "Stats.GetConfig", statsSvc.GetConfig)
@@ -264,7 +266,31 @@ func (s *Server) Start() error {
 	s.wg.Add(1)
 	go s.acceptLoop()
 
+	s.wg.Add(1)
+	go s.statsThrottler()
+
 	return nil
+}
+
+// statsThrottler 每 5 秒在有订阅者时广播一次统计心跳，驱动设置端自动刷新。
+// 仅在有活跃订阅者（设置页面已打开）时才发送，否则直接跳过，不影响输入性能。
+func (s *Server) statsThrottler() {
+	defer s.wg.Done()
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if s.broadcaster.HasSubscribers() {
+				s.broadcaster.Broadcast(rpcapi.EventMessage{
+					Type:   rpcapi.EventTypeStats,
+					Action: rpcapi.EventActionUpdated,
+				})
+			}
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 // StartAsync 异步启动
