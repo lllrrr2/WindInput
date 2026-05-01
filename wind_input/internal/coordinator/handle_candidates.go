@@ -130,14 +130,25 @@ func (c *Coordinator) updateCandidatesEx() *engine.ConvertResult {
 	zKeyRepeat := c.inputBuffer == "z" && c.engineMgr.IsZKeyRepeatEnabled()
 
 	// 分级加载：拼音/混输引擎首次加载 300 条；码表引擎短前缀（1字符→100条，2字符→300条）也限制初始量
+	// 首键（composition 开始后的第一个按键）使用更小的限制以降低前缀查找延迟
 	initialLimit := 0
+	firstKey := c.pendingFirstKey
+	c.pendingFirstKey = false
 	switch c.engineMgr.GetCurrentType() {
 	case engine.EngineTypePinyin, engine.EngineTypeMixed:
-		initialLimit = 300
+		if firstKey {
+			initialLimit = 50
+		} else {
+			initialLimit = 300
+		}
 	case engine.EngineTypeCodetable:
 		inputLen := len(c.inputBuffer)
 		if inputLen <= 1 {
-			initialLimit = 100
+			if firstKey {
+				initialLimit = 50
+			} else {
+				initialLimit = 100
+			}
 		} else if inputLen == 2 {
 			initialLimit = 300
 		}

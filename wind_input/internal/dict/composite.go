@@ -29,11 +29,11 @@ type CompositeDict struct {
 func defaultPrefixSafeLimit(prefixLen int) int {
 	switch prefixLen {
 	case 0, 1:
-		return 8000
+		return 200
 	case 2:
-		return 2000
-	case 3:
 		return 800
+	case 3:
+		return 500
 	default:
 		return 300
 	}
