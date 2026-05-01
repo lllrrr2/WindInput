@@ -165,7 +165,8 @@ type Coordinator struct {
 	bridgeServer BridgeServer // Interface for broadcasting state to TSF clients
 	version      string       // App version for display in menu
 
-	mu sync.Mutex
+	mu    sync.Mutex
+	cfgMu *sync.RWMutex // 与 rpc.Server 共享，守护 *config 读写（cfgMu → mu 顺序）
 
 	// Input mode state
 	chineseMode bool // true = Chinese, false = English
@@ -462,6 +463,7 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		hotkeysDirty:   true, // 首次使用时需要编译
 		inputHistory:   NewInputHistory(20),
 		appCompat:      appCompat,
+		cfgMu:          new(sync.RWMutex),
 	}
 
 	// 根据配对表设置引号配对状态

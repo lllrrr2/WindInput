@@ -24,6 +24,7 @@ type ConfigService struct {
 	broadcaster    *EventBroadcaster
 	schemaMgr      SchemaOverrideResetter
 	logger         *slog.Logger
+	saveFn         func(*config.Config) error // 默认 config.Save，测试可替换为 no-op
 }
 
 // GetAll 获取完整配置
@@ -94,7 +95,7 @@ func (s *ConfigService) Set(args *rpcapi.ConfigSetArgs, reply *rpcapi.ConfigSetR
 
 	config.ApplyConfigFallbacks(newCfg)
 
-	if err := config.Save(newCfg); err != nil {
+	if err := s.saveFn(newCfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 
@@ -122,7 +123,7 @@ func (s *ConfigService) SetAll(args *rpcapi.ConfigSetAllArgs, reply *rpcapi.Conf
 	// 计算变更的 section
 	changedSections := diffSections(s.cfg, newCfg)
 
-	if err := config.Save(newCfg); err != nil {
+	if err := s.saveFn(newCfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 

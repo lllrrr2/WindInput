@@ -13,10 +13,10 @@ func (c *Coordinator) saveToolbarConfig() {
 	visible := c.toolbarVisible
 
 	go func() {
-		c.mu.Lock()
+		c.cfgMu.Lock()
 		c.config.Toolbar.Visible = visible
 		cfgCopy := *c.config
-		c.mu.Unlock()
+		c.cfgMu.Unlock()
 
 		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save toolbar config", "error", err)
@@ -29,10 +29,10 @@ func (c *Coordinator) saveToolbarConfig() {
 // saveThemeConfig saves the theme name to config
 func (c *Coordinator) saveThemeConfig(themeName string) {
 	go func() {
-		c.mu.Lock()
+		c.cfgMu.Lock()
 		c.config.UI.Theme = themeName
 		cfgCopy := *c.config
-		c.mu.Unlock()
+		c.cfgMu.Unlock()
 
 		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save theme config", "error", err)
@@ -45,10 +45,10 @@ func (c *Coordinator) saveThemeConfig(themeName string) {
 // saveThemeStyleConfig saves the theme style to config
 func (c *Coordinator) saveThemeStyleConfig(themeStyle config.ThemeStyle) {
 	go func() {
-		c.mu.Lock()
+		c.cfgMu.Lock()
 		c.config.UI.ThemeStyle = themeStyle
 		cfgCopy := *c.config
-		c.mu.Unlock()
+		c.cfgMu.Unlock()
 
 		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save theme style config", "error", err)
@@ -61,10 +61,10 @@ func (c *Coordinator) saveThemeStyleConfig(themeStyle config.ThemeStyle) {
 // saveFilterModeConfig saves the filter mode to config
 func (c *Coordinator) saveFilterModeConfig(filterMode config.FilterMode) {
 	go func() {
-		c.mu.Lock()
+		c.cfgMu.Lock()
 		c.config.Input.FilterMode = filterMode
 		cfgCopy := *c.config
-		c.mu.Unlock()
+		c.cfgMu.Unlock()
 
 		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save filter mode config", "error", err)
@@ -76,6 +76,9 @@ func (c *Coordinator) saveFilterModeConfig(filterMode config.FilterMode) {
 
 // handleStatusMenuAction 处理状态窗口右键菜单动作
 func (c *Coordinator) handleStatusMenuAction(action ui.StatusMenuAction) {
+	// cfgMu 先于 c.mu 获取，与 ApplyConfigUpdate → Update*Config 路径的锁顺序一致
+	c.cfgMu.Lock()
+	defer c.cfgMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -138,14 +141,14 @@ func (c *Coordinator) applyStatusIndicatorConfig() {
 
 // saveStatusIndicatorConfig 异步保存状态提示配置到文件
 func (c *Coordinator) saveStatusIndicatorConfig() {
-	// 调用者持有锁，安全读取
+	// 调用者持有 cfgMu + c.mu，安全读取
 	siCfg := c.config.UI.StatusIndicator
 
 	go func() {
-		c.mu.Lock()
+		c.cfgMu.Lock()
 		c.config.UI.StatusIndicator = siCfg
 		cfgCopy := *c.config
-		c.mu.Unlock()
+		c.cfgMu.Unlock()
 
 		if err := config.Save(&cfgCopy); err != nil {
 			c.logger.Error("Failed to save status indicator config", "error", err)

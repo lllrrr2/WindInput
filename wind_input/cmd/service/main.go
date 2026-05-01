@@ -430,6 +430,8 @@ func main() {
 	rpcServer := imrpc.NewServer(logger, dictManager, dictManager.GetStore())
 	rpcServer.SetConfig(cfg)
 	rpcServer.SetConfigReloader(coordinator.NewReloadHandler(coord, cfg, rpcServer.CfgMu(), schemaMgr, engineMgr, dictManager, logger))
+	// 注入共享 cfgMu，使 coordinator 的 save* goroutine 与 RPC 路径使用同一把锁
+	coord.SetCfgMu(rpcServer.CfgMu())
 	rpcServer.SetSchemaOverrideResetter(schemaMgr)
 	rpcServer.SetStatusProvider(&statusAdapter{coord: coord, dm: dictManager})
 	rpcServer.SetBatchEncoder(&batchEncoderAdapter{engineMgr: engineMgr})

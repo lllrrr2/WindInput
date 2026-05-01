@@ -221,6 +221,7 @@ func (s *Server) Start() error {
 		broadcaster:    s.broadcaster,
 		schemaMgr:      s.schemaMgr,
 		logger:         s.logger,
+		saveFn:         config.Save,
 	}
 	RegisterMethod(s.router, "Config.GetAll", configSvc.GetAll)
 	RegisterMethod(s.router, "Config.Get", configSvc.Get)

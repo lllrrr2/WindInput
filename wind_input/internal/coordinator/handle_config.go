@@ -2,6 +2,8 @@
 package coordinator
 
 import (
+	"sync"
+
 	"github.com/huanfeng/wind_input/internal/ui"
 	"github.com/huanfeng/wind_input/pkg/config"
 	"github.com/huanfeng/wind_input/pkg/theme"
@@ -289,6 +291,12 @@ func (c *Coordinator) updateThemeStyle(uiConfig *config.UIConfig) {
 	} else {
 		c.stopDarkModeWatcher()
 	}
+}
+
+// SetCfgMu 注入与 rpc.Server 共享的配置锁，替换构造时创建的本地锁。
+// 必须在启动 Coordinator 事件循环前调用（main.go 注入时机）。
+func (c *Coordinator) SetCfgMu(mu *sync.RWMutex) {
+	c.cfgMu = mu
 }
 
 // ClearInputState 清空输入状态（供外部调用）
