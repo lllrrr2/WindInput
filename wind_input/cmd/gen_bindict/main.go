@@ -45,7 +45,7 @@ func genPinyinWdb(dictDir, outDir string) error {
 	// 按 abbrev 聚合简拼条目
 	abbrevEntries := make(map[string][]dictEntry)
 
-	files := []string{"8105.dict.yaml", "base.dict.yaml"}
+	files := []string{"8105.dict.yaml", "base.dict.yaml", "ext.dict.yaml"}
 	totalCount := 0
 
 	for _, name := range files {

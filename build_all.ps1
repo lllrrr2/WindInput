@@ -390,6 +390,7 @@ function Download-Dictionaries {
     Download-RemoteFile $RimeIceBaseUrl "rime_ice.dict.yaml" $RimePinyinDir "词库入口描述文件"
     Download-RemoteFile "$RimeIceBaseUrl/cn_dicts" "8105.dict.yaml" $RimePinyinCnDicts "单字词库, 约112KB"
     Download-RemoteFile "$RimeIceBaseUrl/cn_dicts" "base.dict.yaml" $RimePinyinCnDicts "基础词库, 约16MB"
+    Download-RemoteFile "$RimeIceBaseUrl/cn_dicts" "ext.dict.yaml" $RimePinyinCnDicts "扩展词库, 约5MB"
     Download-RemoteFile "$RimeIceBaseUrl/cn_dicts" "tencent.dict.yaml" $RimePinyinCnDicts "腾讯词频, 约17MB"
 
     # 英文词库 (rime-ice)
@@ -440,7 +441,7 @@ function Prepare-DataFiles {
         Write-Host "[警告] 未找到 rime_ice.dict.yaml" -ForegroundColor Yellow
     }
 
-    $pinyinDictFiles = @("8105.dict.yaml", "base.dict.yaml")
+    $pinyinDictFiles = @("8105.dict.yaml", "base.dict.yaml", "ext.dict.yaml")
     foreach ($df in $pinyinDictFiles) {
         $src = Join-Path $RimePinyinCnDicts $df
         if (Test-Path $src) {

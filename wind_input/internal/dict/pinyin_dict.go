@@ -48,6 +48,7 @@ func (d *PinyinDict) LoadRimeDir(dirPath string) error {
 	files := []string{
 		"8105.dict.yaml", // 单字
 		"base.dict.yaml", // 基础词组
+		"ext.dict.yaml",  // 扩展词组（rime-ice 补充）
 	}
 
 	loaded := 0

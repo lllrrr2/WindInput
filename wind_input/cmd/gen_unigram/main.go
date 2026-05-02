@@ -81,6 +81,7 @@ func loadFromRime(dirPath string) map[string]float64 {
 	files := []string{
 		"8105.dict.yaml",    // 单字（含真实词频）
 		"base.dict.yaml",    // 基础词组
+		"ext.dict.yaml",     // 扩展词组（rime-ice 补充）
 		"tencent.dict.yaml", // 腾讯词向量补充
 	}
 
