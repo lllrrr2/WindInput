@@ -20,8 +20,18 @@ dropped_path: ../../../.cache/rime-wubi/wubi86_jidian.dict.filtered.tsv
 
 # 生成文件中引用的扩展词库（写入 import_tables 段）
 import_tables:
-  - wubi86_jidian_extra
+  - wubi86_jidian_extra      # 由 dictgen 拆分后的中文条目
+  - wubi86_jidian_emoji      # emoji 条目
+  # - wubi86_jidian_english  # 英文/品牌（默认不引入，需要时取消注释）
+  # - wubi86_jidian_symbols  # 特殊字符（默认不引入）
   #- wubi86_jidian_extra_district
+
+# 扩展词库处理：把 jidian_extra.dict.yaml 按字符类型拆分为 4 个独立文件
+# 中文条目（CJK 桶）按 unigram 加权；emoji/english/symbols 桶保留原权重
+extra:
+  enabled: true
+  input_path: ../../../.cache/rime-wubi/wubi86_jidian_extra.dict.yaml
+  default_weight: 100  # emoji/english/symbols 桶里无原始权重时的兜底值
 
 # 权重归一化参数
 target_median: 1000   # unigram 中位词频映射到此权重

@@ -502,9 +502,9 @@ function Prepare-DataFiles {
     }
 
     # 复制五笔词库 (rime-wubi86-jidian)
+    # 注：wubi86_jidian_extra.dict.yaml 已由 dictgen 拆分生成（cjk/emoji/english/symbols），不再从 cache 复制
     $RimeWubiDir = Join-Path $ScriptDir ".cache\rime-wubi"
     $wubiFiles = @(
-        "wubi86_jidian_extra.dict.yaml",
         "wubi86_jidian_extra_district.dict.yaml",
         "wubi86_jidian_user.dict.yaml"
     )

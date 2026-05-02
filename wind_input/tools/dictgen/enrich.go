@@ -888,6 +888,13 @@ func enrich(cfg *Config) error {
 	}
 	fmt.Printf("      完成: %d 条，%d KB\n", len(kept), sizeKB)
 
+	// 扩展词库处理（按字符类型拆分为 cjk / emoji / english / symbols 四个文件）
+	if cfg.Extra.Enabled {
+		if err := processExtra(cfg, unigram, logMedian); err != nil {
+			fmt.Printf("      [警告] extra 处理失败: %v\n", err)
+		}
+	}
+
 	// 简码避让冲突分析
 	if cfg.Shortcodes.Enabled {
 		conflicts := analyzeShortcodeConflicts(kept)

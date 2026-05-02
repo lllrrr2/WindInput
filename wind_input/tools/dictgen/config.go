@@ -23,6 +23,14 @@ type ShortcodeConfig struct {
 	Level3BaseWeight int  `yaml:"level3_base_weight"` // 三级简码基础权重（组内按 jidian 顺序递减）
 }
 
+// ExtraConfig 扩展词库处理配置
+// 把 rime-wubi-jidian 的 extra 词库按字符类型拆分为 cjk / emoji / english / symbols 四个文件
+type ExtraConfig struct {
+	Enabled       bool   `yaml:"enabled"`        // 是否启用 extra 处理
+	InputPath     string `yaml:"input_path"`     // 源 extra 词库路径
+	DefaultWeight int    `yaml:"default_weight"` // emoji/english/symbol 桶里无原始权重时的默认值（默认 100）
+}
+
 // DemotionConfig 简码降权策略配置
 // 当一个字同时占据简码和4码全码首选时，根据第二候选的权重决定是否降权
 type DemotionConfig struct {
@@ -88,6 +96,9 @@ type Config struct {
 
 	// 简码降权策略
 	Demotion DemotionConfig `yaml:"demotion"`
+
+	// 扩展词库处理
+	Extra ExtraConfig `yaml:"extra"`
 }
 
 func defaultConfig() Config {
@@ -150,6 +161,7 @@ func loadConfig(path string) (*Config, error) {
 	cfg.DroppedPath = resolve(cfg.DroppedPath)
 	cfg.ConflictReportPath = resolve(cfg.ConflictReportPath)
 	cfg.DemotionReportPath = resolve(cfg.DemotionReportPath)
+	cfg.Extra.InputPath = resolve(cfg.Extra.InputPath)
 
 	return &cfg, nil
 }
