@@ -481,7 +481,7 @@ function isReferencedBy(schemaID: string): boolean {
               <div class="setting-control">
                 <Select
                   :disabled="!getLearningConfig(schemaID).auto_learn.enabled"
-                  :model-value="String(getLearningConfig(schemaID).temp_promote_count ?? 3)"
+                  :model-value="String(getLearningConfig(schemaID).temp_promote_count ?? 0)"
                   @update:model-value="(v: string) => { getLearningConfig(schemaID).temp_promote_count = Number(v); }"
                 >
                   <SelectTrigger class="w-[140px]"><SelectValue /></SelectTrigger>
@@ -760,7 +760,7 @@ function isReferencedBy(schemaID: string): boolean {
             <div class="setting-control">
               <Select
                 :disabled="!getLearningConfig(schemaID).auto_learn.enabled"
-                :model-value="String(getLearningConfig(schemaID).temp_promote_count ?? 3)"
+                :model-value="String(getLearningConfig(schemaID).temp_promote_count ?? 0)"
                 @update:model-value="(v: string) => { getLearningConfig(schemaID).temp_promote_count = Number(v); }"
               >
                 <SelectTrigger class="w-[140px]"><SelectValue /></SelectTrigger>

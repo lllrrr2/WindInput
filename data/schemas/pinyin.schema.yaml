@@ -34,4 +34,4 @@ learning:
     enabled: false
   unigram_path: "pinyin/unigram.txt"
   temp_max_entries: 5000
-  temp_promote_count: 3
+  temp_promote_count: 0
