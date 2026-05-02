@@ -29,7 +29,7 @@ const statsConfig = ref<StatsConfig>({
   retain_days: 0,
   track_english: true,
 });
-const clearBeforeDays = ref("180");
+const clearBeforeDays = ref("");
 const tooltip = ref({
   visible: false,
   text: "",
@@ -298,6 +298,7 @@ const clearBeforeOptions = [
   { value: "180", label: "180 天前" },
   { value: "365", label: "1 年前" },
   { value: "730", label: "2 年前" },
+  { value: "all", label: "全部" },
 ];
 
 async function loadData() {
@@ -368,30 +369,33 @@ async function handleTrackEnglishChange(checked: boolean) {
   await saveConfig();
 }
 
-async function handleClearStats() {
-  const ok = await confirm("确定要清空所有统计数据吗？此操作不可恢复。");
-  if (!ok) return;
-  try {
-    await wailsApi.clearStats();
-    toast("统计数据已清空");
-    await loadData();
-  } catch (e: any) {
-    toast(e.message || "清空失败", "error");
-  }
-}
-
 async function handleClearOldStats() {
-  const days = parseInt(clearBeforeDays.value);
-  const ok = await confirm(
-    `确定要清理 ${days} 天前的统计数据吗？此操作不可恢复。`,
-  );
-  if (!ok) return;
-  try {
-    const result = await wailsApi.clearStatsBefore(days);
-    toast(`已清理 ${result.count} 天统计数据`);
-    await loadData();
-  } catch (e: any) {
-    toast(e.message || "清理失败", "error");
+  if (!clearBeforeDays.value) return;
+  if (clearBeforeDays.value === "all") {
+    const ok = await confirm("确定要清空所有统计数据吗？此操作不可恢复。");
+    if (!ok) return;
+    try {
+      await wailsApi.clearStats();
+      clearBeforeDays.value = "";
+      toast("统计数据已清空");
+      await refreshStats();
+    } catch (e: any) {
+      toast(e.message || "清空失败", "error");
+    }
+  } else {
+    const days = parseInt(clearBeforeDays.value);
+    const ok = await confirm(
+      `确定要清理 ${days} 天前的统计数据吗？此操作不可恢复。`,
+    );
+    if (!ok) return;
+    try {
+      const result = await wailsApi.clearStatsBefore(days);
+      clearBeforeDays.value = "";
+      toast(`已清理 ${result.count} 天统计数据`);
+      await refreshStats();
+    } catch (e: any) {
+      toast(e.message || "清理失败", "error");
+    }
   }
 }
 
@@ -686,7 +690,7 @@ onUnmounted(() => {
           <div class="setting-control control-row">
             <Select v-model="clearBeforeDays">
               <SelectTrigger class="w-[140px]">
-                <SelectValue />
+                <SelectValue placeholder="选择范围" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -698,11 +702,12 @@ onUnmounted(() => {
                 </SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="destructive" size="sm" @click="handleClearOldStats"
+            <Button
+              variant="destructive"
+              size="sm"
+              :disabled="!clearBeforeDays"
+              @click="handleClearOldStats"
               >清理</Button
-            >
-            <Button variant="destructive" size="sm" @click="handleClearStats"
-              >清空全部</Button
             >
           </div>
         </div>
