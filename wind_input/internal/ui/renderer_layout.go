@@ -717,7 +717,7 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	}
 
 	// Total width
-	minWidth := 200.0 * scale
+	minWidth := 60.0 * scale
 	if cfg.HorizontalMinWidth > 0 {
 		minWidth = cfg.HorizontalMinWidth
 	}

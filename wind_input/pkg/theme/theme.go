@@ -93,7 +93,7 @@ type CandidateWindowStyle struct {
 	CommentMarginRight float64 `yaml:"comment_margin_right" json:"comment_margin_right"` // Gap after comment to item right edge (px, 0 = default 4)
 	VerticalMinWidth   float64 `yaml:"vertical_min_width" json:"vertical_min_width"`     // Vertical layout minimum width (px, 0 = auto)
 	VerticalMaxWidth   float64 `yaml:"vertical_max_width" json:"vertical_max_width"`     // Vertical layout maximum width (px, 0 = default 600)
-	HorizontalMinWidth float64 `yaml:"horizontal_min_width" json:"horizontal_min_width"` // Horizontal layout minimum width (px, 0 = default 200)
+	HorizontalMinWidth float64 `yaml:"horizontal_min_width" json:"horizontal_min_width"` // Horizontal layout minimum width (px, 0 = default 60)
 	HorizontalMaxWidth float64 `yaml:"horizontal_max_width" json:"horizontal_max_width"` // Horizontal layout maximum width (px, 0 = no limit)
 	AlwaysShowPager    bool    `yaml:"always_show_pager" json:"always_show_pager"`       // Always show page navigation (disable buttons when not navigable)
 	ShowPageNumber     *bool   `yaml:"show_page_number" json:"show_page_number"`         // Show page number text (e.g. "1/3"), nil = true (default show)
@@ -242,7 +242,7 @@ type ResolvedCandidateWindowStyle struct {
 	CommentMarginRight float64 // Gap after comment to item right edge (px, 0 = default 4)
 	VerticalMinWidth   float64 // Vertical layout minimum width (px, 0 = auto)
 	VerticalMaxWidth   float64 // Vertical layout maximum width (px, 0 = default 600)
-	HorizontalMinWidth float64 // Horizontal layout minimum width (px, 0 = default 200)
+	HorizontalMinWidth float64 // Horizontal layout minimum width (px, 0 = default 60)
 	HorizontalMaxWidth float64 // Horizontal layout maximum width (px, 0 = no limit)
 	AlwaysShowPager    bool    // Always show page navigation
 	ShowPageNumber     bool    // Show page number text (e.g. "1/3")

@@ -47,7 +47,7 @@ type RenderConfig struct {
 	CommentMarginRight float64                // Gap after comment to item right edge (scaled px)
 	VerticalMinWidth   float64                // Vertical layout minimum width (scaled px), 0 = auto
 	VerticalMaxWidth   float64                // Vertical layout maximum width (scaled px), 0 = default 600
-	HorizontalMinWidth float64                // Horizontal layout minimum width (scaled px), 0 = default 200
+	HorizontalMinWidth float64                // Horizontal layout minimum width (scaled px), 0 = default 60
 	HorizontalMaxWidth float64                // Horizontal layout maximum width (scaled px), 0 = no limit
 	AlwaysShowPager    bool                   // Always show page navigation (disable buttons when not navigable)
 	ShowPageNumber     bool                   // Show page number text (e.g. "1/3")
