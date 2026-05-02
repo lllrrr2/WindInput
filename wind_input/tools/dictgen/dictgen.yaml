@@ -45,6 +45,20 @@ regular_weight_max: 8999   # 普通词条权重上限，须低于 level3_base_we
 # 留空则不输出报告
 conflict_report_path: ../../../.cache/rime-wubi/wubi86_jidian.shortcode_conflicts.tsv
 
+# 简码降权待处理报告（仅含 level2_full4/level3_full4 中有竞争候选的条目）
+# 包含权重差、候选类型等评估列，用于确定降权参数
+demotion_report_path: ../../../.cache/rime-wubi/wubi86_jidian.demotion_candidates.tsv
+
+# 简码降权策略（详见 STRATEGY.md）
+# 当一个字同时占据简码和4码全码首选时，根据第二候选的权重决定是否对简码字降权
+demotion:
+  enabled: true
+  filter_threshold: 200       # 第二候选权重低于此值直接忽略（极低频词/生僻字）
+  single_char_promote_wt: 1000 # 单字第二候选权重 ≥ 此值时触发降权
+  word_promote_wt: 800         # 词组第二候选权重 ≥ 此值时触发降权
+  max_gap_ratio_single: 0.60   # 单字：gap/首字权重 > 此比例则保留（首字权重优势太大）
+  max_gap_ratio_word: 0.65     # 词组：gap/首字权重 > 此比例则保留
+
 # 内置过滤选项
 drop_z_code: true       # 过滤 z 开头的编码（反查占位码）
 drop_dollar: true       # 过滤 $ 开头的词条

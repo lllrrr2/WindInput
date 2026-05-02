@@ -23,6 +23,17 @@ type ShortcodeConfig struct {
 	Level3BaseWeight int  `yaml:"level3_base_weight"` // 三级简码基础权重（组内按 jidian 顺序递减）
 }
 
+// DemotionConfig 简码降权策略配置
+// 当一个字同时占据简码和4码全码首选时，根据第二候选的权重决定是否降权
+type DemotionConfig struct {
+	Enabled             bool    `yaml:"enabled"`                // 是否启用降权策略
+	FilterThreshold     int     `yaml:"filter_threshold"`       // 第二候选权重低于此值直接忽略（不参与降权计算）
+	SingleCharPromoteWt int     `yaml:"single_char_promote_wt"` // 单字第二候选权重达到此值则触发降权
+	WordPromoteWt       int     `yaml:"word_promote_wt"`        // 词组第二候选权重达到此值则触发降权
+	MaxGapRatioSingle   float64 `yaml:"max_gap_ratio_single"`   // 单字：gap/首字权重 超过此比例则保留（首字优势太大）
+	MaxGapRatioWord     float64 `yaml:"max_gap_ratio_word"`     // 词组：gap/首字权重 超过此比例则保留
+}
+
 type DropRule struct {
 	CodePrefix  string   `yaml:"code_prefix"`
 	Code        string   `yaml:"code"`
@@ -70,6 +81,10 @@ type Config struct {
 	Shortcodes         ShortcodeConfig `yaml:"shortcodes"`
 	RegularWeightMax   int             `yaml:"regular_weight_max"`   // 普通词条权重上限，应低于最低简码权重
 	ConflictReportPath string          `yaml:"conflict_report_path"` // 简码避让冲突报告路径，空则不输出
+	DemotionReportPath string          `yaml:"demotion_report_path"` // 简码降权待处理报告路径，空则不输出
+
+	// 简码降权策略
+	Demotion DemotionConfig `yaml:"demotion"`
 }
 
 func defaultConfig() Config {
@@ -95,6 +110,14 @@ func defaultConfig() Config {
 			Level3BaseWeight: 9000,
 		},
 		RegularWeightMax: 8999,
+		Demotion: DemotionConfig{
+			Enabled:             true,
+			FilterThreshold:     200,
+			SingleCharPromoteWt: 1000,
+			WordPromoteWt:       800,
+			MaxGapRatioSingle:   0.60,
+			MaxGapRatioWord:     0.65,
+		},
 	}
 }
 
@@ -122,6 +145,7 @@ func loadConfig(path string) (*Config, error) {
 	cfg.CustomWordsPath = resolve(cfg.CustomWordsPath)
 	cfg.DroppedPath = resolve(cfg.DroppedPath)
 	cfg.ConflictReportPath = resolve(cfg.ConflictReportPath)
+	cfg.DemotionReportPath = resolve(cfg.DemotionReportPath)
 
 	return &cfg, nil
 }

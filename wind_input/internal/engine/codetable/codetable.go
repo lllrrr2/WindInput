@@ -655,19 +655,21 @@ func reorderPrefixForInnerOrder(candidates []candidate.Candidate) {
 
 var seenPool = sync.Pool{New: func() any { return make(map[string]struct{}, 64) }}
 
-// dedup 按 text 去重，保留先出现的（精确匹配优先）
+// dedup 按 text 去重，保留先出现的。
+// 调用前提：exactCandidates 必须在 prefixCandidates 之前合入，
+// 这样"先出现"天然等价于"精确匹配优先于前缀匹配"，无需额外替换分支。
 func dedup(candidates []candidate.Candidate) []candidate.Candidate {
 	seen := seenPool.Get().(map[string]struct{})
-	// 清空复用的 map
 	for k := range seen {
 		delete(seen, k)
 	}
 	result := make([]candidate.Candidate, 0, len(candidates))
 	for _, c := range candidates {
-		if _, ok := seen[c.Text]; !ok {
-			seen[c.Text] = struct{}{}
-			result = append(result, c)
+		if _, ok := seen[c.Text]; ok {
+			continue
 		}
+		seen[c.Text] = struct{}{}
+		result = append(result, c)
 	}
 	seenPool.Put(seen)
 	return result

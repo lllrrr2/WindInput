@@ -222,20 +222,29 @@ func countShortcodeLevel(entries []Entry, level int) int {
 
 // ── 简码避让冲突分析 ───────────────────────────────────
 
-type conflictEntry struct {
-	ConflictType string // "level1_level2" / "level2_level3" / "level1_level3"
-	Char         string
-	ShortCode    string // 已能打出该字的较短编码
-	LongCode     string // 同字占据首位的较长编码
+type rankedCandidate struct {
+	Text   string
+	Weight int
 }
 
-// analyzeShortcodeConflicts 找出同一字在前缀关系的两个简码层级都占据首位的情况。
-// 这类冲突意味着用户可以用更短的码打出该字，却同时也占据了较长码的首选位。
+type conflictEntry struct {
+	ConflictType    string            // "level1_level2" / "level2_level3" / "level1_level3" / "level2_full4" / "level3_full4"
+	Char            string            // 冲突字（同时占据简码和4码首选的字）
+	ShortCode       string            // 已能打出该字的简码
+	LongCode        string            // 同字占据首位的4码编码
+	CandidatesCount int               // 4码下候选总数
+	TopCandidates   []rankedCandidate // 4码下按权重排序的候选列表（最多展示前10）
+}
+
+// analyzeShortcodeConflicts 找出同一字在前缀关系的编码中都占据首选的情况。
+// 包括简码层级间冲突（level1<->level2/3, level2<->level3）以及
+// 2/3简码<->4码首选冲突（同一字既是简码首选，又占据同前缀4码的首选位）。
 func analyzeShortcodeConflicts(entries []Entry) []conflictEntry {
 	type best struct {
 		text   string
 		weight int
 	}
+	// 简码首选表（单字且码长1-3）
 	topByCode := make(map[string]best)
 	for _, e := range entries {
 		if e.shortcodeLevel == 0 {
@@ -246,7 +255,30 @@ func analyzeShortcodeConflicts(entries []Entry) []conflictEntry {
 		}
 	}
 
+	// 4码候选列表（按权重降序排列）
+	candidatesByFull4 := make(map[string][]rankedCandidate)
+	for _, e := range entries {
+		if len(e.Code) != 4 {
+			continue
+		}
+		candidatesByFull4[e.Code] = append(candidatesByFull4[e.Code], rankedCandidate{
+			Text:   e.Text,
+			Weight: e.OrigWeight,
+		})
+	}
+	for code, list := range candidatesByFull4 {
+		sort.SliceStable(list, func(i, j int) bool {
+			if list[i].Weight != list[j].Weight {
+				return list[i].Weight > list[j].Weight
+			}
+			return list[i].Text < list[j].Text
+		})
+		candidatesByFull4[code] = list
+	}
+
 	var conflicts []conflictEntry
+
+	// 简码层级间冲突
 	for code, sc := range topByCode {
 		clen := len(code)
 		if clen < 2 {
@@ -264,6 +296,31 @@ func analyzeShortcodeConflicts(entries []Entry) []conflictEntry {
 			}
 		}
 	}
+
+	// 2/3简码 vs 4码首选冲突
+	for code4, cands := range candidatesByFull4 {
+		if len(cands) == 0 {
+			continue
+		}
+		top := cands[0]
+
+		// 检查2简码前缀：2码简码首选字 == 4码首选字
+		if len(code4) >= 2 {
+			prefix2 := code4[:2]
+			if sc, ok := topByCode[prefix2]; ok && sc.text == top.Text {
+				if _, isAlsoShort2 := topByCode[code4]; !isAlsoShort2 {
+					conflicts = append(conflicts, buildFull4Conflict("level2_full4", top.Text, prefix2, code4, cands))
+				}
+			}
+		}
+
+		// 检查3简码前缀
+		prefix3 := code4[:3]
+		if sc, ok := topByCode[prefix3]; ok && sc.text == top.Text {
+			conflicts = append(conflicts, buildFull4Conflict("level3_full4", top.Text, prefix3, code4, cands))
+		}
+	}
+
 	sort.Slice(conflicts, func(i, j int) bool {
 		if conflicts[i].ConflictType != conflicts[j].ConflictType {
 			return conflicts[i].ConflictType < conflicts[j].ConflictType
@@ -271,6 +328,23 @@ func analyzeShortcodeConflicts(entries []Entry) []conflictEntry {
 		return conflicts[i].LongCode < conflicts[j].LongCode
 	})
 	return conflicts
+}
+
+func buildFull4Conflict(conflictType, char, shortCode, longCode string, cands []rankedCandidate) conflictEntry {
+	ce := conflictEntry{
+		ConflictType:    conflictType,
+		Char:            char,
+		ShortCode:       shortCode,
+		LongCode:        longCode,
+		CandidatesCount: len(cands),
+	}
+	limit := 10
+	if len(cands) < limit {
+		limit = len(cands)
+	}
+	ce.TopCandidates = make([]rankedCandidate, limit)
+	copy(ce.TopCandidates, cands[:limit])
+	return ce
 }
 
 func writeConflictReport(path string, conflicts []conflictEntry) error {
@@ -283,11 +357,174 @@ func writeConflictReport(path string, conflicts []conflictEntry) error {
 	}
 	defer f.Close()
 	bw := bufio.NewWriter(f)
-	fmt.Fprintf(bw, "conflict_type\tchar\tshort_code\tlong_code\n")
+	fmt.Fprintf(bw, "conflict_type\tchar\tshort_code\tlong_code\tcount\ttop_candidates\n")
 	for _, c := range conflicts {
-		fmt.Fprintf(bw, "%s\t%s\t%s\t%s\n", c.ConflictType, c.Char, c.ShortCode, c.LongCode)
+		topStr := "-"
+		if len(c.TopCandidates) > 0 {
+			parts := make([]string, len(c.TopCandidates))
+			for i, tc := range c.TopCandidates {
+				parts[i] = fmt.Sprintf("%s(%d)", tc.Text, tc.Weight)
+			}
+			topStr = strings.Join(parts, " > ")
+		}
+		fmt.Fprintf(bw, "%s\t%s\t%s\t%s\t%d\t%s\n",
+			c.ConflictType, c.Char, c.ShortCode, c.LongCode, c.CandidatesCount, topStr)
 	}
 	return bw.Flush()
+}
+
+// writeDemotionReport 输出简码降权待处理报告，仅包含有竞争候选的 level2_full4/level3_full4 冲突。
+// 报告包含评估列：冲突字权重、第二候选文本/权重/类型、权重差、候选排名，方便确定降权参数。
+func writeDemotionReport(path string, conflicts []conflictEntry) error {
+	// 过滤出有竞争候选的 full4 冲突
+	var demotions []conflictEntry
+	for _, c := range conflicts {
+		if (c.ConflictType == "level2_full4" || c.ConflictType == "level3_full4") && c.CandidatesCount > 1 {
+			demotions = append(demotions, c)
+		}
+	}
+	if len(demotions) == 0 {
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	bw := bufio.NewWriter(f)
+
+	fmt.Fprintf(bw, "type\tchar\tshort\tlong\tchar_wt\t2nd\t2nd_wt\t2nd_is_char\tgap\tcount\ttop_candidates\n")
+	for _, c := range demotions {
+		if len(c.TopCandidates) < 2 {
+			continue
+		}
+		top := c.TopCandidates[0]
+		second := c.TopCandidates[1]
+		gap := top.Weight - second.Weight
+		isChar := "N"
+		if len([]rune(second.Text)) == 1 {
+			isChar = "Y"
+		}
+
+		// 候选排名（最多展示前10）
+		limit := 10
+		if len(c.TopCandidates) < limit {
+			limit = len(c.TopCandidates)
+		}
+		parts := make([]string, limit)
+		for i := 0; i < limit; i++ {
+			parts[i] = fmt.Sprintf("%s(%d)", c.TopCandidates[i].Text, c.TopCandidates[i].Weight)
+		}
+		topStr := strings.Join(parts, " > ")
+
+		fmt.Fprintf(bw, "%s\t%s\t%s\t%s\t%d\t%s\t%d\t%s\t%d\t%d\t%s\n",
+			c.ConflictType, c.Char, c.ShortCode, c.LongCode,
+			top.Weight, second.Text, second.Weight, isChar, gap,
+			c.CandidatesCount, topStr)
+	}
+	return bw.Flush()
+}
+
+// ── 简码降权策略 ──────────────────────────────────────
+
+// applyDemotionStrategy 对同时占据简码和4码全码首选的字进行降权。
+// 规则：当4码的第二候选满足权重条件且 gap 比例不超过阈值时，将简码字的权重降到第二候选之下。
+// 返回实际降权的条目数。
+func applyDemotionStrategy(entries []Entry, cfg *Config) int {
+	if !cfg.Demotion.Enabled {
+		return 0
+	}
+	dc := cfg.Demotion
+
+	// 简码首选表：code -> top text（仅需文本，权重不参与判定）
+	shortTop := make(map[string]string)
+	shortTopWt := make(map[string]int)
+	for _, e := range entries {
+		if e.shortcodeLevel == 0 {
+			continue
+		}
+		if w, ok := shortTopWt[e.Code]; !ok || e.OrigWeight > w {
+			shortTop[e.Code] = e.Text
+			shortTopWt[e.Code] = e.OrigWeight
+		}
+	}
+
+	// 4码候选索引：code -> 候选列表（含 entries 索引，便于 O(1) 写回）
+	type indexedCand struct {
+		Text     string
+		Weight   int
+		EntryIdx int
+	}
+	candidatesByCode := make(map[string][]indexedCand)
+	for i, e := range entries {
+		if len(e.Code) != 4 {
+			continue
+		}
+		candidatesByCode[e.Code] = append(candidatesByCode[e.Code], indexedCand{
+			Text:     e.Text,
+			Weight:   e.OrigWeight,
+			EntryIdx: i,
+		})
+	}
+	for _, list := range candidatesByCode {
+		sort.SliceStable(list, func(i, j int) bool {
+			if list[i].Weight != list[j].Weight {
+				return list[i].Weight > list[j].Weight
+			}
+			return list[i].Text < list[j].Text
+		})
+	}
+
+	demoted := 0
+	for code4, cands := range candidatesByCode {
+		if len(cands) < 2 {
+			continue
+		}
+		top := cands[0]
+
+		// 首字是否同时占据简码首选（任一前缀）
+		hasShort := false
+		for l := 1; l <= 3 && l < len(code4); l++ {
+			if t, ok := shortTop[code4[:l]]; ok && t == top.Text {
+				hasShort = true
+				break
+			}
+		}
+		if !hasShort {
+			continue
+		}
+
+		// 找到满足过滤阈值的第二候选
+		var second *indexedCand
+		for i := 1; i < len(cands); i++ {
+			if cands[i].Weight >= dc.FilterThreshold {
+				second = &cands[i]
+				break
+			}
+		}
+		if second == nil {
+			continue
+		}
+
+		isChar := len([]rune(second.Text)) == 1
+		gapRatio := float64(top.Weight-second.Weight) / float64(top.Weight)
+		promoteWt, maxGapRatio := dc.WordPromoteWt, dc.MaxGapRatioWord
+		if isChar {
+			promoteWt, maxGapRatio = dc.SingleCharPromoteWt, dc.MaxGapRatioSingle
+		}
+		if second.Weight < promoteWt || gapRatio > maxGapRatio {
+			continue
+		}
+
+		// 直接通过索引修改：只动4码条目
+		entries[top.EntryIdx].OrigWeight = second.Weight - 1
+		demoted++
+	}
+	return demoted
 }
 
 // ── 词频与权重 ────────────────────────────────────────
@@ -603,6 +840,20 @@ func enrich(cfg *Config) error {
 		fmt.Printf("        %15s: %6d  %s\n", b.k, cnt, bar)
 	}
 
+	// 简码降权：先抓取降权前的冲突快照（用于降权报告评估调参），再执行降权
+	var preDemotionConflicts []conflictEntry
+	if cfg.Shortcodes.Enabled {
+		preDemotionConflicts = analyzeShortcodeConflicts(kept)
+	}
+	if cfg.Shortcodes.Enabled && cfg.Demotion.Enabled {
+		demoted := applyDemotionStrategy(kept, cfg)
+		if demoted > 0 {
+			fmt.Printf("\n      简码降权: %d 条简码字被降权（第二候选满足权重+gap条件）\n", demoted)
+		} else {
+			fmt.Printf("\n      简码降权: 无符合条件的降权条目\n")
+		}
+	}
+
 	// 按编码升序、同码按权重降序排列
 	sort.SliceStable(kept, func(i, j int) bool {
 		if kept[i].Code != kept[j].Code {
@@ -626,12 +877,24 @@ func enrich(cfg *Config) error {
 	// 简码避让冲突分析
 	if cfg.Shortcodes.Enabled {
 		conflicts := analyzeShortcodeConflicts(kept)
-		fmt.Printf("      简码避让冲突: 共 %d 处\n", len(conflicts))
+		fmt.Printf("      简码避让冲突: 共 %d 处（降权后）\n", len(conflicts))
 		if cfg.ConflictReportPath != "" {
 			if err := writeConflictReport(cfg.ConflictReportPath, conflicts); err != nil {
 				fmt.Printf("      [警告] 冲突报告写出失败: %v\n", err)
 			} else {
 				fmt.Printf("      冲突报告: %s\n", cfg.ConflictReportPath)
+			}
+		}
+		// 简码降权待处理报告：使用降权前的快照，反映原始候选权重，便于调参
+		if cfg.DemotionReportPath != "" {
+			source := preDemotionConflicts
+			if source == nil {
+				source = conflicts
+			}
+			if err := writeDemotionReport(cfg.DemotionReportPath, source); err != nil {
+				fmt.Printf("      [警告] 降权报告写出失败: %v\n", err)
+			} else {
+				fmt.Printf("      降权报告: %s（降权前快照）\n", cfg.DemotionReportPath)
 			}
 		}
 	}
