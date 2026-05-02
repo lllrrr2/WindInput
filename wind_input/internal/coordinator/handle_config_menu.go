@@ -61,19 +61,14 @@ func (c *Coordinator) SetIMEActivated(activated bool) {
 			// Identify the target monitor by its work-area edges.
 			// posX/posY is already in the right-bottom corner of that monitor, so
 			// querying by it gives us the authoritative work-area bounds.
-			monLeft, monTop, monRight, monBottom := ui.GetMonitorWorkAreaFromPoint(posX, posY)
-			key := ui.MonitorKey(monRight, monBottom)
+			_, _, monRight, monBottom := ui.GetMonitorWorkAreaFromPoint(posX, posY)
+			key := ui.MonitorKeyStr(monRight, monBottom)
 
 			// If the user previously dragged the toolbar on this monitor, restore that
-			// position (after validating it still fits within the current work area).
+			// position unconditionally. Drag bounds are already enforced in handleMouseMove,
+			// so saved positions are always within the work area at the time of saving.
 			if saved, ok := c.toolbarUserPos[key]; ok {
-				if saved.X >= monLeft && saved.X+scaledW <= monRight &&
-					saved.Y >= monTop && saved.Y+scaledH <= monBottom {
-					posX, posY = saved.X, saved.Y
-				} else {
-					// Work area shrunk (e.g. resolution change) — discard stale record.
-					delete(c.toolbarUserPos, key)
-				}
+				posX, posY = saved.X, saved.Y
 			}
 
 			c.logger.Debug("Toolbar position resolved", "x", posX, "y", posY,

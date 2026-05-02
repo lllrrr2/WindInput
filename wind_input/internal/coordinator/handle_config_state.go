@@ -234,26 +234,52 @@ func (c *Coordinator) TransformPunctuation(r rune) (string, bool) {
 	return c.punctConverter.ToChinesePunctStr(r)
 }
 
-// saveRuntimeState saves the current state if remember_last_state is enabled
+// buildRuntimeStateNoLock 在持锁状态下构造当前完整 RuntimeState（含工具栏位置）。
+func (c *Coordinator) buildRuntimeStateNoLock() *config.RuntimeState {
+	positions := make(map[string][2]int, len(c.toolbarUserPos))
+	for k, pt := range c.toolbarUserPos {
+		positions[k] = [2]int{pt.X, pt.Y}
+	}
+	return &config.RuntimeState{
+		ChineseMode:      c.chineseMode,
+		FullWidth:        c.fullWidth,
+		ChinesePunct:     c.chinesePunctuation,
+		EngineType:       c.getCurrentEngineNameNoLock(),
+		ToolbarPositions: positions,
+	}
+}
+
+// saveRuntimeState saves the current state if remember_last_state is enabled.
+// 同时写入工具栏位置，防止与 saveToolbarPositions 并发保存时互相覆盖。
 // 调用者必须持有 c.mu 锁
 func (c *Coordinator) saveRuntimeState() {
 	if c.config == nil || !c.config.Startup.RememberLastState {
 		return
 	}
 
-	// Capture values while we hold the lock
-	state := &config.RuntimeState{
-		ChineseMode:  c.chineseMode,
-		FullWidth:    c.fullWidth,
-		ChinesePunct: c.chinesePunctuation,
-		EngineType:   c.getCurrentEngineNameNoLock(),
-	}
-
+	state := c.buildRuntimeStateNoLock()
 	go func() {
 		if err := config.SaveRuntimeState(state); err != nil {
 			c.logger.Error("Failed to save runtime state", "error", err)
 		} else {
 			c.logger.Debug("Runtime state saved", "chineseMode", state.ChineseMode)
+		}
+	}()
+}
+
+// saveToolbarPositions persists toolbar positions to runtime state unconditionally
+// (not gated by remember_last_state). Called after user drags the toolbar.
+// 调用者不需要持有 c.mu 锁。
+func (c *Coordinator) saveToolbarPositions() {
+	c.mu.Lock()
+	state := c.buildRuntimeStateNoLock()
+	c.mu.Unlock()
+
+	go func() {
+		if err := config.SaveRuntimeState(state); err != nil {
+			c.logger.Error("Failed to save toolbar positions", "error", err)
+		} else {
+			c.logger.Debug("Toolbar positions saved", "count", len(state.ToolbarPositions))
 		}
 	}()
 }

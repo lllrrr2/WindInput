@@ -247,9 +247,9 @@ type Coordinator struct {
 	eventNotifier EventNotifier
 
 	// toolbarUserPos 保存用户拖动后的工具栏位置，按显示器分别记录。
-	// key = ui.MonitorKey(workRight, workBottom)，value = 工具栏左上角屏幕坐标。
+	// key = ui.MonitorKeyStr(workRight, workBottom)，value = 工具栏左上角屏幕坐标。
 	// 焦点切换时优先使用该值；切换到没有记录的显示器时回退到右下角默认位置。
-	toolbarUserPos map[uint64]image.Point
+	toolbarUserPos map[string]image.Point
 }
 
 // EventNotifier 由外部（rpc.Server 适配器）注入。当 coordinator 旁路 RPC 路径
@@ -433,21 +433,24 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 	punctFollowMode := false
 	toolbarVisible := false
 
+	// 始终加载 RuntimeState，工具栏位置无条件恢复；
+	// 输入模式字段（ChineseMode 等）仅在 remember_last_state=true 时生效。
+	var toolbarUserPos map[string]image.Point
+	runtimeState, runtimeStateErr := config.LoadRuntimeState()
+	if runtimeStateErr != nil {
+		logger.Warn("Failed to load runtime state, using defaults", "error", runtimeStateErr)
+	} else if len(runtimeState.ToolbarPositions) > 0 {
+		toolbarUserPos = make(map[string]image.Point, len(runtimeState.ToolbarPositions))
+		for k, pos := range runtimeState.ToolbarPositions {
+			toolbarUserPos[k] = image.Point{X: pos[0], Y: pos[1]}
+		}
+	}
+
 	if cfg != nil {
-		// 检查是否启用"记忆前次状态"
-		if cfg.Startup.RememberLastState {
-			// 从 RuntimeState 加载前次状态
-			state, err := config.LoadRuntimeState()
-			if err != nil {
-				logger.Warn("Failed to load runtime state, using defaults", "error", err)
-				startInChineseMode = cfg.Startup.DefaultChineseMode
-				fullWidth = cfg.Startup.DefaultFullWidth
-				chinesePunctuation = cfg.Startup.DefaultChinesePunct
-			} else {
-				startInChineseMode = state.ChineseMode
-				fullWidth = state.FullWidth
-				chinesePunctuation = state.ChinesePunct
-			}
+		if cfg.Startup.RememberLastState && runtimeStateErr == nil {
+			startInChineseMode = runtimeState.ChineseMode
+			fullWidth = runtimeState.FullWidth
+			chinesePunctuation = runtimeState.ChinesePunct
 		} else {
 			// 使用默认配置
 			startInChineseMode = cfg.Startup.DefaultChineseMode
@@ -487,6 +490,7 @@ func NewCoordinator(engineMgr *engine.Manager, uiManager *ui.Manager, cfg *confi
 		inputHistory:   NewInputHistory(20),
 		appCompat:      appCompat,
 		cfgMu:          new(sync.RWMutex),
+		toolbarUserPos: toolbarUserPos,
 	}
 
 	// 根据配对表设置引号配对状态

@@ -661,16 +661,17 @@ func (c *Coordinator) handleToolbarPositionChanged(x, y int) {
 	// Identify the monitor by its work-area right/bottom edges.
 	// This call is safe outside the coordinator lock (pure Win32 query).
 	_, _, monRight, monBottom := ui.GetMonitorWorkAreaFromPoint(x, y)
-	key := ui.MonitorKey(monRight, monBottom)
+	key := ui.MonitorKeyStr(monRight, monBottom)
 
 	c.mu.Lock()
 	if c.toolbarUserPos == nil {
-		c.toolbarUserPos = make(map[uint64]image.Point)
+		c.toolbarUserPos = make(map[string]image.Point)
 	}
 	c.toolbarUserPos[key] = image.Point{X: x, Y: y}
 	c.mu.Unlock()
 
 	c.logger.Debug("Toolbar user position saved", "monitorKey", key, "x", x, "y", y)
+	c.saveToolbarPositions()
 }
 
 // handleToolbarContextMenu handles toolbar right-click context menu action

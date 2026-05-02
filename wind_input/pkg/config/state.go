@@ -13,6 +13,11 @@ type RuntimeState struct {
 	FullWidth    bool   `yaml:"full_width" json:"full_width"`
 	ChinesePunct bool   `yaml:"chinese_punct" json:"chinese_punct"`
 	EngineType   string `yaml:"engine_type" json:"engine_type"`
+
+	// ToolbarPositions 保存每个显示器上用户拖动后的工具栏位置。
+	// key = "workRight,workBottom"（显示器工作区右下角坐标），value = [x, y]。
+	// 与 remember_last_state 无关，始终持久化。
+	ToolbarPositions map[string][2]int `yaml:"toolbar_positions,omitempty" json:"toolbar_positions,omitempty"`
 }
 
 // DefaultRuntimeState 返回默认运行时状态

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -112,10 +113,11 @@ func GetToolbarPositionForCaret(caretX, caretY, toolbarWidth, toolbarHeight int)
 	return x, y
 }
 
-// MonitorKey returns a stable uint64 identifier for the monitor whose work area
-// ends at (workRight, workBottom). Used to key per-monitor toolbar positions.
-func MonitorKey(workRight, workBottom int) uint64 {
-	return uint64(uint32(workRight))<<32 | uint64(uint32(workBottom))
+// MonitorKeyStr returns a stable string identifier for the monitor whose work area
+// ends at (workRight, workBottom). Used to key per-monitor toolbar positions and
+// for serialization to runtime state files.
+func MonitorKeyStr(workRight, workBottom int) string {
+	return fmt.Sprintf("%d,%d", workRight, workBottom)
 }
 
 // GetCapsLockState returns the current state of CapsLock key
