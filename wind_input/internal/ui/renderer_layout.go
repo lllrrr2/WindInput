@@ -9,6 +9,29 @@ import (
 	"github.com/huanfeng/wind_input/pkg/config"
 )
 
+// pagerFontSize returns the font size for the pager indicator (e.g. "1/3").
+// Scales with cfg.IndexFontSize so the pager grows together with the candidate
+// font, while keeping historical 12/14 (* scale) values as a lower bound so
+// small font configs do not become illegible.
+func pagerFontSize(cfg RenderConfig, scale float64, isTextIndex bool) float64 {
+	if isTextIndex {
+		return math.Max(14*scale, cfg.IndexFontSize+2*scale)
+	}
+	return math.Max(12*scale, cfg.IndexFontSize)
+}
+
+// pagerArrowSize returns the chevron arrow visual size, scaled with the pager
+// font so the arrows visually balance the page-number text.
+func pagerArrowSize(pageFontSize, scale float64) float64 {
+	return math.Max(8*scale, pageFontSize*0.65)
+}
+
+// pagerButtonHeight returns the clickable button height for pager arrows.
+// Includes a small margin around the arrow / text.
+func pagerButtonHeight(pageFontSize, scale float64) float64 {
+	return math.Max(20*scale, pageFontSize+8*scale)
+}
+
 // indexLabel returns the display string for a candidate index.
 // Priority: overrideLabel > IndexLabels config > default 1-9,0
 func indexLabel(indexLabels string, index int, overrideLabel string) string {
@@ -144,10 +167,7 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 	// 确保页码指示器能完整显示
 	showVerticalPager := absTotalPagesV > 1 || cfg.AlwaysShowPager
 	if showVerticalPager && cfg.ShowPageNumber {
-		pageFontSize := 12.0 * scale
-		if isTextIndex {
-			pageFontSize = 14 * scale
-		}
+		pageFontSize := pagerFontSize(cfg, scale, isTextIndex)
 		hasMoreV := totalPages < 0
 		var pageText string
 		if hasMoreV {
@@ -156,7 +176,7 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 			pageText = fmt.Sprintf(" %d / %d ", page, absTotalPagesV)
 		}
 		pageW := td.MeasureString(pageText, pageFontSize)
-		arrowSize := 8.0 * scale
+		arrowSize := pagerArrowSize(pageFontSize, scale)
 		arrowPad := 8.0 * scale
 		arrowW := arrowSize + arrowPad*2
 		pagerWidth := arrowW + pageW + arrowW + padX*2
@@ -184,6 +204,8 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		inputHeight = 0
 	}
 	contentHeight := float64(candidateCount) * cfg.ItemHeight
+	pageFontSize := pagerFontSize(cfg, scale, isTextIndex)
+	pagerBtnH := pagerButtonHeight(pageFontSize, scale)
 	pageInfoHeight := 0.0
 	if showVerticalPager {
 		if absTotalPagesV < 1 {
@@ -197,7 +219,7 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		if page < 1 {
 			page = 1
 		}
-		pageInfoHeight = 24.0 * scale
+		pageInfoHeight = math.Max(24*scale, pagerBtnH+4*scale)
 	}
 	height := padY*2 + inputHeight + contentHeight + pageInfoHeight + 4*scale
 	if cfg.HidePreedit {
@@ -211,11 +233,6 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 		indexTextSize = cfg.FontSize + 2*scale
 		commentSize = cfg.IndexFontSize + 2*scale
 	}
-	pageFontSize := 12.0 * scale
-	if isTextIndex {
-		pageFontSize = 14 * scale
-	}
-
 	// Text layout constants (textStartX already computed above for dynamic width)
 
 	// Candidate start Y (after input area)
@@ -363,16 +380,18 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 	// Page info chevrons (shapes only)
 	if showVerticalPager {
 		pageY := candStartY + float64(len(candidates))*cfg.ItemHeight + 4*scale
-		arrowSize := 8.0 * scale
+		arrowSize := pagerArrowSize(pageFontSize, scale)
 		arrowPad := 8.0 * scale
 		arrowW := arrowSize + arrowPad*2
 		totalW := arrowW + pageW + arrowW
 		startX := width/2 - totalW/2
-		centerY := pageY + 10*scale
+		// Center the button vertically inside pageInfoHeight (which may exceed pagerBtnH)
+		btnY := pageY + (pageInfoHeight-pagerBtnH)/2
+		centerY := btnY + pagerBtnH/2
 
 		// Page up button
 		canPageUp := page > 1
-		pageUpBtnRect := CandidateRect{X: startX, Y: pageY, W: arrowW, H: 20 * scale}
+		pageUpBtnRect := CandidateRect{X: startX, Y: btnY, W: arrowW, H: pagerBtnH}
 		if canPageUp && hoverPageBtn == "up" {
 			dc.SetColor(cfg.HoverBgColor)
 			r.drawRoundedRect(dc, pageUpBtnRect.X, pageUpBtnRect.Y, pageUpBtnRect.W, pageUpBtnRect.H, 4*scale)
@@ -390,7 +409,7 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 
 		// Page down button
 		canPageDown := page < absTotalPagesV
-		pageDownBtnRect := CandidateRect{X: startX + arrowW + pageW, Y: pageY, W: arrowW, H: 20 * scale}
+		pageDownBtnRect := CandidateRect{X: startX + arrowW + pageW, Y: btnY, W: arrowW, H: pagerBtnH}
 		if canPageDown && hoverPageBtn == "down" {
 			dc.SetColor(cfg.HoverBgColor)
 			r.drawRoundedRect(dc, pageDownBtnRect.X, pageDownBtnRect.Y, pageDownBtnRect.W, pageDownBtnRect.H, 4*scale)
@@ -509,14 +528,15 @@ func (r *Renderer) renderVerticalCandidates(candidates []Candidate, input string
 	// Page text
 	if showVerticalPager && showVerticalPageNumber && pageText != "" {
 		pageY := candStartY + float64(len(candidates))*cfg.ItemHeight + 4*scale
-		arrowSize := 8.0 * scale
+		arrowSize := pagerArrowSize(pageFontSize, scale)
 		arrowPad := 8.0 * scale
 		arrowW := arrowSize + arrowPad*2
 		totalW := arrowW + pageW + arrowW
 		startX := width/2 - totalW/2
-		centerY := pageY + 10*scale
+		btnY := pageY + (pageInfoHeight-pagerBtnH)/2
+		centerY := btnY + pagerBtnH/2
 
-		td.DrawString(pageText, startX+arrowW, centerY+4*scale, pageFontSize, cfg.InputTextColor)
+		td.DrawString(pageText, startX+arrowW, centerY+pageFontSize/3, pageFontSize, cfg.InputTextColor)
 	}
 
 	td.EndDraw()
@@ -549,10 +569,7 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 		indexTextSize = cfg.FontSize + 2*scale
 		commentSize = cfg.IndexFontSize + 2*scale
 	}
-	pageFontSize := 12.0 * scale
-	if isTextIndex {
-		pageFontSize = 14 * scale
-	}
+	pageFontSize := pagerFontSize(cfg, scale, isTextIndex)
 
 	// Measure all candidates to calculate total width
 	type candMeasure struct {
@@ -643,7 +660,7 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	}
 
 	// Page info width
-	arrowSize := 8.0 * scale
+	arrowSize := pagerArrowSize(pageFontSize, scale)
 	arrowPad := 6.0 * scale
 	arrowW := arrowSize + arrowPad*2
 	pageInfoWidth := 0.0
@@ -1030,7 +1047,7 @@ func (r *Renderer) renderHorizontalCandidates(candidates []Candidate, input stri
 	if showPager && showPageNumber && pageText != "" {
 		totalW := arrowW + pageW + arrowW
 		startX := width - padX - totalW
-		td.DrawString(pageText, startX+arrowW, candY+6*scale, pageFontSize, cfg.InputTextColor)
+		td.DrawString(pageText, startX+arrowW, candY+pageFontSize/3, pageFontSize, cfg.InputTextColor)
 	}
 
 	td.EndDraw()
