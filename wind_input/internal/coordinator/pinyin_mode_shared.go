@@ -69,11 +69,11 @@ func (c *Coordinator) handlePinyinModeKey(ops *pinyinModeOps, key string, data *
 		}
 		return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
 
-	// === 空格：选首候选 ===
+	// === 空格：选当前高亮候选 ===
 	case vk == ipc.VK_SPACE:
 		if len(c.candidates) > 0 {
 			pageStart := (c.currentPage - 1) * c.candidatesPerPage
-			return c.selectPinyinModeCandidate(ops, pageStart)
+			return c.selectPinyinModeCandidate(ops, pageStart+c.selectedIndex)
 		}
 		if ops.consumeSpaceEmpty {
 			return &bridge.KeyEventResult{Type: bridge.ResponseTypeConsumed}
