@@ -20,9 +20,9 @@ export const inputSchema: PageSchema = [
     hint: '过滤候选词中的生僻字',
     width: '200px',
     options: [
-      { value: FilterMode.Smart,   label: '智能模式',   description: '优先常用字，无结果时自动扩展到全部字符', tag: '推荐' },
-      { value: FilterMode.General, label: '仅常用字',   description: '只显示通用规范汉字表中的常用汉字' },
-      { value: FilterMode.GB18030, label: '全部字符',   description: '不限制字符范围，包含生僻字' },
+      { value: FilterMode.Smart,   label: '智能模式',  tag: '推荐' },
+      { value: FilterMode.General, label: '仅常用字' },
+      { value: FilterMode.GB18030, label: '全部字符' },
     ],
   },
   {
@@ -187,13 +187,13 @@ export const keyBehaviorSchema: PageSchema = inputSchema.slice(5, 8)
 export const overflowSchema: PageSchema = inputSchema.slice(9, 12)
 
 /** 快捷输入卡片内的额外字段（bare 模式，trigger_keys 手写在前） */
-export const quickInputExtraSchema: PageSchema = inputSchema.slice(14, 16)
+export const quickInputExtraSchema: PageSchema = inputSchema.slice(13, 15)
 
 /** 临时拼音卡片内的分隔符字段（bare 模式） */
-export const pinyinSeparatorSchema: PageSchema = inputSchema.slice(17, 18)
+export const pinyinSeparatorSchema: PageSchema = inputSchema.slice(16, 17)
 
 /** 临时英文卡片内的额外字段（bare 模式） */
-export const shiftExtraSchema: PageSchema = inputSchema.slice(19, 21)
+export const shiftExtraSchema: PageSchema = inputSchema.slice(18, 20)
 
 /** 默认状态卡片内的记忆字段（bare 模式） */
-export const startupExtraSchema: PageSchema = inputSchema.slice(22, 23)
+export const startupExtraSchema: PageSchema = inputSchema.slice(21, 22)

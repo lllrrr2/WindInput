@@ -585,20 +585,6 @@ function isReferencedBy(schemaID: string): boolean {
   user-select: none;
 }
 
-/* Section titles (mixed engine) */
-.setting-section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: hsl(var(--muted-foreground));
-  padding: 10px 0 4px 0;
-  border-top: 1px solid hsl(var(--secondary));
-  margin-top: 4px;
-}
-
-.setting-section-title:first-child {
-  border-top: none;
-  margin-top: 0;
-}
 
 /* Codetable settings tab nav */
 .settings-tab-nav {

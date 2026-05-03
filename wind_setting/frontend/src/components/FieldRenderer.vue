@@ -47,7 +47,13 @@ const sliderDisplay = computed(() => {
 const EMPTY_SENTINEL = '__empty_select_value__'
 
 function selectValue(v: any): string {
-  if (v == null) return EMPTY_SENTINEL
+  if (v == null) {
+    // 值未设置时回退到第一个选项，使下拉框显示默认值而非空白
+    if (props.field.type === 'select' && props.field.options.length > 0) {
+      return optValue(props.field.options[0].value)
+    }
+    return EMPTY_SENTINEL
+  }
   const s = String(v)
   return s === '' ? EMPTY_SENTINEL : s
 }
@@ -101,7 +107,7 @@ function onSelectChange(raw: string) {
         :disabled="isDisabled"
         @update:model-value="onSelectChange($event)"
       >
-        <SelectTrigger :class="`w-[${field.width || '160px'}]`">
+        <SelectTrigger :style="{ width: field.width || '160px' }">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
