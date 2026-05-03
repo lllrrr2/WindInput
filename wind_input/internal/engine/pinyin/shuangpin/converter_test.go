@@ -190,6 +190,56 @@ func TestPartialInput(t *testing.T) {
 	}
 }
 
+func TestZiranmaVKey(t *testing.T) {
+	scheme := Get("ziranma")
+	conv := NewConverter(scheme)
+
+	tests := []struct {
+		input string
+		want  string
+		desc  string
+	}{
+		{"dv", "dui", "d=d, v=ui → dui"},
+		{"gv", "gui", "g=g, v=ui → gui"},
+		{"nv", "nv", "n=n, v=v(ü) → nv（女）"},
+		{"lv", "lv", "l=l, v=v(ü) → lv（绿）"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			result := conv.Convert(tt.input)
+			if result.FullPinyin != tt.want {
+				t.Errorf("Convert(%q) = %q, want %q", tt.input, result.FullPinyin, tt.want)
+			}
+		})
+	}
+}
+
+func TestSogouVKey(t *testing.T) {
+	scheme := Get("sogou")
+	conv := NewConverter(scheme)
+
+	tests := []struct {
+		input string
+		want  string
+		desc  string
+	}{
+		{"dv", "dui", "d=d, v=ui → dui"},
+		{"gv", "gui", "g=g, v=ui → gui"},
+		{"nv", "nv", "n=n, v=v(ü) → nv（女）"},
+		{"lv", "lv", "l=l, v=v(ü) → lv（绿）"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			result := conv.Convert(tt.input)
+			if result.FullPinyin != tt.want {
+				t.Errorf("Convert(%q) = %q, want %q", tt.input, result.FullPinyin, tt.want)
+			}
+		})
+	}
+}
+
 func TestAllSchemesRegistered(t *testing.T) {
 	expectedIDs := []string{"xiaohe", "ziranma", "mspy", "sogou", "abc", "ziguang"}
 	for _, id := range expectedIDs {
