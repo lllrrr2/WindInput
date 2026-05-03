@@ -8,71 +8,7 @@
     <!-- 字符与标点 -->
     <div class="settings-card">
       <div class="card-title">字符与标点</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>候选检索范围</label>
-          <p class="setting-hint">过滤候选词中的生僻字</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.filter_mode"
-            @update:model-value="selectFilterMode($event)"
-          >
-            <SelectTrigger class="w-[200px]">
-              <SelectValue :placeholder="'选择范围'">
-                {{ currentFilterOption?.label || "选择范围" }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="opt in filterModeOptions"
-                :key="opt.value"
-                :value="opt.value"
-              >
-                <div class="flex flex-col gap-0.5">
-                  <div class="flex items-center gap-2">
-                    <span>{{ opt.label }}</span>
-                    <span
-                      v-if="opt.tag"
-                      class="text-[10px] px-1 rounded bg-primary/10 text-primary"
-                      >{{ opt.tag }}</span
-                    >
-                  </div>
-                  <span class="text-xs text-muted-foreground">{{
-                    opt.desc
-                  }}</span>
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>标点随中英文切换</label>
-          <p class="setting-hint">切换到中文模式时自动切换中文标点</p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.input.punct_follow_mode"
-            @update:checked="formData.input.punct_follow_mode = $event"
-          />
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>数字后智能标点</label>
-          <p class="setting-hint">
-            数字后句号输出点号、逗号输出英文逗号，方便输入 IP、小数、千分位等
-          </p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.input.smart_punct_after_digit"
-            @update:checked="formData.input.smart_punct_after_digit = $event"
-          />
-        </div>
-      </div>
+      <SchemaRenderer :schema="punctSchema" :form-data="formData" mode="bare" />
       <div class="setting-item">
         <div class="setting-info">
           <label>自定义标点映射</label>
@@ -175,144 +111,13 @@
     <!-- 按键行为 -->
     <div class="settings-card">
       <div class="card-title">按键行为</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>回车键功能</label>
-          <p class="setting-hint">有编码时按回车键的处理方式</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.enter_behavior"
-            @update:model-value="formData.input.enter_behavior = $event as EnterBehaviorValue"
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="EnterBehavior.Commit">上屏编码</SelectItem>
-              <SelectItem :value="EnterBehavior.Clear">清空编码</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>空码时空格键功能</label>
-          <p class="setting-hint">无候选词时按空格键的处理方式</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.space_on_empty_behavior"
-            @update:model-value="
-              formData.input.space_on_empty_behavior = $event as SpaceOnEmptyBehaviorValue
-            "
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="SpaceOnEmptyBehavior.Commit">上屏编码</SelectItem>
-              <SelectItem :value="SpaceOnEmptyBehavior.Clear">清空编码</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>数字小键盘功能</label>
-          <p class="setting-hint">
-            控制小键盘数字键的行为，选择"同主键盘区数字"后可用于候选选择和快捷输入
-          </p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.numpad_behavior || NumpadBehavior.Direct"
-            @update:model-value="formData.input.numpad_behavior = $event as NumpadBehaviorValue"
-          >
-            <SelectTrigger class="w-[200px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="NumpadBehavior.Direct">直接输入数字</SelectItem>
-              <SelectItem :value="NumpadBehavior.FollowMain">同主键盘区数字</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <SchemaRenderer :schema="keyBehaviorSchema" :form-data="formData" mode="bare" />
     </div>
 
     <!-- 候选无效按键 -->
     <div class="settings-card">
       <div class="card-title">候选无效按键</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>数字键无效时</label>
-          <p class="setting-hint">按的数字超出当前页候选数量时的处理方式</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.overflow_behavior.number_key"
-            @update:model-value="
-              formData.input.overflow_behavior.number_key = $event as OverflowBehaviorValue
-            "
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="OverflowBehavior.Ignore">不起作用</SelectItem>
-              <SelectItem :value="OverflowBehavior.Commit">候选上屏</SelectItem>
-              <SelectItem :value="OverflowBehavior.CommitAndInput">顶码上屏</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>次选三选键无效时</label>
-          <p class="setting-hint">候选数量不足时按次选或三选键的处理方式</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.overflow_behavior.select_key"
-            @update:model-value="
-              formData.input.overflow_behavior.select_key = $event as OverflowBehaviorValue
-            "
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="OverflowBehavior.Ignore">不起作用</SelectItem>
-              <SelectItem :value="OverflowBehavior.Commit">候选上屏</SelectItem>
-              <SelectItem :value="OverflowBehavior.CommitAndInput">顶码上屏</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>以词定字键无效时</label>
-          <p class="setting-hint">候选词长度不足时按以词定字键的处理方式</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.overflow_behavior.select_char_key"
-            @update:model-value="
-              formData.input.overflow_behavior.select_char_key = $event as OverflowBehaviorValue
-            "
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="OverflowBehavior.Ignore">不起作用</SelectItem>
-              <SelectItem :value="OverflowBehavior.Commit">候选上屏</SelectItem>
-              <SelectItem :value="OverflowBehavior.CommitAndInput">顶码上屏</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <SchemaRenderer :schema="overflowSchema" :form-data="formData" mode="bare" />
     </div>
 
     <!-- 标点配对 -->
@@ -428,74 +233,13 @@
           ⚠ {{ quickInputConflictMsg }}
         </p>
       </div>
-      <div
-        class="setting-item"
-        :class="{ 'item-disabled': formData.input.quick_input.trigger_keys.length === 0 }"
-      >
-        <div class="setting-info">
-          <label>强制竖排显示</label>
-          <p class="setting-hint">
-            快捷输入时候选窗口强制使用竖排布局，退出后恢复原布局
-          </p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.input.quick_input.force_vertical"
-            @update:checked="formData.input.quick_input.force_vertical = $event"
-            :disabled="formData.input.quick_input.trigger_keys.length === 0"
-          />
-        </div>
-      </div>
-      <div
-        class="setting-item"
-        :class="{ 'item-disabled': formData.input.quick_input.trigger_keys.length === 0 }"
-      >
-        <div class="setting-info">
-          <label>小数保留位数</label>
-          <p class="setting-hint">计算结果最多保留的小数位数（0 表示取整）</p>
-        </div>
-        <div class="setting-control">
-          <input
-            type="number"
-            class="number-input"
-            v-model.number="formData.input.quick_input.decimal_places"
-            :disabled="formData.input.quick_input.trigger_keys.length === 0"
-            min="0"
-            max="6"
-          />
-        </div>
-      </div>
+      <SchemaRenderer :schema="quickInputExtraSchema" :form-data="formData" mode="bare" />
     </div>
 
     <!-- 临时拼音 -->
     <div class="settings-card">
       <div class="card-title">临时拼音</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>拼音分隔符</label>
-          <p class="setting-hint">
-            拼音模式下用于消歧的分隔符，如输入 xi'an 得到「西安」
-          </p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.pinyin_separator"
-            @update:model-value="formData.input.pinyin_separator = $event as PinyinSeparatorModeValue"
-          >
-            <SelectTrigger class="w-[280px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="PinyinSeparatorMode.Auto"
-                >自动（' 被选择键占用时改用 `）</SelectItem
-              >
-              <SelectItem :value="PinyinSeparatorMode.Quote">单引号 ( ' )</SelectItem>
-              <SelectItem :value="PinyinSeparatorMode.Backtick">反引号 ( ` )</SelectItem>
-              <SelectItem :value="PinyinSeparatorMode.None">不使用</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <SchemaRenderer :schema="pinyinSeparatorSchema" :form-data="formData" mode="bare" />
       <div class="setting-item">
         <div class="setting-info">
           <label>触发键</label>
@@ -527,42 +271,7 @@
     <!-- 临时英文 -->
     <div class="settings-card">
       <div class="card-title">临时英文</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>Shift+字母行为</label>
-          <p class="setting-hint">中文模式下按 Shift+字母时的行为</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.input.shift_temp_english.shift_behavior"
-            @update:model-value="
-              formData.input.shift_temp_english.shift_behavior = $event as ShiftBehaviorValue
-            "
-          >
-            <SelectTrigger class="w-[240px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="ShiftBehavior.TempEnglish">进入临时英文模式</SelectItem>
-              <SelectItem :value="ShiftBehavior.DirectCommit">直接上屏大写字母</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>显示英文候选</label>
-          <p class="setting-hint">临时英文模式下查询英文词库显示候选词</p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.input.shift_temp_english.show_english_candidates"
-            @update:checked="
-              formData.input.shift_temp_english.show_english_candidates = $event
-            "
-          />
-        </div>
-      </div>
+      <SchemaRenderer :schema="shiftExtraSchema" :form-data="formData" mode="bare" />
       <div class="setting-item">
         <div class="setting-info">
           <label>触发键</label>
@@ -588,18 +297,7 @@
     <!-- 默认状态 -->
     <div class="settings-card">
       <div class="card-title">默认状态</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>记忆前次状态</label>
-          <p class="setting-hint">启用后恢复上次的中英文、全半角和标点状态</p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.startup.remember_last_state"
-            @update:checked="formData.startup.remember_last_state = $event"
-          />
-        </div>
-      </div>
+      <SchemaRenderer :schema="startupExtraSchema" :form-data="formData" mode="bare" />
       <div
         class="setting-item"
         :class="{ 'item-disabled': formData.startup.remember_last_state }"
@@ -688,33 +386,9 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from "vue";
 import type { Config } from "../api/settings";
-import {
-  EnterBehavior,
-  SpaceOnEmptyBehavior,
-  OverflowBehavior,
-  FilterMode,
-  PinyinSeparatorMode,
-  NumpadBehavior,
-  ShiftBehavior,
-  Key,
-  type EnterBehaviorValue,
-  type SpaceOnEmptyBehaviorValue,
-  type OverflowBehaviorValue,
-  type FilterModeValue,
-  type PinyinSeparatorModeValue,
-  type NumpadBehaviorValue,
-  type ShiftBehaviorValue,
-} from "@/lib/enums";
-import { Switch } from "@/components/ui/switch";
+import { Key } from "@/lib/enums";
 import TriggerKeySelect from "@/components/TriggerKeySelect.vue";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -722,6 +396,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import SchemaRenderer from "@/components/SchemaRenderer.vue";
+import {
+  punctSchema,
+  keyBehaviorSchema,
+  overflowSchema,
+  quickInputExtraSchema,
+  pinyinSeparatorSchema,
+  shiftExtraSchema,
+  startupExtraSchema,
+} from "@/schemas/input.schema";
 
 const props = defineProps<{
   formData: Config;
@@ -1059,40 +743,6 @@ const tempEnglishConflictMsg = computed(() => {
   return msgs.length > 0 ? msgs.join("；") : "";
 });
 
-const filterModeOptions: ReadonlyArray<{
-  value: FilterModeValue;
-  label: string;
-  desc: string;
-  tag?: string;
-}> = [
-  {
-    value: FilterMode.Smart,
-    label: "智能模式",
-    desc: "优先常用字，无结果时自动扩展到全部字符",
-    tag: "推荐",
-  },
-  {
-    value: FilterMode.General,
-    label: "仅常用字",
-    desc: "只显示通用规范汉字表中的常用汉字",
-  },
-  {
-    value: FilterMode.GB18030,
-    label: "全部字符",
-    desc: "不限制字符范围，包含生僻字",
-  },
-];
-
-const currentFilterOption = computed(
-  () =>
-    filterModeOptions.find(
-      (o) => o.value === props.formData.input.filter_mode,
-    ) || filterModeOptions[0],
-);
-
-function selectFilterMode(value: string) {
-  props.formData.input.filter_mode = value as FilterModeValue;
-}
 </script>
 
 <style scoped>

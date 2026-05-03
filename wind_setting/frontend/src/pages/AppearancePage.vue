@@ -1,25 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { ChevronDown } from "lucide-vue-next";
 import type { Config } from "../api/settings";
 import type { ThemeInfo, ThemePreview, SystemFontInfo } from "../api/wails";
-import {
-  ThemeStyle,
-  PreeditMode,
-  CandidateLayout,
-  StatusDisplayMode,
-  SchemaNameStyle,
-  StatusPositionMode,
-  PagerDisplayMode,
-  type ThemeStyleValue,
-  type PreeditModeValue,
-  type CandidateLayoutValue,
-  type StatusDisplayModeValue,
-  type SchemaNameStyleValue,
-  type StatusPositionModeValue,
-  type PagerDisplayModeValue,
-} from "@/lib/enums";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectTrigger,
@@ -27,6 +10,13 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import SchemaRenderer from "@/components/SchemaRenderer.vue";
+import {
+  themeExtraSchema,
+  candidateWindowSchema,
+  statusIndicatorSchema,
+  toolbarSchema,
+} from "@/schemas/appearance.schema";
 
 const props = defineProps<{
   formData: Config;
@@ -72,6 +62,11 @@ function onThemeSelect(themeName: string) {
   emit("themeSelect", themeName);
   themeSelectOpen.value = false;
 }
+
+watch(
+  () => props.formData.ui.theme_style,
+  (val) => emit("themeStyleChange", val),
+)
 
 function handleDocumentClick(event: MouseEvent) {
   const target = event.target as Node;
@@ -160,55 +155,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>主题风格</label>
-          <p class="setting-hint">选择亮色、暗色或跟随系统设置</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.ui.theme_style"
-            @update:model-value="
-              formData.ui.theme_style = $event as ThemeStyleValue;
-              emit('themeStyleChange', $event as string);
-            "
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="ThemeStyle.System">跟随系统</SelectItem>
-              <SelectItem :value="ThemeStyle.Light">亮色</SelectItem>
-              <SelectItem :value="ThemeStyle.Dark">暗色</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>页码显示方式</label>
-          <p class="setting-hint">覆盖主题配置中的页码显示行为</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.ui.pager_display_mode || '__default__'"
-            @update:model-value="
-              formData.ui.pager_display_mode = ($event === '__default__' ? '' : $event) as PagerDisplayModeValue
-            "
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__default__">默认（主题配置）</SelectItem>
-              <SelectItem :value="PagerDisplayMode.Never">不显示</SelectItem>
-              <SelectItem :value="PagerDisplayMode.Auto">大于一页时显示</SelectItem>
-              <SelectItem :value="PagerDisplayMode.Always">总是显示</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <SchemaRenderer :schema="themeExtraSchema" :form-data="formData" mode="bare" />
 
       <div class="setting-item align-start" v-if="themePreview">
         <div class="setting-info">
@@ -439,362 +386,38 @@ onUnmounted(() => {
           </Select>
         </div>
       </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>每页候选数</label>
-          <p class="setting-hint">每页显示的候选词数量</p>
-        </div>
-        <div class="setting-control range-control">
-          <input
-            type="range"
-            min="3"
-            max="10"
-            step="1"
-            v-model.number="formData.ui.candidates_per_page"
-          />
-          <span class="range-value"
-            >{{ formData.ui.candidates_per_page }} 个</span
-          >
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>隐藏候选窗口</label>
-          <p class="setting-hint">不显示候选窗口</p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.ui.hide_candidate_window"
-            @update:checked="formData.ui.hide_candidate_window = $event"
-          />
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>嵌入式编码行</label>
-          <p class="setting-hint">输入码直接显示在光标处，而非候选窗上方</p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.ui.inline_preedit"
-            @update:checked="formData.ui.inline_preedit = $event"
-          />
-        </div>
-      </div>
-      <div
-        class="setting-item"
-        :class="{ 'item-disabled': formData.ui.inline_preedit }"
-      >
-        <div class="setting-info">
-          <label>非嵌入编码显示方式</label>
-          <p class="setting-hint">未开启嵌入编码时，编码在候选窗中的显示位置</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.ui.preedit_mode"
-            :disabled="formData.ui.inline_preedit"
-            @update:model-value="formData.ui.preedit_mode = $event as PreeditModeValue"
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="PreeditMode.Top">独立编码行</SelectItem>
-              <SelectItem :value="PreeditMode.Embedded">嵌入候选行</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>候选布局</label>
-          <p class="setting-hint">候选词的排列方式</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.ui.candidate_layout"
-            @update:model-value="formData.ui.candidate_layout = $event as CandidateLayoutValue"
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="CandidateLayout.Horizontal">横向</SelectItem>
-              <SelectItem :value="CandidateLayout.Vertical">纵向</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <SchemaRenderer :schema="candidateWindowSchema" :form-data="formData" mode="bare" />
     </div>
 
     <div class="settings-card">
       <div class="card-title">状态提示</div>
-
-      <!-- 总开关 -->
-      <div class="setting-item">
+      <SchemaRenderer :schema="statusIndicatorSchema" :form-data="formData" mode="bare" />
+      <!-- 显示内容（复选框组，无对应 schema 类型） -->
+      <div class="setting-item" v-if="formData.ui.status_indicator.enabled">
         <div class="setting-info">
-          <label>启用状态提示</label>
-          <p class="setting-hint">切换输入状态时显示提示</p>
+          <label>显示内容</label>
+          <p class="setting-hint">选择状态提示中显示的信息</p>
         </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.ui.status_indicator.enabled"
-            @update:checked="formData.ui.status_indicator.enabled = $event"
-          />
+        <div class="setting-control inline-control">
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="formData.ui.status_indicator.show_mode" />
+            模式
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="formData.ui.status_indicator.show_punct" />
+            标点
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="formData.ui.status_indicator.show_full_width" />
+            全半角
+          </label>
         </div>
       </div>
-
-      <template v-if="formData.ui.status_indicator.enabled">
-        <!-- 显示模式 -->
-        <div class="setting-item">
-          <div class="setting-info">
-            <label>显示模式</label>
-            <p class="setting-hint">
-              临时显示在切换时闪现后自动消失，常驻显示在有输入焦点时始终显示
-            </p>
-          </div>
-          <div class="setting-control">
-            <Select
-              :model-value="formData.ui.status_indicator.display_mode"
-              @update:model-value="
-                formData.ui.status_indicator.display_mode = $event as StatusDisplayModeValue
-              "
-            >
-              <SelectTrigger class="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="StatusDisplayMode.Temp">临时显示</SelectItem>
-                <SelectItem :value="StatusDisplayMode.Always">常驻显示 (beta)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <!-- 临时显示时长（仅临时模式） -->
-        <div
-          class="setting-item"
-          v-if="formData.ui.status_indicator.display_mode === StatusDisplayMode.Temp"
-        >
-          <div class="setting-info">
-            <label>显示时长</label>
-            <p class="setting-hint">状态提示的显示时间</p>
-          </div>
-          <div class="setting-control range-control">
-            <input
-              type="range"
-              min="200"
-              max="30000"
-              step="100"
-              v-model.number="formData.ui.status_indicator.duration"
-            />
-            <span class="range-value"
-              >{{ formData.ui.status_indicator.duration }}ms</span
-            >
-          </div>
-        </div>
-
-        <!-- 方案名风格 -->
-        <div class="setting-item">
-          <div class="setting-info">
-            <label>方案名显示</label>
-            <p class="setting-hint">中文模式下显示的方案名称风格</p>
-          </div>
-          <div class="setting-control">
-            <Select
-              :model-value="formData.ui.status_indicator.schema_name_style"
-              @update:model-value="
-                formData.ui.status_indicator.schema_name_style = $event as SchemaNameStyleValue
-              "
-            >
-              <SelectTrigger class="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="SchemaNameStyle.Full">全称（五笔、全拼）</SelectItem>
-                <SelectItem :value="SchemaNameStyle.Short">简写（五、拼）</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <!-- 显示内容 -->
-        <div class="setting-item">
-          <div class="setting-info">
-            <label>显示内容</label>
-            <p class="setting-hint">选择状态提示中显示的信息</p>
-          </div>
-          <div class="setting-control inline-control">
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                v-model="formData.ui.status_indicator.show_mode"
-              />
-              模式
-            </label>
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                v-model="formData.ui.status_indicator.show_punct"
-              />
-              标点
-            </label>
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                v-model="formData.ui.status_indicator.show_full_width"
-              />
-              全半角
-            </label>
-          </div>
-        </div>
-
-        <!-- 位置设置 -->
-        <div class="setting-item">
-          <div class="setting-info">
-            <label>位置模式</label>
-            <p class="setting-hint">
-              跟随光标或固定在自定义位置（可拖动状态窗口定位）
-            </p>
-          </div>
-          <div class="setting-control">
-            <Select
-              :model-value="formData.ui.status_indicator.position_mode"
-              @update:model-value="
-                formData.ui.status_indicator.position_mode = $event as StatusPositionModeValue
-              "
-            >
-              <SelectTrigger class="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem :value="StatusPositionMode.FollowCaret">跟随光标</SelectItem>
-                <SelectItem :value="StatusPositionMode.Custom">自定义位置</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <!-- 跟随模式偏移 -->
-        <template
-          v-if="formData.ui.status_indicator.position_mode === StatusPositionMode.FollowCaret"
-        >
-          <div class="setting-item">
-            <div class="setting-info">
-              <label>水平偏移</label>
-              <p class="setting-hint">状态提示相对光标的水平偏移</p>
-            </div>
-            <div class="setting-control range-control">
-              <input
-                type="range"
-                min="-50"
-                max="50"
-                step="5"
-                v-model.number="formData.ui.status_indicator.offset_x"
-              />
-              <span class="range-value"
-                >{{ formData.ui.status_indicator.offset_x }}px</span
-              >
-            </div>
-          </div>
-          <div class="setting-item">
-            <div class="setting-info">
-              <label>垂直偏移</label>
-              <p class="setting-hint">
-                状态提示相对光标的垂直偏移（负值=向上）
-              </p>
-            </div>
-            <div class="setting-control range-control">
-              <input
-                type="range"
-                min="-100"
-                max="100"
-                step="5"
-                v-model.number="formData.ui.status_indicator.offset_y"
-              />
-              <span class="range-value"
-                >{{ formData.ui.status_indicator.offset_y }}px</span
-              >
-            </div>
-          </div>
-        </template>
-
-        <!-- 外观设置 -->
-        <div class="setting-item">
-          <div class="setting-info">
-            <label>字体大小</label>
-            <p class="setting-hint">状态提示的字体大小</p>
-          </div>
-          <div class="setting-control range-control">
-            <input
-              type="range"
-              min="10"
-              max="24"
-              step="1"
-              v-model.number="formData.ui.status_indicator.font_size"
-            />
-            <span class="range-value"
-              >{{ formData.ui.status_indicator.font_size }}px</span
-            >
-          </div>
-        </div>
-
-        <div class="setting-item">
-          <div class="setting-info">
-            <label>透明度</label>
-            <p class="setting-hint">状态提示窗口的透明度</p>
-          </div>
-          <div class="setting-control range-control">
-            <input
-              type="range"
-              min="0.3"
-              max="1"
-              step="0.05"
-              v-model.number="formData.ui.status_indicator.opacity"
-            />
-            <span class="range-value"
-              >{{
-                Math.round(formData.ui.status_indicator.opacity * 100)
-              }}%</span
-            >
-          </div>
-        </div>
-
-        <div class="setting-item">
-          <div class="setting-info">
-            <label>圆角</label>
-            <p class="setting-hint">状态提示窗口的圆角半径</p>
-          </div>
-          <div class="setting-control range-control">
-            <input
-              type="range"
-              min="0"
-              max="16"
-              step="1"
-              v-model.number="formData.ui.status_indicator.border_radius"
-            />
-            <span class="range-value"
-              >{{ formData.ui.status_indicator.border_radius }}px</span
-            >
-          </div>
-        </div>
-      </template>
     </div>
 
     <div class="settings-card">
       <div class="card-title">工具栏</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>显示工具栏</label>
-          <p class="setting-hint">在屏幕上显示可拖动的输入法状态栏</p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.toolbar.visible"
-            @update:checked="formData.toolbar.visible = $event"
-          />
-        </div>
-      </div>
+      <SchemaRenderer :schema="toolbarSchema" :form-data="formData" mode="bare" />
     </div>
   </section>
 </template>

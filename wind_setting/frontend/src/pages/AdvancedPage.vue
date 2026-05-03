@@ -46,28 +46,7 @@
 
     <div class="settings-card">
       <div class="card-title">日志设置</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>服务日志级别</label>
-          <p class="setting-hint">重启输入法服务后生效</p>
-        </div>
-        <div class="setting-control">
-          <Select
-            :model-value="formData.advanced.log_level"
-            @update:model-value="formData.advanced.log_level = $event"
-          >
-            <SelectTrigger class="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="debug">Debug（调试）</SelectItem>
-              <SelectItem value="info">Info（信息）</SelectItem>
-              <SelectItem value="warn">Warn（警告）</SelectItem>
-              <SelectItem value="error">Error（错误）</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <SchemaRenderer :schema="advancedLogSchema" :form-data="formData" mode="bare" />
       <div class="setting-item">
         <div class="setting-info">
           <label>TSF 日志输出方式</label>
@@ -139,20 +118,7 @@
 
     <div class="settings-card">
       <div class="card-title">性能诊断</div>
-      <div class="setting-item">
-        <div class="setting-info">
-          <label>按键链路采样</label>
-          <p class="setting-hint">
-            开启后记录每次按键的引擎耗时等数据，用于性能分析
-          </p>
-        </div>
-        <div class="setting-control">
-          <Switch
-            :checked="formData.advanced.perf_sampling ?? false"
-            @update:checked="formData.advanced.perf_sampling = $event"
-          />
-        </div>
-      </div>
+      <SchemaRenderer :schema="advancedPerfSchema" :form-data="formData" mode="bare" />
       <div v-if="formData.advanced.perf_sampling" class="setting-item">
         <div class="setting-info">
           <label>隐私提示</label>
@@ -361,7 +327,6 @@ import type {
 } from "../api/wails";
 import { useToast } from "../composables/useToast";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectTrigger,
@@ -377,6 +342,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import DataDirDialog from "@/components/DataDirDialog.vue";
+import SchemaRenderer from "@/components/SchemaRenderer.vue";
+import { advancedLogSchema, advancedPerfSchema } from "@/schemas/advanced.schema";
 
 const props = defineProps<{
   formData: Config;
