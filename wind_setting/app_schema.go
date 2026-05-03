@@ -285,7 +285,44 @@ func (a *App) GetSchemaConfig(schemaID string) (*SchemaConfig, error) {
 		}
 	}
 
+	// 填入引擎字符串字段的默认值，确保前端始终能读到有效值
+	// 方案 YAML 通常只写与默认不同的字段，缺失字段由引擎 Go 默认值覆盖
+	fillEngineDefaults(cfg)
+
 	return cfg, nil
+}
+
+// fillEngineDefaults 为缺失的引擎配置字段填入默认值。
+// 仅填入字符串类型字段（bool/int 零值在前端有明确语义，不需要补填）。
+// 仅当 map 中 key 不存在或值为空字符串时才写入，不覆盖已有配置。
+func fillEngineDefaults(cfg *SchemaConfig) {
+	if cfg == nil {
+		return
+	}
+	switch cfg.Engine.Type {
+	case "codetable", "mixed":
+		if cfg.Engine.CodeTable == nil {
+			cfg.Engine.CodeTable = make(map[string]interface{})
+		}
+		ct := cfg.Engine.CodeTable
+		setMapDefault(ct, "candidate_sort_mode", "frequency")
+		setMapDefault(ct, "charset_preference", "none")
+		setMapDefault(ct, "prefix_mode", "bfs_bucket")
+		setMapDefault(ct, "weight_mode", "auto")
+		setMapDefault(ct, "load_mode", "mmap")
+	}
+}
+
+// setMapDefault 仅当 key 不存在或值为空字符串时，将默认值写入 map。
+func setMapDefault(m map[string]interface{}, key string, defaultVal interface{}) {
+	v, exists := m[key]
+	if !exists {
+		m[key] = defaultVal
+		return
+	}
+	if s, ok := v.(string); ok && s == "" {
+		m[key] = defaultVal
+	}
 }
 
 // SaveSchemaConfig 保存方案配置（写入 schema_overrides.yaml 覆盖层）
