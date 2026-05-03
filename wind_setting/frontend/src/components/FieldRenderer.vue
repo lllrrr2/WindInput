@@ -47,15 +47,24 @@ const sliderDisplay = computed(() => {
 const EMPTY_SENTINEL = '__empty_select_value__'
 
 function selectValue(v: any): string {
-  if (v == null) {
-    // 值未设置时回退到第一个选项，使下拉框显示默认值而非空白
+  const fallbackFirst = (): string => {
     if (props.field.type === 'select' && props.field.options.length > 0) {
       return optValue(props.field.options[0].value)
     }
     return EMPTY_SENTINEL
   }
+
+  if (v == null) return fallbackFirst()
+
   const s = String(v)
-  return s === '' ? EMPTY_SENTINEL : s
+  if (s === '') {
+    // 只有选项中存在 value="" 时才使用哨兵（如 pager_display_mode Default 选项）
+    // 否则空字符串视为"未配置"，回退到第一个选项作为视觉默认
+    const hasEmptyOpt =
+      props.field.type === 'select' && props.field.options.some((o) => o.value === '')
+    return hasEmptyOpt ? EMPTY_SENTINEL : fallbackFirst()
+  }
+  return s
 }
 
 function optValue(v: string | number): string {
